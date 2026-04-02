@@ -289,10 +289,11 @@ io.on('connection', (socket) => {
     if (!room) { console.warn('[updateGameState] room %s not found', code); return; }
     if (room.hostId !== socket.id) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); return; }
 
-    // Stand Out: clear accumulated answers each time we enter the answering phase
+    // Stand Out: clear accumulated answers + scored flag each time we enter the answering phase
     if (gameState?.game === 'standOut' && gameState?.phase === 'entering') {
-      room.standOutAnswers = [];
-      console.log('[standOut] entering phase — answers reset for room', code);
+      room.standOutAnswers     = [];
+      room.standOutRoundScored = false;
+      console.log('[standOut] entering phase — answers + roundScored reset for room', code);
     }
 
     room.gameState = gameState;
@@ -305,9 +306,21 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     // ── Stand Out: server owns answer collection + scoring ───────────────────
-    if (action === 'so-answer'
-        && room.gameState?.game === 'standOut'
-        && room.gameState?.phase === 'entering') {
+    if (action === 'so-answer') {
+      const actualGame  = room.gameState?.game;
+      const actualPhase = room.gameState?.phase;
+
+      console.log('[standOut] so-answer received — socket:%s room:%s game:%s phase:%s',
+        socket.id, code, actualGame, actualPhase);
+
+      // Guard: only process during the correct game + phase
+      if (actualGame !== 'standOut' || actualPhase !== 'entering') {
+        console.warn('[standOut] IGNORED so-answer — expected game=standOut phase=entering, got game=%s phase=%s',
+          actualGame, actualPhase);
+        // Still relay so non-SO games using 'so-answer' aren't broken
+        io.to(code).emit('playerActionReceived', { playerId: socket.id, action, data });
+        return;
+      }
 
       const gs = room.gameState;
 
@@ -317,8 +330,17 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // Guard: this round's scoring has already run (prevent double-score)
+      if (room.standOutRoundScored) {
+        console.warn('[standOut] scoring already ran this round — ignoring late submission from', socket.id);
+        return;
+      }
+
       const player = room.players.find(p => p.id === socket.id);
-      if (!player) return;
+      if (!player) {
+        console.warn('[standOut] player not found for socket %s — room.players: %j', socket.id, room.players.map(p => p.id));
+        return;
+      }
 
       // Ensure accumulators exist (guard against missed reset)
       if (!Array.isArray(room.standOutAnswers)) room.standOutAnswers = [];
@@ -327,11 +349,17 @@ io.on('connection', (socket) => {
       room.standOutAnswers.push({ playerId: socket.id, playerName: player.name, text: data.text });
       const newSubmitted = [...(gs.submittedPlayerIds ?? []), socket.id];
 
-      console.log('[standOut] answer received — player:%s text:"%s" submitted:%d/%d',
-        player.name, data.text, newSubmitted.length, room.players.length);
+      const expected = room.players.length;
+      const received = newSubmitted.length;
+      console.log('[standOut] answer stored — player:%s text:"%s" | submitted:%d/%d | room.players:%j',
+        player.name, data.text, received, expected, room.players.map(p => ({ id: p.id, name: p.name })));
 
-      if (newSubmitted.length >= room.players.length) {
-        // ── All answers in — compute scores on server ──────────────────────
+      if (received >= expected) {
+        // ── All answers in — guard against re-entry, then score ───────────
+        room.standOutRoundScored = true;
+
+        console.log('[standOut] completion condition met (%d >= %d) — running scoreStandOutRound', received, expected);
+
         const { deltas, newStreaks, updatedPlayers } = scoreStandOutRound(
           room.standOutAnswers,
           room.standOutStreaks,
@@ -353,13 +381,15 @@ io.on('connection', (socket) => {
         };
         room.gameState = nextGs;
 
+        console.log('[standOut] emitting gameStateUpdated phase:%s to room %s', nextGs.phase, code);
         io.to(code).emit('gameStateUpdated', nextGs);
         io.to(code).emit('scoresUpdated', updatedPlayers);
         console.log('[standOut] round complete — phase:%s winner:%s', nextGs.phase, isGameOver ? top.name : 'none');
       } else {
-        // ── Partial — broadcast updated submitted list (hides answers) ──────
+        // ── Partial — broadcast updated submitted list (keeps answers hidden) ──
         const nextGs = { ...gs, submittedPlayerIds: newSubmitted };
         room.gameState = nextGs;
+        console.log('[standOut] partial update — emitting gameStateUpdated submitted:%d/%d', received, expected);
         io.to(code).emit('gameStateUpdated', nextGs);
       }
 
