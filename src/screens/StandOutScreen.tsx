@@ -21,7 +21,7 @@ import CountdownTimer from '../components/CountdownTimer';
 import { COLORS, RADIUS } from '../constants/theme';
 import {
   pickStandOutPrompt,
-  calculateStandOutScores,
+  normalizeAnswer,
   STAND_OUT_WIN_SCORE,
   Answer,
   ScoreDelta,
@@ -50,9 +50,6 @@ export default function StandOutScreen({ navigation }: Props) {
   const myId = socket.id;
 
   const usedPromptIds = useRef(new Set<string>());
-  const streaksRef = useRef<Record<string, number>>({});
-  // Host collects answers before reveal
-  const answersRef = useRef<Answer[]>([]);
 
   const gsRef = useRef<SOGameState | null>(null);
   const playersRef = useRef(players);
@@ -76,12 +73,10 @@ export default function StandOutScreen({ navigation }: Props) {
   // Local text input (not synced to server — private to each player)
   const [inputText, setInputText] = useState('');
 
-  // ── Host: initialize refs — server owns the initial gameState ──────────────
+  // ── Host: reset scores at game start ─────────────────────────────────────────
+  // Answer collection and scoring are now handled by the backend.
   useEffect(() => {
     if (!isHost) return;
-    answersRef.current = [];
-    streaksRef.current = {};
-    // Score reset is game-level, not tied to initial gameState
     const resetPlayers = players.map(p => ({ ...p, score: 0 }));
     setPlayers(resetPlayers);
     updateRoomScores(resetPlayers);
@@ -93,79 +88,12 @@ export default function StandOutScreen({ navigation }: Props) {
     usedPromptIds.current.add(gs.currentPrompt.id);
   }, [!!gs?.currentPrompt]); // eslint-disable-line
 
-  // ── Host: handle player actions ────────────────────────────────────────────
-  useEffect(() => {
-    if (!isHost) return;
-
-    const handler = ({ playerId, action, data }: any) => {
-      const state = gsRef.current;
-      const allPlayers = playersRef.current;
-      if (!state) return;
-
-      if (action === 'so-answer' && state.phase === 'entering') {
-        if (state.submittedPlayerIds.includes(playerId)) return;
-        const player = allPlayers.find(p => p.id === playerId);
-        if (!player) return;
-
-        answersRef.current = [
-          ...answersRef.current,
-          { playerId, playerName: player.name, text: data.text },
-        ];
-        const newSubmitted = [...state.submittedPlayerIds, playerId];
-
-        if (newSubmitted.length >= allPlayers.length) {
-          // All answered — score and reveal
-          const { deltas, newStreaks } = calculateStandOutScores(answersRef.current, streaksRef.current);
-          streaksRef.current = newStreaks;
-          const updatedPlayers = allPlayers.map(p => {
-            const d = deltas.find(d => d.playerId === p.id);
-            return d ? { ...p, score: Math.max(0, p.score + d.delta) } : p;
-          });
-          setPlayers(updatedPlayers);
-          updateRoomScores(updatedPlayers);
-
-          const top = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
-          if (top && top.score >= STAND_OUT_WIN_SCORE) {
-            const next: SOGameState = {
-              ...state,
-              phase: 'game-over',
-              submittedPlayerIds: newSubmitted,
-              answers: answersRef.current,
-              roundDeltas: deltas,
-              winnerName: top.name,
-            };
-            gsRef.current = next;
-            sendGameState(next);
-          } else {
-            const next: SOGameState = {
-              ...state,
-              phase: 'reveal',
-              submittedPlayerIds: newSubmitted,
-              answers: answersRef.current,
-              roundDeltas: deltas,
-            };
-            gsRef.current = next;
-            sendGameState(next);
-          }
-        } else {
-          const next: SOGameState = { ...state, submittedPlayerIds: newSubmitted };
-          gsRef.current = next;
-          sendGameState(next);
-        }
-      }
-    };
-
-    socket.on('playerActionReceived', handler);
-    return () => { socket.off('playerActionReceived', handler); };
-  }, [isHost]); // eslint-disable-line
-
   // ── Host: advance to next round ────────────────────────────────────────────
   const handleNextRound = () => {
     if (!isHost || !gs) return;
     const nextRound = gs.roundNumber + 1;
     const prompt = pickStandOutPrompt(nextRound, usedPromptIds.current);
     usedPromptIds.current.add(prompt.id);
-    answersRef.current = [];
     const next: SOGameState = {
       game: 'standOut',
       phase: 'prompt',
@@ -315,11 +243,11 @@ export default function StandOutScreen({ navigation }: Props) {
 
   const answerGroups = new Map<string, Answer[]>();
   for (const ans of answers) {
-    const key = ans.text.trim().toLowerCase();
+    const key = normalizeAnswer(ans.text);
     if (!answerGroups.has(key)) answerGroups.set(key, []);
     answerGroups.get(key)!.push(ans);
   }
-  const isDuplicate = (ans: Answer) => (answerGroups.get(ans.text.trim().toLowerCase())?.length ?? 0) > 1;
+  const isDuplicate = (ans: Answer) => (answerGroups.get(normalizeAnswer(ans.text))?.length ?? 0) > 1;
   const topScore = Math.max(...players.map(p => p.score));
 
   return (

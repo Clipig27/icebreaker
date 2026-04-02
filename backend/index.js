@@ -19,6 +19,74 @@ const io = new Server(httpServer, { cors: { origin: '*' } });
 
 // ── In-memory state ───────────────────────────────────────────────────────────
 const rooms = {};   // code → room object
+
+// ── Stand Out helpers ─────────────────────────────────────────────────────────
+
+const STAND_OUT_WIN_SCORE = 100;
+
+/**
+ * Canonical answer normalizer — must stay in sync with promptUtils.ts.
+ * lowercase → strip punctuation → collapse whitespace → trim
+ */
+function normalizeAnswer(text) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Compute per-player score deltas for one Stand Out round.
+ * @param {Array<{playerId,playerName,text}>} answers
+ * @param {Record<string,number>} streaks   per-player consecutive-unique count
+ * @param {Array<{id,name,score}>} players  current room players
+ */
+function scoreStandOutRound(answers, streaks, players) {
+  console.log('[standOut] raw answers   :', JSON.stringify(answers));
+
+  // Normalize and group
+  const groups = new Map();
+  for (const ans of answers) {
+    const key = normalizeAnswer(ans.text);
+    console.log(`[standOut] normalize      : "${ans.text}" → "${key}"`);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(ans);
+  }
+
+  console.log('[standOut] grouped results:', [...groups.entries()].map(([k, v]) => `"${k}" ×${v.length}`).join(', '));
+
+  const deltas = [];
+  const newStreaks = { ...streaks };
+
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      // Unique — streak bonus
+      const player = group[0];
+      const streak = (newStreaks[player.playerId] ?? 0) + 1;
+      newStreaks[player.playerId] = streak;
+      const pts = streak >= 4 ? 25 : streak === 3 ? 20 : streak === 2 ? 15 : 10;
+      deltas.push({ playerId: player.playerId, playerName: player.playerName, delta: pts, streakCount: streak });
+    } else {
+      // Duplicate — penalise all in group
+      const penalty = group.length >= 4 ? -12 : group.length === 3 ? -8 : -5;
+      for (const player of group) {
+        newStreaks[player.playerId] = 0;
+        deltas.push({ playerId: player.playerId, playerName: player.playerName, delta: penalty, streakCount: 0 });
+      }
+    }
+  }
+
+  const updatedPlayers = players.map(p => {
+    const d = deltas.find(d => d.playerId === p.id);
+    return d ? { ...p, score: Math.max(0, p.score + d.delta) } : p;
+  });
+
+  console.log('[standOut] final scores   :', updatedPlayers.map(p => `${p.name}:${p.score}`).join(', '));
+
+  return { deltas, newStreaks, updatedPlayers };
+}
 // Future: replace with Supabase. For now: session-level username registry.
 // lowercase_username → socketId  (freed on disconnect or explicit leave)
 const usernames = {};
@@ -204,6 +272,11 @@ io.on('connection', (socket) => {
     }
     room.phase     = 'playing';
     room.gameState = buildInitialGameState(game);
+    // Reset Stand Out per-round accumulators
+    if (game === 'standOut') {
+      room.standOutAnswers = [];
+      room.standOutStreaks  = {};
+    }
     console.log('[startGame] broadcasting gameStarted to room %s (%d players)', code, room.players.length);
     io.to(code).emit('gameStarted', room);
     if (ack) ack({ ok: true });
@@ -215,6 +288,13 @@ io.on('connection', (socket) => {
     const room = rooms[code];
     if (!room) { console.warn('[updateGameState] room %s not found', code); return; }
     if (room.hostId !== socket.id) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); return; }
+
+    // Stand Out: clear accumulated answers each time we enter the answering phase
+    if (gameState?.game === 'standOut' && gameState?.phase === 'entering') {
+      room.standOutAnswers = [];
+      console.log('[standOut] entering phase — answers reset for room', code);
+    }
+
     room.gameState = gameState;
     io.to(code).emit('gameStateUpdated', gameState);
   });
@@ -223,6 +303,70 @@ io.on('connection', (socket) => {
   socket.on('playerAction', ({ code, action, data }) => {
     const room = rooms[code];
     if (!room) return;
+
+    // ── Stand Out: server owns answer collection + scoring ───────────────────
+    if (action === 'so-answer'
+        && room.gameState?.game === 'standOut'
+        && room.gameState?.phase === 'entering') {
+
+      const gs = room.gameState;
+
+      // Deduplicate — ignore if this player already submitted this round
+      if ((gs.submittedPlayerIds ?? []).includes(socket.id)) {
+        console.log('[standOut] duplicate submission ignored — playerId:', socket.id);
+        return;
+      }
+
+      const player = room.players.find(p => p.id === socket.id);
+      if (!player) return;
+
+      // Ensure accumulators exist (guard against missed reset)
+      if (!Array.isArray(room.standOutAnswers)) room.standOutAnswers = [];
+      if (!room.standOutStreaks) room.standOutStreaks = {};
+
+      room.standOutAnswers.push({ playerId: socket.id, playerName: player.name, text: data.text });
+      const newSubmitted = [...(gs.submittedPlayerIds ?? []), socket.id];
+
+      console.log('[standOut] answer received — player:%s text:"%s" submitted:%d/%d',
+        player.name, data.text, newSubmitted.length, room.players.length);
+
+      if (newSubmitted.length >= room.players.length) {
+        // ── All answers in — compute scores on server ──────────────────────
+        const { deltas, newStreaks, updatedPlayers } = scoreStandOutRound(
+          room.standOutAnswers,
+          room.standOutStreaks,
+          room.players,
+        );
+        room.standOutStreaks = newStreaks;
+        room.players         = updatedPlayers;
+
+        const top        = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
+        const isGameOver = top && top.score >= STAND_OUT_WIN_SCORE;
+
+        const nextGs = {
+          ...gs,
+          phase:              isGameOver ? 'game-over' : 'reveal',
+          submittedPlayerIds: newSubmitted,
+          answers:            room.standOutAnswers,
+          roundDeltas:        deltas,
+          ...(isGameOver ? { winnerName: top.name } : {}),
+        };
+        room.gameState = nextGs;
+
+        io.to(code).emit('gameStateUpdated', nextGs);
+        io.to(code).emit('scoresUpdated', updatedPlayers);
+        console.log('[standOut] round complete — phase:%s winner:%s', nextGs.phase, isGameOver ? top.name : 'none');
+      } else {
+        // ── Partial — broadcast updated submitted list (hides answers) ──────
+        const nextGs = { ...gs, submittedPlayerIds: newSubmitted };
+        room.gameState = nextGs;
+        io.to(code).emit('gameStateUpdated', nextGs);
+      }
+
+      return; // Do NOT relay to playerActionReceived
+    }
+
+    // ── All other games: relay as before ─────────────────────────────────────
     io.to(code).emit('playerActionReceived', { playerId: socket.id, action, data });
   });
 

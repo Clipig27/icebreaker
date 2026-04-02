@@ -23,6 +23,23 @@ export function pickFromBank<T extends { id: string }>(
 
 // ─── Stand Out ────────────────────────────────────────────────────────────────
 
+/**
+ * Canonical answer normalizer.
+ * Must stay in sync with the copy in backend/index.js.
+ * - lowercase
+ * - trim leading/trailing whitespace
+ * - strip punctuation
+ * - collapse internal whitespace to single space
+ */
+export function normalizeAnswer(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')  // remove punctuation (keeps alphanumeric + underscore + space)
+    .replace(/\s+/g, ' ')     // collapse runs of whitespace
+    .trim();
+}
+
 // Difficulty weights scale with round number so early rounds stay accessible.
 function getDifficultyWeights(round: number): Record<StandOutDifficulty, number> {
   if (round <= 3) return { easy: 0.7, medium: 0.3, hard: 0.0 };
@@ -75,7 +92,7 @@ export function calculateStandOutScores(
   // Group by normalised answer text
   const groups = new Map<string, Answer[]>();
   for (const ans of answers) {
-    const key = ans.text.trim().toLowerCase();
+    const key = normalizeAnswer(ans.text);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(ans);
   }
