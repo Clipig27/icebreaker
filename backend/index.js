@@ -91,9 +91,172 @@ function scoreStandOutRound(answers, streaks, players) {
 // lowercase_username → socketId  (freed on disconnect or explicit leave)
 const usernames = {};
 
+// Deal or Steal — private per-round action/accusation store (never sent to clients)
+// dosRoundData[code] = { actions: { [playerId]: { action, target? } }, accusations: { [playerId]: { target } } }
+const dosRoundData = {};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function generateCode() {
   return Math.random().toString(36).substring(2, 6).toUpperCase();
+}
+
+/** Round a dollar value to 2 decimal places. */
+function round2(x) {
+  return Math.round(x * 100) / 100;
+}
+
+/**
+ * Resolve all actions for a Deal or Steal round.
+ * Returns { balances, accusationEligible, stealMap, dealCount, stealCount, exposedDealerIds, deltas, roundSummary }
+ */
+function scoreDoSRound(room, code) {
+  const gs = room.gameState;
+  const actions = (dosRoundData[code] && dosRoundData[code].actions) || {};
+  const players = room.players;
+
+  const d1Id = gs.dealers[0];
+  const d2Id = gs.dealers[1];
+
+  const d1Action = (actions[d1Id] && actions[d1Id].action) || 'neutral';
+  const d2Action = (actions[d2Id] && actions[d2Id].action) || 'neutral';
+  const bothDealt = d1Action === 'deal' && d2Action === 'deal';
+
+  const balances = Object.assign({}, gs.balances);
+  const startBals = Object.assign({}, gs.roundStartBalances);
+
+  const exposedDealerIds = [];
+
+  // Step 1 — Deal resolution
+  if (bothDealt) {
+    exposedDealerIds.push(d1Id, d2Id);
+    balances[d1Id] = round2(balances[d1Id] + 0.6 * startBals[d1Id]);
+    balances[d2Id] = round2(balances[d2Id] + 0.6 * startBals[d2Id]);
+  }
+
+  // Step 2 — Steal resolution (per dealer)
+  const nonDealerIds = players.map(p => p.id).filter(id => id !== d1Id && id !== d2Id);
+
+  for (const dId of [d1Id, d2Id]) {
+    const stealers = nonDealerIds.filter(id => {
+      const a = actions[id];
+      return a && a.action === 'steal' && a.target === dId;
+    });
+    if (stealers.length === 0) continue;
+
+    if (exposedDealerIds.includes(dId)) {
+      // Steal succeeds — split 50% of dealer's round-start balance
+      const pool = 0.5 * startBals[dId];
+      const perStealer = round2(pool / stealers.length);
+      for (const sId of stealers) {
+        balances[sId] = round2(balances[sId] + perStealer);
+      }
+      // Dealer loses 25% of round-start balance
+      balances[dId] = round2(balances[dId] - 0.25 * startBals[dId]);
+    } else {
+      // Steal fails — each stealer loses 20% of their own round-start balance
+      for (const sId of stealers) {
+        const penalty = round2(0.2 * startBals[sId]);
+        balances[sId] = round2(balances[sId] - penalty);
+        // Penalty goes to exposed dealers (split equally) or targeted dealer
+        if (exposedDealerIds.length > 0) {
+          const share = round2(penalty / exposedDealerIds.length);
+          for (const expId of exposedDealerIds) {
+            balances[expId] = round2(balances[expId] + share);
+          }
+        } else {
+          balances[dId] = round2(balances[dId] + penalty);
+        }
+      }
+    }
+  }
+
+  // Accusation eligibility: exposed dealers who were targeted by ≥1 successful steal
+  const accusationEligible = [d1Id, d2Id].filter(dId => {
+    if (!exposedDealerIds.includes(dId)) return false;
+    return nonDealerIds.some(id => {
+      const a = actions[id];
+      return a && a.action === 'steal' && a.target === dId;
+    });
+  });
+
+  // stealMap: stealerId → dealerId they targeted (only successful steals)
+  const stealMap = {};
+  for (const id of nonDealerIds) {
+    const a = actions[id];
+    if (a && a.action === 'steal' && a.target && exposedDealerIds.includes(a.target)) {
+      stealMap[id] = a.target;
+    }
+  }
+
+  // Per-player balance deltas for standings
+  const deltas = {};
+  for (const p of players) {
+    deltas[p.id] = round2((balances[p.id] !== undefined ? balances[p.id] : startBals[p.id]) - startBals[p.id]);
+  }
+
+  const dealCount = [d1Action, d2Action].filter(a => a === 'deal').length;
+  const stealCount = nonDealerIds.filter(id => actions[id] && actions[id].action === 'steal').length;
+
+  // Sanitised action log for end-game history (no targets visible until reveal)
+  const actionLog = {};
+  for (const p of players) {
+    const a = actions[p.id];
+    actionLog[p.id] = {
+      action: (a && a.action) || 'neutral',
+      target: (a && a.target) || null,
+    };
+  }
+
+  const roundSummary = {
+    round: gs.round,
+    dealers: [d1Id, d2Id],
+    actionLog,
+    exposedDealerIds,
+    dealCount,
+    stealCount,
+    deltas,
+    startBalances: Object.assign({}, startBals),
+    endBalances: Object.assign({}, balances),
+  };
+
+  return { balances, accusationEligible, stealMap, dealCount, stealCount, exposedDealerIds, deltas, roundSummary };
+}
+
+/**
+ * Resolve accusations for a Deal or Steal round.
+ * stealMap: stealerId → dealerId they successfully stole from.
+ * Returns { balances, accusationOutcomes }
+ */
+function resolveDoSAccusations(room, code) {
+  const gs = room.gameState;
+  const accusations = (dosRoundData[code] && dosRoundData[code].accusations) || {};
+  const stealMap = (dosRoundData[code] && dosRoundData[code].stealMap) || {};
+
+  const balances = Object.assign({}, gs.balances);
+  const startBals = gs.roundStartBalances || {};
+  const accusationOutcomes = {};
+
+  for (const accuserId in accusations) {
+    const target = accusations[accuserId] && accusations[accuserId].target;
+    if (!target) {
+      accusationOutcomes[accuserId] = { target: null, correct: false, skipped: true, delta: 0 };
+      continue;
+    }
+    // Correct if the accused player stole from the accuser
+    const isCorrect = stealMap[target] === accuserId;
+    if (isCorrect) {
+      const recovered = round2(0.25 * (startBals[accuserId] || 0));
+      balances[accuserId] = round2(balances[accuserId] + recovered);
+      balances[target]    = round2(balances[target]    - recovered);
+      accusationOutcomes[accuserId] = { target, correct: true,  delta: recovered };
+    } else {
+      const penalty = round2(0.1 * balances[accuserId]);
+      balances[accuserId] = round2(balances[accuserId] - penalty);
+      accusationOutcomes[accuserId] = { target, correct: false, delta: -penalty };
+    }
+  }
+
+  return { balances, accusationOutcomes };
 }
 
 /** Remove player from every room they're in. Returns array of affected room codes. */
@@ -109,6 +272,7 @@ function removeSocketFromAllRooms(socketId) {
 
     if (room.players.length === 0) {
       delete rooms[code];
+      delete dosRoundData[code];
       console.log(`Room ${code} deleted (empty)`);
       continue;
     }
@@ -142,10 +306,20 @@ function buildInitialGameState(game) {
     }
     case 'numberGuessor': {
       const prompt = pick(NUMBER_GUESSOR_PROMPTS);
-      return { game, phase: 'setter-entry', round: 1, setterIndex: 0, currentPrompt: prompt, submittedGuesserIds: [], penalties: {} };
+      return {
+        game,
+        phase: 'guessing',
+        round: 1,
+        currentPrompt: prompt,
+        submittedGuesserIds: [],
+        guesses: [],
+        totalScores: {},
+      };
     }
     case 'pieCharts':
       return { game, phase: 'setup', questions: [], questionIdx: 0, submittedVoterIds: [], allVotes: [] };
+    case 'dealOrSteal':
+      return { game, phase: 'setup', round: 1, dealers: [], balances: {} };
     default:
       return { game, phase: 'start' };
   }
@@ -234,6 +408,7 @@ io.on('connection', (socket) => {
 
     if (room.players.length === 0) {
       delete rooms[code];
+      delete dosRoundData[code];
       console.log(`Room ${code} deleted (empty after leave)`);
       return;
     }
@@ -409,6 +584,148 @@ io.on('connection', (socket) => {
       }
 
       return; // Do NOT relay to playerActionReceived
+    }
+
+    // ── Number Guessor: backend-authoritative handling ────────────────────────
+    if (room.gameState?.game === 'numberGuessor' && action === 'ng-guess') {
+      const value = Number(data?.value);
+
+      if (!Number.isInteger(value) || value < 1 || value > 100) {
+        return;
+      }
+
+      if (!room.gameState.guesses) room.gameState.guesses = [];
+      if (!room.gameState.submittedGuesserIds) room.gameState.submittedGuesserIds = [];
+
+      // prevent duplicate submit
+      if (room.gameState.submittedGuesserIds.includes(socket.id)) {
+        return;
+      }
+
+      room.gameState.guesses.push({ playerId: socket.id, value });
+      room.gameState.submittedGuesserIds.push(socket.id);
+
+      // update everyone with current submission count
+      io.to(code).emit('gameStateUpdated', room.gameState);
+
+      // all players submitted -> score and reveal
+      if (room.gameState.submittedGuesserIds.length >= room.players.length) {
+        const correctAnswer = room.gameState.currentPrompt.correctAnswer;
+
+        const results = room.players.map((player) => {
+          const guessObj = room.gameState.guesses.find((g) => g.playerId === player.id);
+          const guess = guessObj?.value ?? null;
+          const distance = guess !== null ? Math.abs(guess - correctAnswer) : 999;
+          return { playerId: player.id, playerName: player.name, guess, distance };
+        });
+
+        // sort by distance ascending (closest first)
+        results.sort((a, b) => a.distance - b.distance);
+
+        // accumulate total scores (lower = better)
+        if (!room.gameState.totalScores) room.gameState.totalScores = {};
+        const roundScores = {};
+        for (const r of results) {
+          roundScores[r.playerId] = r.distance;
+          room.gameState.totalScores[r.playerId] =
+            (room.gameState.totalScores[r.playerId] ?? 0) + r.distance;
+        }
+
+        room.gameState.phase = 'reveal';
+        room.gameState.targetNumber = correctAnswer;
+        room.gameState.results = results;
+        room.gameState.roundScores = roundScores;
+
+        io.to(code).emit('gameStateUpdated', room.gameState);
+      }
+
+      return;
+    }
+
+    // ── Deal or Steal: player submits action ──────────────────────────────────
+    if (room.gameState?.game === 'dealOrSteal' && action === 'dos-action') {
+      const gs = room.gameState;
+      if (gs.phase !== 'action') return;
+      if (!gs.submittedActionIds) gs.submittedActionIds = [];
+      if (gs.submittedActionIds.includes(socket.id)) return;
+
+      const { choice, target } = data || {};
+      const isDealerRole = gs.dealers && gs.dealers.includes(socket.id);
+
+      // Validate choice
+      if (!['deal', 'steal', 'neutral'].includes(choice)) return;
+      if (isDealerRole  && choice === 'steal') return;
+      if (!isDealerRole && choice === 'deal')  return;
+      if (choice === 'steal') {
+        if (!target || !gs.dealers || !gs.dealers.includes(target)) return;
+      }
+
+      // Store privately — never enters broadcast gameState
+      if (!dosRoundData[code]) dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
+      dosRoundData[code].actions[socket.id] = { action: choice, target: choice === 'steal' ? target : null };
+
+      gs.submittedActionIds.push(socket.id);
+      io.to(code).emit('gameStateUpdated', gs);
+
+      // All players submitted → resolve round
+      if (gs.submittedActionIds.length >= room.players.length) {
+        const result = scoreDoSRound(room, code);
+
+        // Save stealMap for accusation resolution
+        if (!dosRoundData[code]) dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
+        dosRoundData[code].stealMap = result.stealMap;
+
+        gs.phase = 'round-results';
+        gs.balances = result.balances;
+        gs.roundOutcome = {
+          dealCount:        result.dealCount,
+          stealCount:       result.stealCount,
+          exposedDealerIds: result.exposedDealerIds,
+          deltas:           result.deltas,
+        };
+        gs.accusationEligible    = result.accusationEligible;
+        gs.submittedAccusationIds = [];
+        if (!gs.roundHistory) gs.roundHistory = [];
+        gs.roundHistory.push(result.roundSummary);
+
+        io.to(code).emit('gameStateUpdated', gs);
+      }
+      return;
+    }
+
+    // ── Deal or Steal: player submits accusation ──────────────────────────────
+    if (room.gameState?.game === 'dealOrSteal' && action === 'dos-accuse') {
+      const gs = room.gameState;
+      if (gs.phase !== 'accusation') return;
+      if (!gs.accusationEligible || !gs.accusationEligible.includes(socket.id)) return;
+      if (!gs.submittedAccusationIds) gs.submittedAccusationIds = [];
+      if (gs.submittedAccusationIds.includes(socket.id)) return;
+
+      const { target } = data || {};  // target: playerId or null/undefined to skip
+
+      if (!dosRoundData[code]) dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
+      dosRoundData[code].accusations[socket.id] = { target: target || null };
+
+      gs.submittedAccusationIds.push(socket.id);
+      io.to(code).emit('gameStateUpdated', gs);
+
+      // All eligible have responded → resolve
+      if (gs.submittedAccusationIds.length >= gs.accusationEligible.length) {
+        const result = resolveDoSAccusations(room, code);
+        gs.balances = result.balances;
+
+        // Attach outcomes to last round history entry (revealed at end-game only)
+        if (gs.roundHistory && gs.roundHistory.length > 0) {
+          gs.roundHistory[gs.roundHistory.length - 1].accusationOutcomes = result.accusationOutcomes;
+        }
+
+        // Reset private round data for next round
+        dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
+
+        gs.phase = 'round-end';
+        io.to(code).emit('gameStateUpdated', gs);
+      }
+      return;
     }
 
     // ── All other games: relay as before ─────────────────────────────────────

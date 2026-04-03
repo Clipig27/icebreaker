@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
@@ -66,6 +66,15 @@ const GAMES: {
     borderColor: COLORS.accent,
     screen: 'PieCharts',
   },
+  {
+    id: 'dealOrSteal',
+    title: 'Deal or Steal',
+    emoji: '🤝',
+    desc: 'Deal for mutual gains or steal from exposed Dealers. 4–6 players.',
+    accentColor: COLORS.warning,
+    borderColor: COLORS.warning,
+    screen: 'DealOrSteal',
+  },
 ];
 
 export default function GameSelectScreen({ navigation }: Props) {
@@ -78,6 +87,13 @@ export default function GameSelectScreen({ navigation }: Props) {
 
   const selectGame = (game: (typeof GAMES)[0]) => {
     console.log('[GameSelect] selected:', game.id, '— room:', room?.code ?? 'none');
+    if (game.id === 'dealOrSteal' && (players.length < 4 || players.length > 6)) {
+      Alert.alert(
+        'Deal or Steal',
+        `This game requires 4–6 players. You currently have ${players.length}.`
+      );
+      return;
+    }
     setSelectedGame(game.id);
     startGame(game.id);
     navigation.navigate(game.screen as any);

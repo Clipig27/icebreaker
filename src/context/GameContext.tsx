@@ -26,7 +26,8 @@ export type GameType =
   | 'talentShow'
   | 'standOut'
   | 'numberGuessor'
-  | 'pieCharts';
+  | 'pieCharts'
+  | 'dealOrSteal';
 
 type Room = {
   code: string;
@@ -165,6 +166,29 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     socket.on('gameStarted', (r: Room) => {
       setRoom(r);
       setSelectedGame(r.gameState.game);
+
+      switch (r.gameState.game) {
+        case 'lieDetector':
+          navigateTo('LieDetector');
+          break;
+        case 'talentShow':
+          navigateTo('TalentShow');
+          break;
+        case 'standOut':
+          navigateTo('StandOut');
+          break;
+        case 'numberGuessor':
+          navigateTo('NumberGuessor');
+          break;
+        case 'pieCharts':
+          navigateTo('PieCharts');
+          break;
+        case 'dealOrSteal':
+          navigateTo('DealOrSteal');
+          break;
+        default:
+          break;
+      }
     });
 
     socket.on('gameStateUpdated', (gameState: any) => {

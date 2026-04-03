@@ -101,12 +101,18 @@ export function calculateStandOutScores(
   const newStreaks: Record<string, number> = { ...streaks };
 
   for (const group of groups.values()) {
-    if (group.length === 1) {
-      // Unique answer — reward based on streak tier
+    const groupSize = group.length;
+    const key = normalizeAnswer(group[0].text);
+    console.log(`[StandOut] Group key="${key}" size=${groupSize}`);
+
+    if (groupSize === 1) {
+      // Unique answer — reward scales with consecutive unique-answer streak
+      // streak 1→+10, 2→+15, 3→+20, 4+→+25
       const player = group[0];
       const streak = (newStreaks[player.playerId] ?? 0) + 1;
       newStreaks[player.playerId] = streak;
       const pts = streak >= 4 ? 25 : streak === 3 ? 20 : streak === 2 ? 15 : 10;
+      console.log(`[StandOut] Unique: player=${player.playerName} streak=${streak} delta=+${pts}`);
       deltas.push({
         playerId: player.playerId,
         playerName: player.playerName,
@@ -114,10 +120,12 @@ export function calculateStandOutScores(
         streakCount: streak,
       });
     } else {
-      // Duplicate — penalise all in the group
-      const penalty = group.length >= 4 ? -12 : group.length === 3 ? -8 : -5;
+      // Duplicate — penalty = -10 * (groupSize - 1)
+      // e.g. 2→-10, 3→-20, 4→-30
+      const penalty = -10 * (groupSize - 1);
       for (const player of group) {
         newStreaks[player.playerId] = 0;
+        console.log(`[StandOut] Duplicate: player=${player.playerName} groupSize=${groupSize} delta=${penalty}`);
         deltas.push({
           playerId: player.playerId,
           playerName: player.playerName,
@@ -142,8 +150,8 @@ export function pickNumberPrompt(usedIds: Set<string>): NumberPrompt {
 export interface GuessResult {
   playerId: string;
   playerName: string;
-  guess: number;
-  distance: number; // abs(guess - target)
+  guess: number | null;
+  distance: number; // abs(guess - correctAnswer), lower = better
 }
 
 export function calculateGuessResults(
@@ -152,7 +160,7 @@ export function calculateGuessResults(
 ): GuessResult[] {
   return guesses
     .map(g => ({ ...g, distance: Math.abs(g.guess - target) }))
-    .sort((a, b) => a.distance - b.distance);
+    .sort((a, b) => a.distance - b.distance); // closest first
 }
 
 // ─── Pie Charts ───────────────────────────────────────────────────────────────

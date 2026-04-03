@@ -32,17 +32,37 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'StandOut'>;
 };
 
+// ─── Challenge types ──────────────────────────────────────────────────────────
+
+interface SOChallenge {
+  targetPlayerId: string;
+  challengerId: string;
+  /** All players except challenger and target — pre-computed when challenge is created */
+  eligibleVoterIds: string[];
+  votes: Record<string, 'approve' | 'reject'>;
+  resolved: boolean;
+  succeeded: boolean;
+}
+
+// penalty applied to the challenged player's score when a challenge succeeds
+const CHALLENGE_PENALTY = -5;
+
+// ─── Game state ───────────────────────────────────────────────────────────────
+
 interface SOGameState {
   game: 'standOut';
   phase: 'prompt' | 'entering' | 'reveal' | 'game-over';
   roundNumber: number;
   currentPrompt: StandOutPrompt;
+  targetScore?: number; // set once before round 1, carried through all rounds
   // Who has submitted this round (not their answer — kept secret until reveal)
   submittedPlayerIds: string[];
   // Populated at reveal
   answers?: Answer[];
   roundDeltas?: ScoreDelta[];
   winnerName?: string;
+  // Challenges: keyed by targetPlayerId (one challenge per answer)
+  challenges?: Record<string, SOChallenge>;
 }
 
 export default function StandOutScreen({ navigation }: Props) {
@@ -88,6 +108,107 @@ export default function StandOutScreen({ navigation }: Props) {
     usedPromptIds.current.add(gs.currentPrompt.id);
   }, [!!gs?.currentPrompt]); // eslint-disable-line
 
+
+  // ── Host: handle challenge actions (server relays so-challenge / so-challenge-vote)
+  useEffect(() => {
+    if (!isHost) return;
+
+    const handler = ({ playerId, action, data }: any) => {
+      const state = gsRef.current;
+      const allPlayers = playersRef.current;
+      if (!state) return;
+
+      // ── Challenge initiation ──────────────────────────────────────────────
+      if (action === 'so-challenge' && state.phase === 'reveal') {
+        const { targetPlayerId } = data as { targetPlayerId: string };
+
+        if (playerId === targetPlayerId) return;
+        if (state.challenges?.[targetPlayerId]) return;
+        const answers = state.answers ?? [];
+        if (!answers.find(a => a.playerId === targetPlayerId)) return;
+
+        const eligibleVoterIds = allPlayers
+          .map(p => p.id)
+          .filter(id => id !== playerId && id !== targetPlayerId);
+
+        if (eligibleVoterIds.length === 0) return;
+
+        const challenge: SOChallenge = {
+          targetPlayerId,
+          challengerId: playerId,
+          eligibleVoterIds,
+          votes: {},
+          resolved: false,
+          succeeded: false,
+        };
+
+        const next: SOGameState = {
+          ...state,
+          challenges: { ...(state.challenges ?? {}), [targetPlayerId]: challenge },
+        };
+        gsRef.current = next;
+        sendGameState(next);
+      }
+
+      // ── Challenge vote ────────────────────────────────────────────────────
+      if (action === 'so-challenge-vote' && state.phase === 'reveal') {
+        const { targetPlayerId, vote } = data as { targetPlayerId: string; vote: 'approve' | 'reject' };
+        const challenge = state.challenges?.[targetPlayerId];
+        if (!challenge || challenge.resolved) return;
+        if (!challenge.eligibleVoterIds.includes(playerId)) return;
+        if (challenge.votes[playerId]) return;
+
+        const updatedVotes: Record<string, 'approve' | 'reject'> = { ...challenge.votes, [playerId]: vote };
+        const allVoted = challenge.eligibleVoterIds.every(id => updatedVotes[id]);
+
+        if (!allVoted) {
+          const next: SOGameState = {
+            ...state,
+            challenges: {
+              ...state.challenges,
+              [targetPlayerId]: { ...challenge, votes: updatedVotes },
+            },
+          };
+          gsRef.current = next;
+          sendGameState(next);
+          return;
+        }
+
+        const approveCount = Object.values(updatedVotes).filter(v => v === 'approve').length;
+        const rejectCount = Object.values(updatedVotes).filter(v => v === 'reject').length;
+        const succeeded = approveCount > rejectCount;
+
+        if (succeeded) {
+          const nextPlayers = allPlayers.map(p =>
+            p.id === targetPlayerId
+              ? { ...p, score: Math.max(0, p.score + CHALLENGE_PENALTY) }
+              : p
+          );
+          setPlayers(nextPlayers);
+          updateRoomScores(nextPlayers);
+        }
+
+        const resolvedChallenge: SOChallenge = {
+          ...challenge,
+          votes: updatedVotes,
+          resolved: true,
+          succeeded,
+        };
+
+        const next: SOGameState = {
+          ...state,
+          challenges: { ...state.challenges, [targetPlayerId]: resolvedChallenge },
+        };
+        gsRef.current = next;
+        sendGameState(next);
+      }
+    };
+
+    socket.on('playerActionReceived', handler);
+    return () => { socket.off('playerActionReceived', handler); };
+  }, [isHost]); // eslint-disable-line
+
+
   // ── Host: advance to next round ────────────────────────────────────────────
   const handleNextRound = () => {
     if (!isHost || !gs) return;
@@ -99,13 +220,14 @@ export default function StandOutScreen({ navigation }: Props) {
       phase: 'prompt',
       roundNumber: nextRound,
       currentPrompt: prompt,
+      targetScore: gs.targetScore,
       submittedPlayerIds: [],
     };
     gsRef.current = next;
     sendGameState(next);
   };
 
-  // ── Loading ────────────────────────────────────────────────────────────────
+  // ── Loading (no game state yet) ────────────────────────────────────────────
   if (!gs || !gs.currentPrompt) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -125,6 +247,31 @@ export default function StandOutScreen({ navigation }: Props) {
     );
   }
 
+  // ── Target score setup — shown to all players before round 1 starts ─────────
+  // Host picks 100 / 200 / 500. Non-hosts wait. Once host picks, targetScore
+  // is broadcast in game state and every client advances past this screen.
+  if (!gs.targetScore) {
+    const handleSelectTarget = (target: number) => {
+      if (!isHost) return;
+      const next = { ...gs, targetScore: target };
+      gsRef.current = next;
+      sendGameState(next);
+    };
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <Text style={styles.waitTitle}>Stand Out</Text>
+          <Text style={styles.waitSub}>
+            {isHost ? 'Choose a target score to win:' : 'Waiting for host to choose a target score...'}
+          </Text>
+          {isHost && ([100, 200, 500] as const).map(t => (
+            <PrimaryButton key={t} title={`Race to ${t}`} onPress={() => handleSelectTarget(t)} />
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   const iHaveSubmitted = (gs.submittedPlayerIds ?? []).includes(myId ?? '');
 
   // ── Phase: game-over ───────────────────────────────────────────────────────
@@ -134,7 +281,7 @@ export default function StandOutScreen({ navigation }: Props) {
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.gameOverEmoji}>🏆</Text>
           <Text style={styles.gameOverTitle}>{gs.winnerName} wins!</Text>
-          <Text style={styles.gameOverSub}>First to {STAND_OUT_WIN_SCORE} points.</Text>
+          <Text style={styles.gameOverSub}>First to {gs.targetScore ?? STAND_OUT_WIN_SCORE} points.</Text>
           <View style={styles.divider} />
           <Text style={styles.sectionLabel}>Final Scores</Text>
           <ScoreDisplay players={players} />
@@ -164,8 +311,9 @@ export default function StandOutScreen({ navigation }: Props) {
           </View>
           <Text style={styles.timerInstruction}>Think of a unique answer!</Text>
           <CountdownTimer
-            seconds={7}
+            seconds={5}
             onComplete={isHost ? () => {
+              console.log('[SO] [host] 5s prompt timer fired — transitioning to entering');
               if (!gsRef.current) return;
               const next: SOGameState = { ...gsRef.current, phase: 'entering', submittedPlayerIds: [] };
               gsRef.current = next;
@@ -190,6 +338,7 @@ export default function StandOutScreen({ navigation }: Props) {
             <Text style={styles.waitEmoji}>✅</Text>
             <Text style={styles.waitTitle}>Answer locked in!</Text>
             <Text style={styles.waitSub}>{answered} / {total} players answered</Text>
+            <EnteringTimer secondsLeft={enteringSecondsLeft} />
           </View>
         </SafeAreaView>
       );
@@ -230,6 +379,7 @@ export default function StandOutScreen({ navigation }: Props) {
               disabled={!inputText.trim()}
               style={{ marginTop: 8 }}
             />
+            <EnteringTimer secondsLeft={enteringSecondsLeft} />
             <Text style={styles.playerProgress}>{answered} / {total} answered</Text>
           </View>
         </KeyboardAvoidingView>
@@ -240,6 +390,7 @@ export default function StandOutScreen({ navigation }: Props) {
   // ── Phase: reveal ──────────────────────────────────────────────────────────
   const answers = gs.answers ?? [];
   const roundDeltas = gs.roundDeltas ?? [];
+  const challenges: Record<string, SOChallenge> = gs.challenges ?? {};
 
   const answerGroups = new Map<string, Answer[]>();
   for (const ans of answers) {
@@ -249,6 +400,16 @@ export default function StandOutScreen({ navigation }: Props) {
   }
   const isDuplicate = (ans: Answer) => (answerGroups.get(normalizeAnswer(ans.text))?.length ?? 0) > 1;
   const topScore = Math.max(...players.map(p => p.score));
+
+  // Challenge helpers
+  const isInvalidated = (playerId: string) => {
+    const c = challenges[playerId];
+    return c?.resolved && c.succeeded;
+  };
+  const canChallenge = (targetPlayerId: string) =>
+    targetPlayerId !== myId &&
+    !challenges[targetPlayerId] &&
+    players.length >= 3; // need at least 1 eligible voter
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -262,47 +423,82 @@ export default function StandOutScreen({ navigation }: Props) {
           {answers.map(ans => {
             const delta = roundDeltas.find(d => d.playerId === ans.playerId);
             const dup = isDuplicate(ans);
+            const invalidated = isInvalidated(ans.playerId);
+            const challenge = challenges[ans.playerId];
+
             return (
-              <View key={ans.playerId} style={[styles.answerRow, dup ? styles.answerRowDup : styles.answerRowUnique]}>
-                <View style={styles.answerLeft}>
-                  <Text style={styles.answerName}>{ans.playerName}</Text>
-                  <Text style={[styles.answerText, { color: dup ? COLORS.danger : COLORS.success }]}>
-                    {ans.text}
-                  </Text>
-                </View>
-                {delta && (
-                  <View style={styles.deltaCol}>
-                    <Text style={[styles.deltaNum, { color: delta.delta >= 0 ? COLORS.success : COLORS.danger }]}>
-                      {delta.delta >= 0 ? '+' : ''}{delta.delta}
+              <View key={ans.playerId}>
+                {/* Answer row */}
+                <View style={[
+                  styles.answerRow,
+                  invalidated ? styles.answerRowInvalidated : dup ? styles.answerRowDup : styles.answerRowUnique,
+                ]}>
+                  <View style={styles.answerLeft}>
+                    <Text style={styles.answerName}>{ans.playerName}</Text>
+                    <Text style={[
+                      styles.answerText,
+                      { color: invalidated ? COLORS.text3 : dup ? COLORS.danger : COLORS.success },
+                      invalidated && styles.strikethrough,
+                    ]}>
+                      {ans.text}
                     </Text>
-                    {delta.streakCount >= 2 && <Text style={styles.streakTag}>🔥 ×{delta.streakCount}</Text>}
-                    {dup && <Text style={styles.dupTag}>duplicate</Text>}
                   </View>
-                )}
+                  <View style={styles.deltaCol}>
+                    {delta && !invalidated && (
+                      <>
+                        <Text style={[styles.deltaNum, { color: delta.delta >= 0 ? COLORS.success : COLORS.danger }]}>
+                          {delta.delta >= 0 ? '+' : ''}{delta.delta}
+                        </Text>
+                        {delta.streakCount >= 2 && <Text style={styles.streakTag}>🔥 ×{delta.streakCount}</Text>}
+                        {dup && <Text style={styles.dupTag}>duplicate</Text>}
+                      </>
+                    )}
+                    {invalidated && (
+                      <Text style={styles.invalidatedTag}>−{Math.abs(CHALLENGE_PENALTY)} challenged</Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Challenge section */}
+                <ChallengeSection
+                  challenge={challenge}
+                  myId={myId ?? ''}
+                  canChallenge={canChallenge(ans.playerId)}
+                  onChallenge={() => sendPlayerAction('so-challenge', { targetPlayerId: ans.playerId })}
+                  onVote={(vote) => sendPlayerAction('so-challenge-vote', { targetPlayerId: ans.playerId, vote })}
+                  players={players}
+                />
               </View>
             );
           })}
         </View>
 
         <View style={styles.raceBox}>
-          <Text style={styles.raceLabel}>RACE TO {STAND_OUT_WIN_SCORE}</Text>
-          {[...players].sort((a, b) => b.score - a.score).map(p => (
-            <View key={p.id} style={styles.raceRow}>
-              <Text style={styles.raceName}>{p.name}</Text>
-              <View style={styles.raceBarTrack}>
-                <View
-                  style={[
-                    styles.raceBarFill,
-                    {
-                      width: `${Math.min(100, Math.max(0, (p.score / STAND_OUT_WIN_SCORE) * 100))}%`,
-                      backgroundColor: p.score === topScore ? COLORS.accent : COLORS.surface2,
-                    },
-                  ]}
-                />
+          <Text style={styles.raceLabel}>RACE TO {gs.targetScore ?? STAND_OUT_WIN_SCORE}</Text>
+          {[...players].sort((a, b) => b.score - a.score).map(p => {
+            // Width: proportional to score, minimum 3% for nonzero scores so a
+            // small score is still visibly non-zero against the track.
+            const winTarget = gs.targetScore ?? STAND_OUT_WIN_SCORE;
+            const pct = (p.score / winTarget) * 100;
+            const barWidth = (p.score > 0
+              ? `${Math.min(100, Math.max(3, pct))}%`
+              : '0%') as `${number}%`;
+            // Leader bar gets accent purple; all others get a visible-but-dimmer
+            // colour. Previously non-leaders used COLORS.surface2 which is the
+            // same colour as the track background — making those bars invisible.
+            const barColor = p.score > 0 && p.score === topScore
+              ? COLORS.accent
+              : COLORS.borderHi;
+            return (
+              <View key={p.id} style={styles.raceRow}>
+                <Text style={styles.raceName}>{p.name}</Text>
+                <View style={styles.raceBarTrack}>
+                  <View style={[styles.raceBarFill, { width: barWidth, backgroundColor: barColor }]} />
+                </View>
+                <Text style={styles.raceScore}>{p.score}</Text>
               </View>
-              <Text style={styles.raceScore}>{p.score}</Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <View style={styles.actions}>
@@ -319,6 +515,95 @@ export default function StandOutScreen({ navigation }: Props) {
     </SafeAreaView>
   );
 }
+
+// ─── EnteringTimer sub-component ─────────────────────────────────────────────
+// Displays the seconds left during the entering phase. Rendered at component
+// level via enteringSecondsLeft so it never resets when the view switches.
+
+function EnteringTimer({ secondsLeft }: { secondsLeft: number }) {
+  const ratio = secondsLeft / 10;
+  const color = ratio > 0.6 ? COLORS.success : ratio > 0.3 ? COLORS.warning : COLORS.danger;
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <Text style={[styles.enteringTimerNum, { color }]}>{secondsLeft}</Text>
+      <Text style={styles.enteringTimerLabel}>sec</Text>
+    </View>
+  );
+}
+
+// ─── ChallengeSection sub-component ──────────────────────────────────────────
+
+interface ChallengeSectionProps {
+  challenge: SOChallenge | undefined;
+  myId: string;
+  canChallenge: boolean;
+  onChallenge: () => void;
+  onVote: (vote: 'approve' | 'reject') => void;
+  players: { id: string; name: string }[];
+}
+
+function ChallengeSection({ challenge, myId, canChallenge, onChallenge, onVote, players }: ChallengeSectionProps) {
+  if (!challenge && !canChallenge) return null;
+
+  if (!challenge) {
+    // No challenge yet — show button
+    return (
+      <TouchableOpacity style={styles.challengeBtn} onPress={onChallenge}>
+        <Text style={styles.challengeBtnText}>Challenge</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  const iAmEligibleVoter = challenge.eligibleVoterIds.includes(myId);
+  const myVote = challenge.votes[myId];
+
+  if (challenge.resolved) {
+    return (
+      <View style={styles.challengeResolved}>
+        <Text style={styles.challengeResolvedText}>
+          {challenge.succeeded ? 'Challenge succeeded — answer invalidated' : 'Challenge failed'}
+        </Text>
+      </View>
+    );
+  }
+
+  // Pending challenge
+  const voteCount = Object.keys(challenge.votes).length;
+  const totalEligible = challenge.eligibleVoterIds.length;
+  const challengerName = players.find(p => p.id === challenge.challengerId)?.name ?? 'Someone';
+
+  return (
+    <View style={styles.challengePending}>
+      <Text style={styles.challengePendingLabel}>
+        {challengerName} challenged this answer · {voteCount}/{totalEligible} voted
+      </Text>
+      {iAmEligibleVoter && !myVote && (
+        <View style={styles.voteRow}>
+          <TouchableOpacity
+            style={[styles.voteBtn, styles.voteBtnApprove]}
+            onPress={() => onVote('approve')}
+          >
+            <Text style={styles.voteBtnText}>Uphold</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.voteBtn, styles.voteBtnReject]}
+            onPress={() => onVote('reject')}
+          >
+            <Text style={styles.voteBtnText}>Dismiss</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {iAmEligibleVoter && myVote && (
+        <Text style={styles.votedLabel}>You voted · waiting for others…</Text>
+      )}
+      {!iAmEligibleVoter && (
+        <Text style={styles.votedLabel}>Waiting for vote…</Text>
+      )}
+    </View>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
@@ -400,10 +685,12 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   playerProgress: { fontSize: 13, color: COLORS.text3, marginTop: 8 },
+  enteringTimerNum: { fontSize: 80, fontWeight: '900', letterSpacing: -3 },
+  enteringTimerLabel: { fontSize: 12, color: COLORS.text3, fontWeight: '500', marginTop: -8 },
   revealTitle: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: COLORS.text },
   promptQuoteBox: { borderLeftWidth: 2, borderLeftColor: COLORS.text3, paddingLeft: 12 },
   promptQuoteText: { fontSize: 15, fontWeight: '500', color: COLORS.text2, lineHeight: 22 },
-  answersBlock: { gap: 8 },
+  answersBlock: { gap: 4 },
   answerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -414,13 +701,58 @@ const styles = StyleSheet.create({
   },
   answerRowUnique: { backgroundColor: '#071d0f', borderColor: COLORS.success },
   answerRowDup: { backgroundColor: '#1d0710', borderColor: COLORS.danger },
+  answerRowInvalidated: { backgroundColor: COLORS.surface2, borderColor: COLORS.border },
   answerLeft: { flex: 1, gap: 2 },
   answerName: { fontSize: 12, fontWeight: '600', color: COLORS.text2 },
   answerText: { fontSize: 18, fontWeight: '800' },
+  strikethrough: { textDecorationLine: 'line-through' },
   deltaCol: { alignItems: 'flex-end', gap: 2 },
   deltaNum: { fontSize: 20, fontWeight: '900' },
   streakTag: { fontSize: 12, color: COLORS.warning },
   dupTag: { fontSize: 10, color: COLORS.danger, fontWeight: '600' },
+  invalidatedTag: { fontSize: 11, color: COLORS.text3, fontWeight: '600' },
+  // Challenge UI
+  challengeBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  challengeBtnText: { fontSize: 12, color: COLORS.text3, fontWeight: '600' },
+  challengePending: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 4,
+    marginBottom: 8,
+    gap: 8,
+  },
+  challengePendingLabel: { fontSize: 13, color: COLORS.text2, fontWeight: '500' },
+  voteRow: { flexDirection: 'row', gap: 8 },
+  voteBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+  },
+  voteBtnApprove: { backgroundColor: '#071d0f', borderWidth: 1, borderColor: COLORS.success },
+  voteBtnReject: { backgroundColor: '#1d0710', borderWidth: 1, borderColor: COLORS.danger },
+  voteBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  votedLabel: { fontSize: 12, color: COLORS.text3 },
+  challengeResolved: {
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  challengeResolvedText: { fontSize: 12, color: COLORS.text3, fontStyle: 'italic' },
   raceBox: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
