@@ -23,27 +23,27 @@ import { COLORS, RADIUS } from '../constants/theme';
 
 type DSPhase =
   | 'setup'
+  | 'round-intro'
   | 'discussion'
   | 'action'
   | 'round-results'
-  | 'accusation'
   | 'round-end'
   | 'game-over';
 
 interface RoundHistoryEntry {
   round: number;
-  dealers: string[];
   actionLog: Record<string, { action: 'deal' | 'steal' | 'neutral'; target: string | null }>;
-  exposedDealerIds: string[];
-  dealCount: number;
-  stealCount: number;
+  dealAttemptCount: number;
+  dealSuccessCount: number;
+  stealAttemptCount: number;
+  stealSuccessCount: number;
+  mutualStealCount: number;
+  neutralCount: number;
+  stolenFromCount: number;
+  chainBonusCount: number;
   deltas: Record<string, number>;
   startBalances: Record<string, number>;
   endBalances: Record<string, number>;
-  accusationOutcomes?: Record<
-    string,
-    { target: string | null; correct: boolean; skipped?: boolean; delta: number }
-  >;
 }
 
 interface DSGameState {
@@ -51,18 +51,27 @@ interface DSGameState {
   phase: DSPhase;
   round: number;
   totalRounds?: number;
-  dealers: string[];
+  // Speaking order
+  firstSpeakerId?: string;
+  speakingOrder?: string[];       // playerIds in order for this round
+  usedFirstSpeakers?: string[];   // prevents repeating first speakers until all have gone
+  // Stable anonymous assignment: set once at game start, never shuffled
+  anonOrder?: string[];           // playerIds in fixed anon-index order
   balances: Record<string, number>;
   roundStartBalances?: Record<string, number>;
   submittedActionIds?: string[];
   roundOutcome?: {
-    dealCount: number;
-    stealCount: number;
-    exposedDealerIds: string[];
+    dealAttemptCount: number;
+    dealSuccessCount: number;
+    stealAttemptCount: number;
+    stealSuccessCount: number;
+    mutualStealCount: number;
+    neutralCount: number;
+    stolenFromCount: number;
+    chainBonusCount: number;
+    closedLoopCount: number;
     deltas: Record<string, number>;
   };
-  accusationEligible?: string[];
-  submittedAccusationIds?: string[];
   roundHistory?: RoundHistoryEntry[];
 }
 
@@ -70,8 +79,17 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'DealOrSteal'>;
 };
 
-const ROUND_OPTIONS = [5, 7, 10] as const;
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const STARTING_BALANCE = 10.0;
+
+/** Round options keyed by player count: 4→[4,8], 5→[5,10], 6→[6,12] */
+function getRoundOptions(playerCount: number): number[] {
+  if (playerCount === 4) return [4, 8];
+  if (playerCount === 5) return [5, 10];
+  if (playerCount === 6) return [6, 12];
+  return [5, 10];
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -96,8 +114,8 @@ export default function DealOrStealScreen({ navigation }: Props) {
   const sendGameStateRef = useRef(sendGameState);
 
   const [showRules, setShowRules] = useState(false);
-  const [actionChoice, setActionChoice] = useState<'deal' | 'neutral' | { steal: string } | null>(null);
-  const [accusationTarget, setAccusationTarget] = useState<string | 'skip' | null>(null);
+  const [actionType, setActionType] = useState<'deal' | 'steal' | 'neutral' | null>(null);
+  const [actionTarget, setActionTarget] = useState<string | null>(null);
   const [setupTimedOut, setSetupTimedOut] = useState(false);
   const setupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,14 +125,23 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
   const gs = (room?.gameState?.game === 'dealOrSteal' ? room.gameState : null) as DSGameState | null;
 
-  // Fade animation on phase change
+  // Fade animation on phase / round change
   useEffect(() => {
     gsRef.current = gs;
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
-    // Reset local input state on phase change
-    setActionChoice(null);
-    setAccusationTarget(null);
+    setActionType(null);
+    setActionTarget(null);
+
+    // Debug: log key data whenever we enter round-results
+    if (gs?.phase === 'round-results') {
+      console.log('[dos-fe] round-results arrived');
+      console.log('[dos-fe] myId:', myId);
+      console.log('[dos-fe] gs.balances:', JSON.stringify(gs.balances));
+      console.log('[dos-fe] gs.roundOutcome:', JSON.stringify(gs.roundOutcome));
+      console.log('[dos-fe] myBalance from balances:', gs.balances?.[myId]);
+      console.log('[dos-fe] myDelta from deltas:', gs.roundOutcome?.deltas?.[myId]);
+    }
   }, [gs?.phase, gs?.round, fadeAnim]);
 
   // Setup timeout
@@ -135,8 +162,8 @@ export default function DealOrStealScreen({ navigation }: Props) {
       game: 'dealOrSteal',
       phase: 'setup',
       round: 1,
-      dealers: [],
       balances,
+      usedFirstSpeakers: [],
     };
     gsRef.current = init;
     sendGameStateRef.current(init);
@@ -145,43 +172,192 @@ export default function DealOrStealScreen({ navigation }: Props) {
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const totalRounds = gs?.totalRounds ?? 5;
-  const iAmDealer = gs?.dealers?.includes(myId) ?? false;
   const iHaveSubmittedAction = gs?.submittedActionIds?.includes(myId) ?? false;
-  const iAmAccusationEligible = gs?.accusationEligible?.includes(myId) ?? false;
-  const iHaveAccused = gs?.submittedAccusationIds?.includes(myId) ?? false;
 
   const myBalance = gs?.balances?.[myId] ?? STARTING_BALANCE;
   const totalPot = Object.values(gs?.balances ?? {}).reduce((s, v) => s + v, 0);
   const myPct = totalPot > 0 ? Math.round((myBalance / totalPot) * 100) : 0;
-
-  const dealerNames = (gs?.dealers ?? []).map(
-    id => players.find(p => p.id === id)?.name ?? '?'
-  );
 
   // Standings sorted by balance descending
   const standings = [...players].sort(
     (a, b) => ((gs?.balances ?? {})[b.id] ?? 0) - ((gs?.balances ?? {})[a.id] ?? 0)
   );
 
-  // ── Phase transitions (host-driven) ────────────────────────────────────────
+  const canConfirmAction =
+    actionType === 'neutral' ||
+    (actionType !== null && actionTarget !== null);
 
-  const pickDealers = (): string[] => {
-    const shuffled = [...players].sort(() => Math.random() - 0.5);
-    return [shuffled[0].id, shuffled[1].id];
+  // ── Speaking order helpers ─────────────────────────────────────────────────
+
+  /**
+   * Rotate players array so it starts at firstSpeakerId,
+   * preserving join-order for the rest.
+   */
+  const buildSpeakingOrder = (firstSpeakerId: string): string[] => {
+    const ids = players.map(p => p.id);
+    const idx = ids.indexOf(firstSpeakerId);
+    if (idx === -1) return ids;
+    return [...ids.slice(idx), ...ids.slice(0, idx)];
   };
+
+  /**
+   * Pick the next first speaker from players not yet used.
+   * If everyone has gone, start a new cycle (fresh pool).
+   * Returns { firstSpeakerId, newUsed }.
+   */
+  const pickFirstSpeaker = (
+    used: string[]
+  ): { firstSpeakerId: string; newUsed: string[] } => {
+    const available = players.filter(p => !used.includes(p.id));
+    const pool = available.length > 0 ? available : players;
+    const picked = pool[Math.floor(Math.random() * pool.length)].id;
+    const newUsed = available.length > 0 ? [...used, picked] : [picked];
+    return { firstSpeakerId: picked, newUsed };
+  };
+
+  // ── Anonymous leaderboard helpers ─────────────────────────────────────────
+
+  /**
+   * Players sorted by balance descending. Uses anonOrder as a stable tiebreaker
+   * so rows don't flicker when two balances are equal between rounds.
+   */
+  const sortedByBalance = () => {
+    const bals = gs?.balances ?? {};
+    const tiebreaker = gs?.anonOrder ?? players.map(p => p.id);
+    return [...players].sort((a, b) => {
+      const diff = (bals[b.id] ?? 0) - (bals[a.id] ?? 0);
+      if (diff !== 0) return diff;
+      return tiebreaker.indexOf(a.id) - tiebreaker.indexOf(b.id);
+    });
+  };
+
+  /**
+   * Compact leaderboard — shown on discussion, action, and waiting screens.
+   * No names. Current user's row shows YOU. Total pot in header.
+   */
+  const renderCompactLeaderboard = () => {
+    if (!gs) return null;
+    const bals = gs.balances ?? {};
+    const pot = Object.values(bals).reduce((s, v) => s + v, 0);
+    const sorted = sortedByBalance();
+    return (
+      <View style={styles.compactLB}>
+        <View style={styles.compactLBInner}>
+          {/* Left: big pot */}
+          <View style={styles.compactLBLeft}>
+            <Text style={styles.compactLBPotLabel}>TOTAL POT</Text>
+            <Text style={styles.compactLBPotBig}>{fmt(pot)}</Text>
+          </View>
+
+          <View style={styles.compactLBDivider} />
+
+          {/* Right: player rows — fixed-width columns so alignment never shifts */}
+          <View style={styles.compactLBRight}>
+            {sorted.map(p => {
+              const bal = bals[p.id] ?? STARTING_BALANCE;
+              const pct = pot > 0 ? Math.round((bal / pot) * 100) : 0;
+              const isMe = p.id === myId;
+              return (
+                <View key={p.id} style={styles.compactLBRow}>
+                  <Text style={[styles.compactLBBal, isMe && styles.compactLBMeText]}>
+                    {fmt(bal)}
+                  </Text>
+                  <Text style={[styles.compactLBPct, isMe && styles.compactLBMeText]}>
+                    {pct}%
+                  </Text>
+                  {/* Fixed-width slot keeps every row the same width */}
+                  <View style={styles.compactLBYouSlot}>
+                    {isMe && <Text style={styles.compactYouBadge}>YOU</Text>}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  /**
+   * Expanded leaderboard — shown on results, round-end, and game-over.
+   * No names. Current user's row labelled YOU. Total pot in header.
+   */
+  const renderExpandedLeaderboard = (showDeltas = false) => {
+    if (!gs) return null;
+    const bals = gs.balances ?? {};
+    const deltas = gs.roundOutcome?.deltas ?? {};
+    const pot = Object.values(bals).reduce((s, v) => s + v, 0);
+    const sorted = sortedByBalance();
+    return (
+      <View style={styles.expandedLB}>
+        <View style={[styles.expandedLBHeader]}>
+          <Text style={styles.sectionLabel}>Standings (anonymous)</Text>
+          <Text style={styles.expandedLBPotLabel}>Total pot {fmt(pot)}</Text>
+        </View>
+        {sorted.map((p, i) => {
+          const bal = bals[p.id] ?? STARTING_BALANCE;
+          const pct = pot > 0 ? Math.round((bal / pot) * 100) : 0;
+          const delta = deltas[p.id] ?? 0;
+          const isMe = p.id === myId;
+          return (
+            <View key={p.id} style={[
+              styles.expandedLBRow,
+              i === 0 && styles.expandedLBRowFirst,
+              isMe && styles.expandedLBRowMe,
+            ]}>
+              {isMe
+                ? <Text style={[styles.expandedLBLabel, styles.expandedLBLabelMe]}>YOU</Text>
+                : <Text style={[styles.expandedLBLabel, { color: COLORS.text3 }]}>—</Text>
+              }
+              <Text style={[styles.expandedLBBal, isMe && styles.expandedLBLabelMe]}>
+                {fmt(bal)}
+              </Text>
+              {showDeltas && (
+                <Text style={[styles.expandedLBDelta, { color: delta >= 0 ? COLORS.success : COLORS.danger }]}>
+                  {fmtDelta(delta)}
+                </Text>
+              )}
+              <Text style={styles.expandedLBPct}>{pct}%</Text>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
+  // ── Phase transitions (host-driven) ────────────────────────────────────────
 
   const handleSelectRounds = (n: number) => {
     if (!gs) return;
-    const dealers = pickDealers();
-    const roundStartBalances = { ...gs.balances };
+    const { firstSpeakerId, newUsed } = pickFirstSpeaker(gs.usedFirstSpeakers ?? []);
+    const speakingOrder = buildSpeakingOrder(firstSpeakerId);
+    // Rebuild balances from the live players list — gs.balances may be {} if the
+    // gameStateUpdated echo from the init effect hasn't arrived yet (race window
+    // between gameStarted arriving and the host's own updateGameState being ACKed).
+    const balances = Object.fromEntries(players.map(p => [p.id, STARTING_BALANCE]));
+    const roundStartBalances = { ...balances };
+    // Shuffle player ids once for a stable tiebreaker when balances are equal.
+    // Prevents leaderboard rows from flickering between rounds on tied balances.
+    const anonOrder = [...players].sort(() => Math.random() - 0.5).map(p => p.id);
     const next: DSGameState = {
       ...gs,
+      balances,
       totalRounds: n,
-      phase: 'discussion',
+      phase: 'round-intro',
       round: 1,
-      dealers,
+      firstSpeakerId,
+      speakingOrder,
+      usedFirstSpeakers: newUsed,
       roundStartBalances,
+      anonOrder,
     };
+    gsRef.current = next;
+    sendGameStateRef.current(next);
+  };
+
+  const handleStartDiscussion = () => {
+    if (!isHost || !gs) return;
+    const next: DSGameState = { ...gs, phase: 'discussion' };
     gsRef.current = next;
     sendGameStateRef.current(next);
   };
@@ -199,34 +375,16 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
   const handleForceAdvance = () => {
     if (!isHost || !gs) return;
-    // Treat missing submissions as Neutral — tell backend to resolve now
-    // We do this by broadcasting a synthetic "all submitted" state.
-    // Backend resolves when submittedActionIds >= players.length.
-    // Instead: host sends updateGameState to skip to round-results with current data resolved.
-    // Simplest safe approach: host broadcasts a fake-resolved state.
-    // Actually — since dos-action is backend-authoritative, the host cannot bypass it.
-    // So we provide a host escape: navigate directly to round-end with no outcome applied.
-    const next: DSGameState = {
-      ...gs,
-      phase: 'round-end',
-      roundOutcome: { dealCount: 0, stealCount: 0, exposedDealerIds: [], deltas: {} },
-      accusationEligible: [],
-    };
-    gsRef.current = next;
-    sendGameStateRef.current(next);
+    // Tell the backend to score now with whatever actions have been submitted.
+    // Unsubmitted players are treated as Neutral by the backend scorer.
+    sendPlayerAction('dos-force-score', {});
   };
 
   const handleContinueFromResults = () => {
     if (!isHost || !gs) return;
-    if ((gs.accusationEligible?.length ?? 0) > 0) {
-      const next: DSGameState = { ...gs, phase: 'accusation', submittedAccusationIds: [] };
-      gsRef.current = next;
-      sendGameStateRef.current(next);
-    } else {
-      const next: DSGameState = { ...gs, phase: 'round-end' };
-      gsRef.current = next;
-      sendGameStateRef.current(next);
-    }
+    const next: DSGameState = { ...gs, phase: 'round-end' };
+    gsRef.current = next;
+    sendGameStateRef.current(next);
   };
 
   const handleNextRound = () => {
@@ -238,18 +396,19 @@ export default function DealOrStealScreen({ navigation }: Props) {
       sendGameStateRef.current(next);
       return;
     }
-    const dealers = pickDealers();
+    const { firstSpeakerId, newUsed } = pickFirstSpeaker(gs.usedFirstSpeakers ?? []);
+    const speakingOrder = buildSpeakingOrder(firstSpeakerId);
     const roundStartBalances = { ...gs.balances };
     const next: DSGameState = {
       ...gs,
-      phase: 'discussion',
+      phase: 'round-intro',
       round: nextRound,
-      dealers,
+      firstSpeakerId,
+      speakingOrder,
+      usedFirstSpeakers: newUsed,
       roundStartBalances,
       submittedActionIds: undefined,
       roundOutcome: undefined,
-      accusationEligible: undefined,
-      submittedAccusationIds: undefined,
     };
     gsRef.current = next;
     sendGameStateRef.current(next);
@@ -258,27 +417,13 @@ export default function DealOrStealScreen({ navigation }: Props) {
   // ── Player actions ─────────────────────────────────────────────────────────
 
   const handleSubmitAction = () => {
-  if (!actionChoice) return;
-
-  if (
-    actionChoice !== null &&
-    typeof actionChoice === 'object' &&
-    !Array.isArray(actionChoice) &&
-    'steal' in actionChoice
-  ) {
-    sendPlayerAction('dos-action', { choice: 'steal', target: actionChoice.steal });
-  } else {
-    sendPlayerAction('dos-action', { choice: actionChoice });
-  }
-};
-
-  const handleSubmitAccusation = () => {
-    if (accusationTarget === null) return;
-    if (accusationTarget === 'skip') {
-      sendPlayerAction('dos-accuse', { target: null });
-    } else {
-      sendPlayerAction('dos-accuse', { target: accusationTarget });
-    }
+    if (!actionType) return;
+    if ((actionType === 'deal' || actionType === 'steal') && !actionTarget) return;
+    console.log('[dos] submit | choice:', actionType, '| target:', actionTarget ?? 'none', '| myId:', myId);
+    sendPlayerAction('dos-action', {
+      choice: actionType,
+      target: actionType !== 'neutral' ? actionTarget : undefined,
+    });
   };
 
   // ── Loading / error guards ─────────────────────────────────────────────────
@@ -318,25 +463,28 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
   // ── Phase renders ──────────────────────────────────────────────────────────
 
-  const renderSetup = () => (
-    <Animated.View style={[styles.centeredContainer, { opacity: fadeAnim }]}>
-      <Text style={styles.setupTitle}>How many rounds?</Text>
-      <Text style={styles.setupSub}>
-        Dealers get exposed if both deal. Steal from the exposed. Highest balance wins.
-      </Text>
-      <View style={styles.setupOptions}>
-        {ROUND_OPTIONS.map(n => (
-          <TouchableOpacity key={n} style={styles.setupOption} onPress={() => handleSelectRounds(n)}>
-            <Text style={styles.setupOptionNum}>{n}</Text>
-            <Text style={styles.setupOptionLabel}>rounds</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <TouchableOpacity onPress={() => setShowRules(true)} style={styles.rulesChip}>
-        <Text style={styles.rulesChipText}>? How to play</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
+  const renderSetup = () => {
+    const roundOptions = getRoundOptions(players.length);
+    return (
+      <Animated.View style={[styles.centeredContainer, { opacity: fadeAnim }]}>
+        <Text style={styles.setupTitle}>How many rounds?</Text>
+        <Text style={styles.setupSub}>
+          {players.length} players · deal, steal, or stay neutral each round · highest balance wins
+        </Text>
+        <View style={styles.setupOptions}>
+          {roundOptions.map(n => (
+            <TouchableOpacity key={n} style={styles.setupOption} onPress={() => handleSelectRounds(n)}>
+              <Text style={styles.setupOptionNum}>{n}</Text>
+              <Text style={styles.setupOptionLabel}>rounds</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity onPress={() => setShowRules(true)} style={styles.rulesChip}>
+          <Text style={styles.rulesChipText}>? How to play</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
 
   const renderWaitingSetup = () => (
     <View style={styles.centered}>
@@ -348,7 +496,10 @@ export default function DealOrStealScreen({ navigation }: Props) {
     </View>
   );
 
-  const renderDiscussion = () => {
+  const renderRoundIntro = () => {
+    const firstSpeakerName = players.find(p => p.id === gs.firstSpeakerId)?.name ?? '?';
+    const order = gs.speakingOrder ?? players.map(p => p.id);
+
     return (
       <AnimatedScrollView style={{ opacity: fadeAnim }} contentContainerStyle={styles.scroll}>
         <View style={styles.roundBadgeRow}>
@@ -360,29 +511,95 @@ export default function DealOrStealScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.phaseLabel}>💬 Discussion</Text>
-        <Text style={styles.phaseSub}>
-          Talk it out. Make deals. Cast suspicion. When everyone's ready, the host starts actions.
-        </Text>
+        {renderCompactLeaderboard()}
 
-        <Text style={styles.sectionLabel}>Dealers this round</Text>
-        <View style={styles.dealerRow}>
-          {gs.dealers.map(id => {
+        <Text style={styles.phaseLabel}>Round {gs.round}</Text>
+
+        <View style={styles.firstSpeakerCard}>
+          <Text style={styles.firstSpeakerLabel}>SPEAKS FIRST</Text>
+          <Text style={styles.firstSpeakerName}>
+            {firstSpeakerName}
+            {gs.firstSpeakerId === myId ? ' (you)' : ''}
+          </Text>
+          <Text style={styles.firstSpeakerSub}>
+            Lead the discussion. Set the tone. Then everyone acts in secret.
+          </Text>
+        </View>
+
+        <Text style={styles.sectionLabel}>Speaking order this round</Text>
+        <View style={styles.speakingOrderList}>
+          {order.map((id, i) => {
             const name = players.find(p => p.id === id)?.name ?? '?';
+            const isFirst = i === 0;
             const isMe = id === myId;
             return (
-              <View key={id} style={[styles.dealerChip, isMe && styles.dealerChipMe]}>
-                <Text style={styles.dealerChipText}>{name}</Text>
-                {isMe && <Text style={styles.dealerChipYou}> (you)</Text>}
+              <View key={id} style={[styles.speakingOrderRow, isFirst && styles.speakingOrderRowFirst]}>
+                <Text style={[styles.speakingOrderNum, isFirst && styles.speakingOrderNumFirst]}>
+                  {i + 1}
+                </Text>
+                <Text style={[styles.speakingOrderName, isFirst && styles.speakingOrderNameFirst]}>
+                  {name}{isMe ? ' (you)' : ''}
+                </Text>
+                {isFirst && <Text style={styles.speakingOrderTag}>first</Text>}
               </View>
             );
           })}
         </View>
 
-        <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Your balance</Text>
-          <Text style={styles.balanceValue}>{fmt(myBalance)}</Text>
-          <Text style={styles.potLabel}>Pot {fmt(totalPot)} · your share {myPct}%</Text>
+        <View style={styles.actions}>
+          {isHost ? (
+            <>
+              <PrimaryButton title="Start Discussion →" onPress={handleStartDiscussion} />
+              <SecondaryButton title="Back to Games" onPress={() => navigation.navigate('GameSelect')} />
+            </>
+          ) : (
+            <Text style={styles.waitSub}>Waiting for host to start discussion...</Text>
+          )}
+        </View>
+      </AnimatedScrollView>
+    );
+  };
+
+  const renderDiscussion = () => {
+    const order = gs.speakingOrder ?? players.map(p => p.id);
+    const firstSpeakerName = players.find(p => p.id === gs.firstSpeakerId)?.name ?? '?';
+
+    return (
+      <AnimatedScrollView style={{ opacity: fadeAnim }} contentContainerStyle={styles.scroll}>
+        <View style={styles.roundBadgeRow}>
+          <View style={styles.roundBadge}>
+            <Text style={styles.roundBadgeText}>ROUND {gs.round} / {totalRounds}</Text>
+          </View>
+          <TouchableOpacity onPress={() => setShowRules(true)} style={styles.helpBtn}>
+            <Text style={styles.helpBtnText}>?</Text>
+          </TouchableOpacity>
+        </View>
+
+        {renderCompactLeaderboard()}
+
+        <Text style={styles.phaseLabel}>💬 Discussion</Text>
+        <Text style={styles.phaseSub}>
+          {firstSpeakerName} leads. Talk it out, make deals, cast suspicion. When ready, host starts actions.
+        </Text>
+
+        <Text style={styles.sectionLabel}>Speaking order</Text>
+        <View style={styles.speakingOrderList}>
+          {order.map((id, i) => {
+            const name = players.find(p => p.id === id)?.name ?? '?';
+            const isMe = id === myId;
+            const isFirst = i === 0;
+            return (
+              <View key={id} style={[styles.speakingOrderRow, isFirst && styles.speakingOrderRowFirst]}>
+                <Text style={[styles.speakingOrderNum, isFirst && styles.speakingOrderNumFirst]}>
+                  {i + 1}
+                </Text>
+                <Text style={[styles.speakingOrderName, isFirst && styles.speakingOrderNameFirst]}>
+                  {name}{isMe ? ' (you)' : ''}
+                </Text>
+                {isFirst && <Text style={styles.speakingOrderTag}>leads</Text>}
+              </View>
+            );
+          })}
         </View>
 
         {isHost ? (
@@ -399,17 +616,28 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
   const renderAction = () => {
     const submittedCount = gs.submittedActionIds?.length ?? 0;
+    const otherPlayers = players.filter(p => p.id !== myId);
 
     if (iHaveSubmittedAction) {
       return (
-        <Animated.View style={[styles.centeredContainer, { opacity: fadeAnim }]}>
-          <Text style={styles.waitEmoji}>✅</Text>
-          <Text style={styles.waitTitle}>Action locked in!</Text>
-          <Text style={styles.waitSub}>{submittedCount} / {players.length} submitted</Text>
-          <TouchableOpacity onPress={() => setShowRules(true)} style={[styles.rulesChip, { marginTop: 20 }]}>
-            <Text style={styles.rulesChipText}>? Rules</Text>
-          </TouchableOpacity>
-        </Animated.View>
+        <AnimatedScrollView style={{ opacity: fadeAnim }} contentContainerStyle={styles.scroll}>
+          <View style={styles.roundBadgeRow}>
+            <View style={styles.roundBadge}>
+              <Text style={styles.roundBadgeText}>ROUND {gs.round} / {totalRounds}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowRules(true)} style={styles.helpBtn}>
+              <Text style={styles.helpBtnText}>?</Text>
+            </TouchableOpacity>
+          </View>
+
+          {renderCompactLeaderboard()}
+
+          <View style={{ alignItems: 'center', marginTop: 32, gap: 10 }}>
+            <Text style={styles.waitEmoji}>✅</Text>
+            <Text style={styles.waitTitle}>Action locked in!</Text>
+            <Text style={styles.waitSub}>{submittedCount} / {players.length} submitted</Text>
+          </View>
+        </AnimatedScrollView>
       );
     }
 
@@ -424,71 +652,61 @@ export default function DealOrStealScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {renderCompactLeaderboard()}
+
         <Text style={styles.phaseLabel}>🎴 Your Move</Text>
+        <Text style={styles.phaseSub}>
+          Choose your action. All choices are hidden until resolution.
+        </Text>
 
-        <View style={styles.roleBadge}>
-          <Text style={styles.roleBadgeText}>
-            {iAmDealer ? '🃏  You are a Dealer' : '👁  You are an Observer'}
+        {/* Step 1: Choose action type */}
+        <Text style={styles.sectionLabel}>Action</Text>
+
+        <TouchableOpacity
+          style={[styles.actionOption, actionType === 'deal' && styles.actionOptionSelected]}
+          onPress={() => { setActionType('deal'); setActionTarget(null); }}
+        >
+          <Text style={styles.actionOptionTitle}>🤝  Deal</Text>
+          <Text style={styles.actionOptionDesc}>
+            Propose a deal. Mutual deal → both +30%. They go Neutral → you +15%. They steal or deal elsewhere → you get nothing, no penalty.
           </Text>
-        </View>
+        </TouchableOpacity>
 
-        {iAmDealer ? (
+        <TouchableOpacity
+          style={[styles.actionOption, actionType === 'steal' && styles.actionOptionSelected]}
+          onPress={() => { setActionType('steal'); setActionTarget(null); }}
+        >
+          <Text style={styles.actionOptionTitle}>🔪  Steal</Text>
+          <Text style={styles.actionOptionDesc}>
+            Target a player who chose Deal or is stealing someone else. Succeed → gain 20% of their round-start balance (split if multiple stealers). Fail (Neutral target, mutual steal, or closed steal loop) → lose -20%.
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionOption, actionType === 'neutral' && styles.actionOptionSelected]}
+          onPress={() => { setActionType('neutral'); setActionTarget(null); }}
+        >
+          <Text style={styles.actionOptionTitle}>🛡  Neutral</Text>
+          <Text style={styles.actionOptionDesc}>
+            Do nothing. Fully protected from steals. No gain, no risk.
+          </Text>
+        </TouchableOpacity>
+
+        {/* Step 2: Choose target (if deal or steal) */}
+        {(actionType === 'deal' || actionType === 'steal') && (
           <>
-            <Text style={styles.actionInstruction}>
-              If both Dealers choose Deal, you both become Exposed — and gain 60% of your starting balance. But Observers can then steal from you.
+            <Text style={styles.sectionLabel}>
+              {actionType === 'deal' ? 'Who are you dealing with?' : 'Who are you stealing from?'}
             </Text>
-
-            <TouchableOpacity
-              style={[styles.actionOption, actionChoice === 'deal' && styles.actionOptionSelected]}
-              onPress={() => setActionChoice('deal')}
-            >
-              <Text style={styles.actionOptionTitle}>🤝  Deal</Text>
-              <Text style={styles.actionOptionDesc}>Bet on your partner. Gain 60% if both deal.</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionOption, actionChoice === 'neutral' && styles.actionOptionSelected]}
-              onPress={() => setActionChoice('neutral')}
-            >
-              <Text style={styles.actionOptionTitle}>🛡  Neutral</Text>
-              <Text style={styles.actionOptionDesc}>Stay protected. No gain, no risk.</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <Text style={styles.actionInstruction}>
-              If a Dealer is Exposed (both Dealers dealt), your Steal succeeds. If protected, you lose 20% of your balance.
-            </Text>
-
-            {gs.dealers.map(dId => {
-              const dName = players.find(p => p.id === dId)?.name ?? '?';
-              const isSelected =
-                actionChoice !== null &&
-                typeof actionChoice === 'object' &&
-                !Array.isArray(actionChoice) &&
-                'steal' in actionChoice &&
-                actionChoice.steal === dId;
-              return (
-                <TouchableOpacity
-                  key={dId}
-                  style={[styles.actionOption, isSelected && styles.actionOptionSelected]}
-                  onPress={() => setActionChoice({ steal: dId })}
-                >
-                  <Text style={styles.actionOptionTitle}>🔪  Steal from {dName}</Text>
-                  <Text style={styles.actionOptionDesc}>
-                    If {dName} is exposed, you split their 50%. If not, you lose 20% of your balance.
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-
-            <TouchableOpacity
-              style={[styles.actionOption, actionChoice === 'neutral' && styles.actionOptionSelected]}
-              onPress={() => setActionChoice('neutral')}
-            >
-              <Text style={styles.actionOptionTitle}>🛡  Neutral</Text>
-              <Text style={styles.actionOptionDesc}>Do nothing. Keep your balance safe.</Text>
-            </TouchableOpacity>
+            {otherPlayers.map(p => (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.actionOption, actionTarget === p.id && styles.actionOptionSelected]}
+                onPress={() => setActionTarget(p.id)}
+              >
+                <Text style={styles.actionOptionTitle}>{p.name}</Text>
+              </TouchableOpacity>
+            ))}
           </>
         )}
 
@@ -498,11 +716,11 @@ export default function DealOrStealScreen({ navigation }: Props) {
           <PrimaryButton
             title="Confirm →"
             onPress={handleSubmitAction}
-            disabled={actionChoice === null}
+            disabled={!canConfirmAction}
           />
         </View>
 
-        {isHost && submittedCount > 0 && (
+        {isHost && iHaveSubmittedAction && submittedCount < players.length && (
           <TouchableOpacity onPress={handleForceAdvance} style={{ marginTop: 12, alignSelf: 'center' }}>
             <Text style={styles.forceText}>Force advance (skip remaining)</Text>
           </TouchableOpacity>
@@ -516,8 +734,6 @@ export default function DealOrStealScreen({ navigation }: Props) {
     if (!outcome) return null;
 
     const myDelta = outcome.deltas?.[myId] ?? 0;
-    const wasDealer = gs.dealers.includes(myId);
-    const wasExposed = outcome.exposedDealerIds?.includes(myId) ?? false;
 
     return (
       <AnimatedScrollView style={{ opacity: fadeAnim }} contentContainerStyle={styles.scroll}>
@@ -532,53 +748,85 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
         <Text style={styles.phaseLabel}>Round {gs.round} Results</Text>
 
-        <View style={styles.publicResultsRow}>
+        {/* Public aggregate stats — anonymous, no targets revealed */}
+        <View style={styles.publicResultsGrid}>
           <View style={styles.publicResultCell}>
-            <Text style={styles.publicResultNum}>{outcome.dealCount}</Text>
-            <Text style={styles.publicResultLabel}>Deal{outcome.dealCount !== 1 ? 's' : ''} made</Text>
+            <Text style={styles.publicResultNum}>{outcome.dealAttemptCount}</Text>
+            <Text style={styles.publicResultLabel}>Deals{'\n'}attempted</Text>
           </View>
           <View style={styles.publicResultDivider} />
           <View style={styles.publicResultCell}>
-            <Text style={styles.publicResultNum}>{outcome.stealCount}</Text>
-            <Text style={styles.publicResultLabel}>Steal{outcome.stealCount !== 1 ? 's' : ''} attempted</Text>
+            <Text style={styles.publicResultNum}>{outcome.dealSuccessCount}</Text>
+            <Text style={styles.publicResultLabel}>Deal{'\n'}players</Text>
           </View>
-          {outcome.exposedDealerIds.length > 0 && (
-            <>
-              <View style={styles.publicResultDivider} />
-              <View style={styles.publicResultCell}>
-                <Text style={styles.publicResultNum}>⚡</Text>
-                <Text style={styles.publicResultLabel}>
-                  {outcome.exposedDealerIds
-                    .map(id => players.find(p => p.id === id)?.name ?? '?')
-                    .join(' & ')}{' '}
-                  exposed
-                </Text>
-              </View>
-            </>
-          )}
+          <View style={styles.publicResultDivider} />
+          <View style={styles.publicResultCell}>
+            <Text style={styles.publicResultNum}>{outcome.stealAttemptCount}</Text>
+            <Text style={styles.publicResultLabel}>Steals{'\n'}attempted</Text>
+          </View>
+          <View style={styles.publicResultDivider} />
+          <View style={styles.publicResultCell}>
+            <Text style={styles.publicResultNum}>{outcome.stealSuccessCount}</Text>
+            <Text style={styles.publicResultLabel}>Steals{'\n'}landed</Text>
+          </View>
+          <View style={styles.publicResultDivider} />
+          <View style={styles.publicResultCell}>
+            <Text style={styles.publicResultNum}>{outcome.stolenFromCount}</Text>
+            <Text style={styles.publicResultLabel}>Players{'\n'}drained</Text>
+          </View>
         </View>
 
+        {(outcome.mutualStealCount > 0 || outcome.chainBonusCount > 0 || outcome.closedLoopCount > 0) && (
+          <View style={styles.publicResultsRow}>
+            {outcome.mutualStealCount > 0 && (
+              <View style={styles.publicResultCell}>
+                <Text style={styles.publicResultNum}>⚡ {outcome.mutualStealCount}</Text>
+                <Text style={styles.publicResultLabel}>
+                  Mutual{'\n'}steal{outcome.mutualStealCount !== 1 ? 's' : ''}
+                </Text>
+              </View>
+            )}
+            {outcome.mutualStealCount > 0 && (outcome.chainBonusCount > 0 || outcome.closedLoopCount > 0) && (
+              <View style={styles.publicResultDivider} />
+            )}
+            {outcome.chainBonusCount > 0 && (
+              <View style={styles.publicResultCell}>
+                <Text style={styles.publicResultNum}>🔗 {outcome.chainBonusCount}</Text>
+                <Text style={styles.publicResultLabel}>
+                  Chain{'\n'}reaction{outcome.chainBonusCount !== 1 ? 's' : ''}
+                </Text>
+              </View>
+            )}
+            {outcome.chainBonusCount > 0 && outcome.closedLoopCount > 0 && (
+              <View style={styles.publicResultDivider} />
+            )}
+            {outcome.closedLoopCount > 0 && (
+              <View style={styles.publicResultCell}>
+                <Text style={styles.publicResultNum}>🔄 {outcome.closedLoopCount}</Text>
+                <Text style={styles.publicResultLabel}>
+                  Closed{'\n'}loop{outcome.closedLoopCount !== 1 ? 's' : ''}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Anonymous leaderboard with this-round deltas */}
+        {renderExpandedLeaderboard(true)}
+
+        {/* Private: your result */}
         <View style={styles.myResultCard}>
           <Text style={styles.myResultLabel}>Your result</Text>
           <Text style={styles.myResultBalance}>{fmt(myBalance)}</Text>
           <Text style={[styles.myResultDelta, { color: myDelta >= 0 ? COLORS.success : COLORS.danger }]}>
             {fmtDelta(myDelta)} this round
           </Text>
-          {wasDealer && (
-            <Text style={styles.myResultRole}>
-              {wasExposed ? '⚡ You were a Dealer and became Exposed' : '🛡 You were a Dealer and stayed Protected'}
-            </Text>
-          )}
           <Text style={styles.potLabel}>Pot {fmt(totalPot)} · your share {myPct}%</Text>
         </View>
 
-        {(gs.accusationEligible?.length ?? 0) > 0 && (
-          <View style={styles.accusationNotice}>
-            <Text style={styles.accusationNoticeText}>
-              ⚠️ Accusation phase up next — some Dealers were stolen from.
-            </Text>
-          </View>
-        )}
+        <Text style={styles.revealNote}>
+          Who did what? Full reveal at end of game.
+        </Text>
 
         <View style={styles.actions}>
           {isHost ? (
@@ -586,72 +834,6 @@ export default function DealOrStealScreen({ navigation }: Props) {
           ) : (
             <Text style={styles.waitSub}>Waiting for host to continue...</Text>
           )}
-        </View>
-      </AnimatedScrollView>
-    );
-  };
-
-  const renderAccusation = () => {
-    const nonDealerPlayers = players.filter(p => !gs.dealers.includes(p.id));
-    const submittedCount = gs.submittedAccusationIds?.length ?? 0;
-    const eligibleCount = gs.accusationEligible?.length ?? 0;
-
-    if (!iAmAccusationEligible) {
-      return (
-        <View style={styles.centered}>
-          <Text style={styles.waitEmoji}>⚖️</Text>
-          <Text style={styles.waitTitle}>Accusation Phase</Text>
-          <Text style={styles.waitSub}>
-            Dealers who were stolen from are making their accusations.{'\n'}
-            {submittedCount} / {eligibleCount} responded.
-          </Text>
-        </View>
-      );
-    }
-
-    if (iHaveAccused) {
-      return (
-        <View style={styles.centered}>
-          <Text style={styles.waitEmoji}>⚖️</Text>
-          <Text style={styles.waitTitle}>Accusation submitted</Text>
-          <Text style={styles.waitSub}>{submittedCount} / {eligibleCount} responded.</Text>
-        </View>
-      );
-    }
-
-    return (
-      <AnimatedScrollView style={{ opacity: fadeAnim }} contentContainerStyle={styles.scroll}>
-        <Text style={styles.phaseLabel}>⚖️ Accusation</Text>
-        <Text style={styles.phaseSub}>
-          You were stolen from this round. Accuse the right person to recover what you lost. Accuse the wrong person and you'll lose 10% of your balance. No one else will know.
-        </Text>
-
-        <Text style={styles.sectionLabel}>Who stole from you?</Text>
-
-        {nonDealerPlayers.map(p => (
-          <TouchableOpacity
-            key={p.id}
-            style={[styles.actionOption, accusationTarget === p.id && styles.actionOptionSelected]}
-            onPress={() => setAccusationTarget(p.id)}
-          >
-            <Text style={styles.actionOptionTitle}>{p.name}</Text>
-          </TouchableOpacity>
-        ))}
-
-        <TouchableOpacity
-          style={[styles.actionOption, accusationTarget === 'skip' && styles.actionOptionSelected]}
-          onPress={() => setAccusationTarget('skip')}
-        >
-          <Text style={styles.actionOptionTitle}>Skip — no accusation</Text>
-          <Text style={styles.actionOptionDesc}>Stay quiet. No risk, no recovery.</Text>
-        </TouchableOpacity>
-
-        <View style={styles.actions}>
-          <PrimaryButton
-            title="Submit Accusation →"
-            onPress={handleSubmitAccusation}
-            disabled={accusationTarget === null}
-          />
         </View>
       </AnimatedScrollView>
     );
@@ -669,20 +851,9 @@ export default function DealOrStealScreen({ navigation }: Props) {
       </View>
 
       <Text style={styles.phaseLabel}>After Round {gs.round}</Text>
-      <Text style={styles.sectionLabel}>Standings · highest balance wins</Text>
+      <Text style={styles.phaseSub}>Balances updated. Identities stay hidden.</Text>
 
-      {standings.map((p, i) => (
-        <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst]}>
-          <Text style={styles.standingRank}>#{i + 1}</Text>
-          <Text style={styles.standingName}>
-            {p.name}
-            {p.id === myId ? ' (you)' : ''}
-          </Text>
-          <Text style={[styles.standingScore, i === 0 && { color: COLORS.success }]}>
-            {fmt(gs.balances?.[p.id] ?? STARTING_BALANCE)}
-          </Text>
-        </View>
-      ))}
+      {renderExpandedLeaderboard(true)}
 
       <View style={styles.myResultCard}>
         <Text style={styles.balanceLabel}>Your balance</Text>
@@ -708,8 +879,9 @@ export default function DealOrStealScreen({ navigation }: Props) {
   );
 
   const renderGameOver = () => {
-    const topBalance = standings.length > 0 ? (gs.balances?.[standings[0].id] ?? 0) : 0;
-    const winners = standings.filter(p => (gs.balances?.[p.id] ?? 0) === topBalance);
+    const bals = gs.balances ?? {};
+    const topBalance = standings.length > 0 ? (bals[standings[0].id] ?? 0) : 0;
+    const winners = standings.filter(p => (bals[p.id] ?? 0) === topBalance);
     const winnerText = winners.map(p => p.name).join(' & ');
 
     return (
@@ -719,15 +891,14 @@ export default function DealOrStealScreen({ navigation }: Props) {
         <Text style={styles.gameOverSub}>Highest balance after {totalRounds} rounds.</Text>
 
         <View style={styles.divider} />
-        <Text style={styles.sectionLabel}>Final Standings</Text>
+        {/* Named final standings — identities revealed at game-over */}
+        <Text style={styles.sectionLabel}>Final Standings (revealed)</Text>
         {standings.map((p, i) => (
           <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst]}>
             <Text style={styles.standingRank}>#{i + 1}</Text>
-            <Text style={styles.standingName}>
-              {p.name}{p.id === myId ? ' (you)' : ''}
-            </Text>
+            <Text style={styles.standingName}>{p.name}{p.id === myId ? ' (you)' : ''}</Text>
             <Text style={[styles.standingScore, i === 0 && { color: COLORS.success }]}>
-              {fmt(gs.balances?.[p.id] ?? STARTING_BALANCE)}
+              {fmt(bals[p.id] ?? STARTING_BALANCE)}
             </Text>
           </View>
         ))}
@@ -751,60 +922,40 @@ export default function DealOrStealScreen({ navigation }: Props) {
     );
   };
 
-  const renderHistoryEntry = (entry: RoundHistoryEntry) => {
-    const d1Name = players.find(p => p.id === entry.dealers[0])?.name ?? '?';
-    const d2Name = players.find(p => p.id === entry.dealers[1])?.name ?? '?';
-
-    return (
-      <View key={entry.round} style={styles.historyCard}>
-        <Text style={styles.historyRound}>Round {entry.round}</Text>
-        <Text style={styles.historyDealers}>Dealers: {d1Name} & {d2Name}</Text>
-        <Text style={styles.historyPublic}>
-          {entry.dealCount} deal{entry.dealCount !== 1 ? 's' : ''} · {entry.stealCount} steal{entry.stealCount !== 1 ? 's' : ''}
-          {entry.exposedDealerIds.length > 0 ? ' · EXPOSED' : ' · protected'}
-        </Text>
-        {players.map(p => {
-          const a = entry.actionLog?.[p.id];
-          if (!a) return null;
-          const delta = entry.deltas?.[p.id] ?? 0;
-          const isDealer = entry.dealers.includes(p.id);
-          let actionText: string = a.action;
-          if (a.action === 'steal' && a.target) {
-            const targetName = players.find(pl => pl.id === a.target)?.name ?? '?';
-            actionText = `steal → ${targetName}`;
-          }
-          return (
-            <View key={p.id} style={styles.historyRow}>
-              <Text style={styles.historyPlayerName}>
-                {p.name}{isDealer ? ' (D)' : ''}
-              </Text>
-              <Text style={styles.historyAction}>{actionText}</Text>
-              <Text style={[styles.historyDelta, { color: delta >= 0 ? COLORS.success : COLORS.danger }]}>
-                {fmtDelta(delta)}
-              </Text>
-            </View>
-          );
-        })}
-        {entry.accusationOutcomes && Object.keys(entry.accusationOutcomes).length > 0 && (
-          <View style={styles.historyAccusations}>
-            <Text style={styles.historyAccusationHeader}>Accusations</Text>
-            {Object.entries(entry.accusationOutcomes).map(([accuserId, outcome]) => {
-              if (outcome.skipped) return null;
-              const accuserName = players.find(p => p.id === accuserId)?.name ?? '?';
-              const targetName = outcome.target
-                ? players.find(p => p.id === outcome.target)?.name ?? '?'
-                : '—';
-              return (
-                <Text key={accuserId} style={styles.historyAccusationLine}>
-                  {accuserName} → {targetName}: {outcome.correct ? '✓ correct' : '✗ wrong'} ({fmtDelta(outcome.delta)})
-                </Text>
-              );
-            })}
+  const renderHistoryEntry = (entry: RoundHistoryEntry) => (
+    <View key={entry.round} style={styles.historyCard}>
+      <Text style={styles.historyRound}>Round {entry.round}</Text>
+      <Text style={styles.historyPublic}>
+        {entry.dealAttemptCount} deal{entry.dealAttemptCount !== 1 ? 's' : ''} attempted
+        {' · '}{entry.dealSuccessCount} successful
+        {' · '}{entry.stealAttemptCount} steal{entry.stealAttemptCount !== 1 ? 's' : ''} attempted
+        {' · '}{entry.stealSuccessCount} landed
+        {entry.mutualStealCount > 0 ? ` · ${entry.mutualStealCount} mutual` : ''}
+        {(entry.chainBonusCount ?? 0) > 0 ? ` · ${entry.chainBonusCount} chain` : ''}
+      </Text>
+      {players.map(p => {
+        const a = entry.actionLog?.[p.id];
+        if (!a) return null;
+        const delta = entry.deltas?.[p.id] ?? 0;
+        let actionText: string = a.action;
+        if ((a.action === 'steal' || a.action === 'deal') && a.target) {
+          const targetName = players.find(pl => pl.id === a.target)?.name ?? '?';
+          actionText = `${a.action} → ${targetName}`;
+        }
+        return (
+          <View key={p.id} style={styles.historyRow}>
+            <Text style={styles.historyPlayerName}>
+              {p.name}{p.id === myId ? ' (you)' : ''}
+            </Text>
+            <Text style={styles.historyAction}>{actionText}</Text>
+            <Text style={[styles.historyDelta, { color: delta >= 0 ? COLORS.success : COLORS.danger }]}>
+              {fmtDelta(delta)}
+            </Text>
           </View>
-        )}
-      </View>
-    );
-  };
+        );
+      })}
+    </View>
+  );
 
   // ── Rules modal ────────────────────────────────────────────────────────────
 
@@ -814,49 +965,86 @@ export default function DealOrStealScreen({ navigation }: Props) {
         <View style={styles.modalSheet}>
           <ScrollView contentContainerStyle={styles.modalScroll}>
             <Text style={styles.modalTitle}>Deal or Steal</Text>
-            <Text style={styles.modalSubtitle}>How to play</Text>
+            <Text style={styles.modalSubtitle}>4–6 players · social strategy · hidden actions</Text>
+
+            <Text style={styles.ruleSection}>👥 Player count & round options</Text>
+            <Text style={styles.ruleText}>
+              Requires exactly 4–6 players. Round options depend on lobby size:{'\n'}
+              · 4 players → 4 or 8 rounds{'\n'}
+              · 5 players → 5 or 10 rounds{'\n'}
+              · 6 players → 6 or 12 rounds
+            </Text>
 
             <Text style={styles.ruleSection}>💰 Starting balance</Text>
             <Text style={styles.ruleText}>Everyone starts with $10. Highest balance at the end wins.</Text>
 
-            <Text style={styles.ruleSection}>🃏 Dealers</Text>
+            <Text style={styles.ruleSection}>🗣 Speaking order</Text>
             <Text style={styles.ruleText}>
-              Each round, 2 Dealers are randomly selected. Everyone else is an Observer.
+              Each round, one player is designated to speak first and leads the discussion.
+              The first-speaker rotates so every player leads exactly once before anyone leads twice.
+              Speaking order for the rest of the round goes through all players starting from the first speaker.{'\n\n'}
+              Host manually advances from speaking order / discussion into the action phase.
             </Text>
 
-            <Text style={styles.ruleSection}>🤝 Deal + Deal (both Dealers deal)</Text>
+            <Text style={styles.ruleSection}>🎴 Actions (everyone chooses one per round)</Text>
             <Text style={styles.ruleText}>
-              Both Dealers become EXPOSED and gain 60% of their starting-round balance.
-              {'\n'}Observers can now steal from them.
+              Each player secretly picks one action:{'\n\n'}
+              🤝  Deal(player) — propose a deal with that player.{'\n'}
+              🔪  Steal(player) — attempt to steal from that player.{'\n'}
+              🛡  Neutral — do nothing. Fully protected from steals.{'\n\n'}
+              All choices stay hidden until resolution. You may say anything during discussion.
             </Text>
 
-            <Text style={styles.ruleSection}>🛡 Deal + Neutral / Neutral + Neutral</Text>
+            <Text style={styles.ruleSection}>🤝 Deal outcomes</Text>
             <Text style={styles.ruleText}>
-              No deal activates. Both Dealers are PROTECTED. Steal attempts will fail.
+              When you choose Deal(player), the result depends on what they do:{'\n\n'}
+              · They deal back → Mutual deal. Both gain +30% of your own round-start balance. Steals don't void this.{'\n'}
+              · They go Neutral → You gain +15% (half reward).{'\n'}
+              · They steal or deal someone else → You get nothing, no penalty.{'\n\n'}
+              Note: Choosing Deal does NOT protect you from steals.
             </Text>
 
-            <Text style={styles.ruleSection}>🔪 Steal (Observer action)</Text>
+            <Text style={styles.ruleSection}>🔪 Steal outcomes</Text>
             <Text style={styles.ruleText}>
-              Target one Dealer.{'\n\n'}
-              If target is EXPOSED:{'\n'}
-              · You and any co-stealers split 50% of that Dealer's starting balance.{'\n'}
-              · The Dealer loses 25% of their starting balance.{'\n\n'}
-              If target is PROTECTED:{'\n'}
-              · You lose 20% of your starting-round balance.{'\n'}
-              · Lost funds go to the targeted Dealer (or to Exposed Dealers if any exist).
+              A steal SUCCEEDS if your target chose Deal or is stealing someone else (not you).{'\n'}
+              → Target loses 20% of their round-start balance. You gain that 20%. Split evenly if multiple stealers.{'\n\n'}
+              A steal FAILS and you lose -20% if:{'\n'}
+              · Target chose Neutral{'\n'}
+              · Mutual steal (A steals B, B steals A — both fail){'\n'}
+              · You are part of a closed steal loop (see below)
             </Text>
 
-            <Text style={styles.ruleSection}>⚖️ Accusations</Text>
+            <Text style={styles.ruleSection}>🔄 Closed steal loop</Text>
             <Text style={styles.ruleText}>
-              Dealers who were successfully stolen from may accuse one Observer.{'\n\n'}
-              Correct: recover 25% of your starting-round balance; the accused loses that amount.{'\n'}
-              Wrong: you lose 10% of your current balance.{'\n\n'}
-              Results are revealed at end-game only.
+              If a group of players all steal each other in a pure cycle (A→B→C→A with no exit), every member of the loop fails — all lose -20%.{'\n\n'}
+              Players outside the loop who steal into it are not affected by the loop rule — their steal resolves normally.
+            </Text>
+
+            <Text style={styles.ruleSection}>🔗 Chain reaction</Text>
+            <Text style={styles.ruleText}>
+              If you steal from someone who was also going to steal successfully, you intercept their pending profit too.{'\n\n'}
+              · The original steal target still loses their 20% (not double-drained).{'\n'}
+              · The intercepted stealer gets nothing from their own steal — you get it.{'\n'}
+              · Multiple interceptors split the profit evenly.
+            </Text>
+
+            <Text style={styles.ruleSection}>🛡 Neutral</Text>
+            <Text style={styles.ruleText}>
+              No gain, no loss. Completely protected — steal attempts against Neutral always fail.
+            </Text>
+
+            <Text style={styles.ruleSection}>📊 Anonymous standings</Text>
+            <Text style={styles.ruleText}>
+              A leaderboard is visible throughout the game, sorted highest to lowest, showing everyone's balance and share of the total pot.{'\n\n'}
+              · Your row is labelled YOU. Other rows have no label.{'\n'}
+              · Identities are only revealed at game-over.{'\n\n'}
+              Try to figure out who's who based on how balances move each round.
             </Text>
 
             <Text style={styles.ruleSection}>🏆 Winning</Text>
             <Text style={styles.ruleText}>
-              After all rounds, the player with the highest balance wins.
+              After all rounds, the player with the highest balance wins.{'\n'}
+              Full action history is revealed at game-over.
             </Text>
           </ScrollView>
           <TouchableOpacity style={styles.modalClose} onPress={() => setShowRules(false)}>
@@ -875,10 +1063,10 @@ export default function DealOrStealScreen({ navigation }: Props) {
       {gs.phase === 'setup' && (
         isHost ? renderSetup() : renderWaitingSetup()
       )}
+      {gs.phase === 'round-intro'   && renderRoundIntro()}
       {gs.phase === 'discussion'    && renderDiscussion()}
       {gs.phase === 'action'        && renderAction()}
       {gs.phase === 'round-results' && renderRoundResults()}
-      {gs.phase === 'accusation'    && renderAccusation()}
       {gs.phase === 'round-end'     && renderRoundEnd()}
       {gs.phase === 'game-over'     && renderGameOver()}
     </SafeAreaView>
@@ -1000,21 +1188,71 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
 
-  // Dealer chips
-  dealerRow:        { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-  dealerChip: {
+  // First speaker card (round-intro)
+  firstSpeakerCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 2,
+    borderColor: COLORS.warning,
+    padding: 18,
+    gap: 6,
+    alignItems: 'center',
+  },
+  firstSpeakerLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.warning,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  firstSpeakerName: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.text,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  firstSpeakerSub: {
+    fontSize: 13,
+    color: COLORS.text2,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 2,
+  },
+
+  // Speaking order list
+  speakingOrderList: { gap: 6 },
+  speakingOrderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.full,
+    borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.borderHi,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderColor: COLORS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 12,
   },
-  dealerChipMe:   { borderColor: COLORS.warning, backgroundColor: '#1a1500' },
-  dealerChipText: { fontSize: 15, fontWeight: '700', color: COLORS.text },
-  dealerChipYou:  { fontSize: 13, color: COLORS.warning, fontWeight: '600' },
+  speakingOrderRowFirst: {
+    borderColor: COLORS.warning,
+    backgroundColor: '#1a1500',
+  },
+  speakingOrderNum: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text2,
+    width: 20,
+  },
+  speakingOrderNumFirst: { color: COLORS.warning },
+  speakingOrderName: { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.text },
+  speakingOrderNameFirst: { color: COLORS.warning },
+  speakingOrderTag: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.warning,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
 
   // Balance card
   balanceCard: {
@@ -1029,18 +1267,6 @@ const styles = StyleSheet.create({
   balanceLabel: { fontSize: 11, fontWeight: '700', color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
   balanceValue: { fontSize: 42, fontWeight: '900', color: COLORS.text, letterSpacing: -1 },
   potLabel:     { fontSize: 12, color: COLORS.text3 },
-
-  // Role badge
-  roleBadge: {
-    backgroundColor: COLORS.surface2,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.borderHi,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  roleBadgeText: { fontSize: 15, fontWeight: '700', color: COLORS.text },
 
   // Action options
   actionInstruction: { fontSize: 13, color: COLORS.text2, lineHeight: 19 },
@@ -1062,8 +1288,8 @@ const styles = StyleSheet.create({
   guesserProgress:   { fontSize: 12, color: COLORS.text3, textAlign: 'center', letterSpacing: 1 },
   forceText:         { fontSize: 13, color: COLORS.text3, textDecorationLine: 'underline' },
 
-  // Public results
-  publicResultsRow: {
+  // Public results (4-cell grid)
+  publicResultsGrid: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
@@ -1073,10 +1299,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-evenly',
   },
+  // Public results secondary row (mutual / drained)
+  publicResultsRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.borderHi,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+  },
   publicResultCell:    { alignItems: 'center', flex: 1, gap: 4 },
   publicResultDivider: { width: 1, height: 36, backgroundColor: COLORS.border },
-  publicResultNum:     { fontSize: 28, fontWeight: '900', color: COLORS.text },
-  publicResultLabel:   { fontSize: 11, color: COLORS.text2, textAlign: 'center', fontWeight: '600' },
+  publicResultNum:     { fontSize: 24, fontWeight: '900', color: COLORS.text },
+  publicResultLabel:   { fontSize: 10, color: COLORS.text2, textAlign: 'center', fontWeight: '600', lineHeight: 14 },
 
   // My result card
   myResultCard: {
@@ -1093,15 +1330,13 @@ const styles = StyleSheet.create({
   myResultDelta:   { fontSize: 18, fontWeight: '700' },
   myResultRole:    { fontSize: 12, color: COLORS.text2, marginTop: 4, textAlign: 'center' },
 
-  // Accusation notice
-  accusationNotice: {
-    backgroundColor: '#1a1500',
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-    padding: 12,
+  // Reveal note
+  revealNote: {
+    fontSize: 12,
+    color: COLORS.text3,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
-  accusationNoticeText: { fontSize: 13, color: COLORS.warning, fontWeight: '600', textAlign: 'center' },
 
   // Standings
   standingRow: {
@@ -1142,8 +1377,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   historyRound:   { fontSize: 13, fontWeight: '800', color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
-  historyDealers: { fontSize: 14, color: COLORS.text2 },
-  historyPublic:  { fontSize: 13, color: COLORS.text3, fontStyle: 'italic' },
+  historyPublic:  { fontSize: 12, color: COLORS.text3, fontStyle: 'italic', lineHeight: 17 },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1153,18 +1387,148 @@ const styles = StyleSheet.create({
   historyPlayerName: { flex: 1, fontSize: 14, fontWeight: '700', color: COLORS.text },
   historyAction:     { fontSize: 13, color: COLORS.text2, flex: 1 },
   historyDelta:      { fontSize: 13, fontWeight: '700', minWidth: 60, textAlign: 'right' },
-  historyAccusations: {
-    marginTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    paddingTop: 6,
-    gap: 3,
-  },
-  historyAccusationHeader: { fontSize: 11, fontWeight: '700', color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1 },
-  historyAccusationLine:   { fontSize: 12, color: COLORS.text2 },
 
   // Actions container
   actions: { gap: 10, marginTop: 4, alignItems: 'center' },
+
+  // ── Compact leaderboard HUD ────────────────────────────────────────────────
+  compactLB: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.borderHi,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  compactLBInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  compactLBLeft: {
+    justifyContent: 'center',
+    minWidth: 70,
+  },
+  compactLBPotLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: COLORS.text2,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  compactLBPotBig: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.text,
+    letterSpacing: -0.5,
+  },
+  compactLBDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: COLORS.border,
+  },
+  compactLBRight: {
+    flex: 1,
+    gap: 2,
+  },
+  compactLBRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactLBBal: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text,
+    textAlign: 'right',
+  },
+  compactLBPct: {
+    fontSize: 11,
+    color: COLORS.text3,
+    width: 32,
+    textAlign: 'right',
+  },
+  compactLBYouSlot: {
+    width: 32,
+    alignItems: 'flex-end',
+  },
+  compactLBMeText: {
+    color: COLORS.accentHi,
+    fontWeight: '800',
+  },
+  compactYouBadge: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.accentHi,
+    borderWidth: 1,
+    borderColor: COLORS.accentHi,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    overflow: 'hidden',
+  },
+
+  // ── Expanded leaderboard ───────────────────────────────────────────────────
+  expandedLBHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  expandedLBPotLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text2,
+  },
+  expandedLB: { gap: 6 },
+  expandedLBRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 10,
+  },
+  expandedLBRowFirst: {
+    borderColor: COLORS.success,
+    backgroundColor: '#071d0f',
+  },
+  expandedLBRowMe: {
+    borderColor: COLORS.accentHi,
+    backgroundColor: '#130e2a',
+  },
+  expandedLBLabel: {
+    width: 64,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text2,
+  },
+  expandedLBLabelMe: {
+    color: COLORS.accentHi,
+  },
+  expandedLBBal: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.text,
+  },
+  expandedLBDelta: {
+    fontSize: 13,
+    fontWeight: '700',
+    minWidth: 60,
+    textAlign: 'right',
+  },
+  expandedLBPct: {
+    fontSize: 12,
+    color: COLORS.text3,
+    width: 36,
+    textAlign: 'right',
+  },
 
   // Rules modal
   modalOverlay: {

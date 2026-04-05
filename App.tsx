@@ -18,7 +18,8 @@ import TalentShowScreen    from './src/screens/TalentShowScreen';
 import StandOutScreen      from './src/screens/StandOutScreen';
 import NumberGuessorScreen from './src/screens/NumberGuessorScreen';
 import PieChartsScreen     from './src/screens/PieChartsScreen';
-import DealOrStealScreen   from './src/screens/DealOrStealScreen';
+import DealOrStealScreen      from './src/screens/DealOrStealScreen';
+import ShadowProtocolScreen   from './src/screens/ShadowProtocolScreen';
 import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
 
@@ -37,7 +38,8 @@ export type RootStackParamList = {
   StandOut:      undefined;
   NumberGuessor: undefined;
   PieCharts:     undefined;
-  DealOrSteal:   undefined;
+  DealOrSteal:      undefined;
+  ShadowProtocol:   undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -72,7 +74,8 @@ export default function App() {
             <Stack.Screen name="StandOut"      component={StandOutScreen}      options={{ title: 'Stand Out',      headerBackTitle: 'Games' }} />
             <Stack.Screen name="NumberGuessor" component={NumberGuessorScreen} options={{ title: 'Number Guessor', headerBackTitle: 'Games' }} />
             <Stack.Screen name="PieCharts"     component={PieChartsScreen}     options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
-            <Stack.Screen name="DealOrSteal"   component={DealOrStealScreen}   options={{ title: 'Deal or Steal',  headerBackTitle: 'Games' }} />
+            <Stack.Screen name="DealOrSteal"      component={DealOrStealScreen}      options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
+            <Stack.Screen name="ShadowProtocol"   component={ShadowProtocolScreen}   options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
           </Stack.Navigator>
           </NavigationContainer>
         </NotificationsProvider>

@@ -75,6 +75,15 @@ const GAMES: {
     borderColor: COLORS.warning,
     screen: 'DealOrSteal',
   },
+  {
+    id: 'shadowProtocol',
+    title: 'Shadow Protocol',
+    emoji: '🕵️',
+    desc: 'Social deduction. Find the Shadows before it\'s too late. 6–10 players.',
+    accentColor: COLORS.danger,
+    borderColor: COLORS.danger,
+    screen: 'ShadowProtocol',
+  },
 ];
 
 export default function GameSelectScreen({ navigation }: Props) {
@@ -91,6 +100,13 @@ export default function GameSelectScreen({ navigation }: Props) {
       Alert.alert(
         'Deal or Steal',
         `This game requires 4–6 players. You currently have ${players.length}.`
+      );
+      return;
+    }
+    if (game.id === 'shadowProtocol' && (players.length < 6 || players.length > 10)) {
+      Alert.alert(
+        'Shadow Protocol',
+        `This game requires 6–10 players. You currently have ${players.length}.`
       );
       return;
     }

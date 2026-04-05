@@ -27,7 +27,8 @@ export type GameType =
   | 'standOut'
   | 'numberGuessor'
   | 'pieCharts'
-  | 'dealOrSteal';
+  | 'dealOrSteal'
+  | 'shadowProtocol';
 
 type Room = {
   code: string;
@@ -185,6 +186,9 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           break;
         case 'dealOrSteal':
           navigateTo('DealOrSteal');
+          break;
+        case 'shadowProtocol':
+          navigateTo('ShadowProtocol');
           break;
         default:
           break;

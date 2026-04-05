@@ -59,6 +59,7 @@ function scoreStandOutRound(answers, streaks, players) {
 
   const deltas = [];
   const newStreaks = { ...streaks };
+  
 
   for (const group of groups.values()) {
     if (group.length === 1) {
@@ -91,8 +92,8 @@ function scoreStandOutRound(answers, streaks, players) {
 // lowercase_username → socketId  (freed on disconnect or explicit leave)
 const usernames = {};
 
-// Deal or Steal — private per-round action/accusation store (never sent to clients)
-// dosRoundData[code] = { actions: { [playerId]: { action, target? } }, accusations: { [playerId]: { target } } }
+// Deal or Steal — private per-round action store (never broadcast to clients)
+// dosRoundData[code] = { actions: { [playerId]: { action, target } } }
 const dosRoundData = {};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -107,101 +108,361 @@ function round2(x) {
 
 /**
  * Resolve all actions for a Deal or Steal round.
- * Returns { balances, accusationEligible, stealMap, dealCount, stealCount, exposedDealerIds, deltas, roundSummary }
+ *
+ * Economy (all % of round-start balance):
+ *   Mutual deal        +30% each  (A deals B, B deals A — not voided by steals)
+ *   Deal into Neutral  +15%       (target chose Neutral — half reward for dealer)
+ *   Deal into Steal     0         (no bonus, no penalty for dealer)
+ *   Deal into elsewhere 0         (target is dealing someone else — no penalty)
+ *   Steal success      +20% profit (split evenly among stealers of same target)
+ *   Steal fail         -20%        (Neutral target, mutual steal, or closed loop)
+ *   Neutral             0
+ *
+ * Resolution order:
+ *   1. Mutual steals    → both fail; both lose 20% of round-start balance.
+ *   2. Classify steals  → succeed if target chose Deal OR target is stealing
+ *                         someone other than the stealer. Fail vs Neutral.
+ *   2b.Closed loops     → detect steal cycles (A→B→C→A). All loop members'
+ *                         steal actions fail (-20%). External stealers targeting
+ *                         loop members still apply normally.
+ *   3a. Snapshot profits → pending profit per successful stealer before interceptions.
+ *   3b. Chain-reaction  → if a successful stealer is ALSO a successful steal
+ *                         target, their pending profit is intercepted by whoever
+ *                         stole them (split evenly). One clean pass only.
+ *   3c. Apply atomically → drain targets (20%), credit stealers, credit interceptors.
+ *   4. Failed steals    → each failed stealer loses 20% of round-start balance.
+ *   5. Deal outcomes    → mutual +30%, into-neutral +15%, into-steal/elsewhere 0.
+ *                         Deals resolve independently of steal outcomes.
+ *   6. Neutral          → no change, protected from steals.
+ *
+ * Chain-reaction detail:
+ *   Primary drain (20%) always applies to the original steal target — they do not
+ *   lose a second time. The chain interception is profit redistribution only:
+ *   the stealer-victim gets nothing from their own steal; interceptors get it instead.
+ *   Circular chains (A→B→C→A) resolve cleanly in one pass using initial profits.
+ *
+ * Rounding rule: round2() (2 dp) on every monetary operation.
+ *   Per-stealer share: round2(totalLost / stealerCount).
+ *   Rounding artifacts (≤$0.01) are acceptable for a casual game.
+ *
+ * Deal rewards: mutual deal +30% each, deal-into-neutral +15%, deal-into-steal/elsewhere 0.
+ *
+ * Returns:
+ *   { balances, deltas, roundSummary,
+ *     dealAttemptCount, dealSuccessCount,
+ *     stealAttemptCount, stealSuccessCount,
+ *     mutualStealCount, neutralCount, stolenFromCount, chainBonusCount }
  */
 function scoreDoSRound(room, code) {
-  const gs = room.gameState;
+  const gs      = room.gameState;
   const actions = (dosRoundData[code] && dosRoundData[code].actions) || {};
-  const players = room.players;
 
-  const d1Id = gs.dealers[0];
-  const d2Id = gs.dealers[1];
+  // ── Diagnostic: dump full action map and roundStartBalances ──────────────
+  console.log('[dos] actions map', JSON.stringify(actions, null, 2));
+  console.log('[dos] roundStartBalances', JSON.stringify(gs.roundStartBalances, null, 2));
 
-  const d1Action = (actions[d1Id] && actions[d1Id].action) || 'neutral';
-  const d2Action = (actions[d2Id] && actions[d2Id].action) || 'neutral';
-  const bothDealt = d1Action === 'deal' && d2Action === 'deal';
-
-  const balances = Object.assign({}, gs.balances);
+  // ── Authoritative participant set ─────────────────────────────────────────
+  // Use gs.balances (set by host at round start) as the source of truth for
+  // who is in this round. This is stable even if players disconnect mid-round,
+  // and matches the target IDs players used when submitting their actions.
   const startBals = Object.assign({}, gs.roundStartBalances);
+  const balances  = Object.assign({}, gs.balances);
 
-  const exposedDealerIds = [];
-
-  // Step 1 — Deal resolution
-  if (bothDealt) {
-    exposedDealerIds.push(d1Id, d2Id);
-    balances[d1Id] = round2(balances[d1Id] + 0.6 * startBals[d1Id]);
-    balances[d2Id] = round2(balances[d2Id] + 0.6 * startBals[d2Id]);
+  // Merge: anyone in gs.balances but missing from gs.roundStartBalances gets
+  // a fallback of their current balance (handles first-round edge cases).
+  for (const pid of Object.keys(balances)) {
+    if (typeof startBals[pid] !== 'number' || isNaN(startBals[pid])) {
+      startBals[pid] = balances[pid];
+      console.warn('[scoreDoSRound] startBals missing for %s — using current balance %s', pid, startBals[pid]);
+    }
+  }
+  for (const pid of Object.keys(startBals)) {
+    if (typeof balances[pid] !== 'number' || isNaN(balances[pid])) {
+      balances[pid] = startBals[pid];
+      console.warn('[scoreDoSRound] balances missing for %s — using startBal %s', pid, balances[pid]);
+    }
   }
 
-  // Step 2 — Steal resolution (per dealer)
-  const nonDealerIds = players.map(p => p.id).filter(id => id !== d1Id && id !== d2Id);
+  // playerIds = everyone who started this round (not just who is still connected)
+  const playerIds = Object.keys(startBals);
 
-  for (const dId of [d1Id, d2Id]) {
-    const stealers = nonDealerIds.filter(id => {
-      const a = actions[id];
-      return a && a.action === 'steal' && a.target === dId;
-    });
-    if (stealers.length === 0) continue;
+  console.log('[scoreDoSRound] round=%d participantCount=%d actionCount=%d startBals=%j',
+    gs.round, playerIds.length, Object.keys(actions).length, startBals);
 
-    if (exposedDealerIds.includes(dId)) {
-      // Steal succeeds — split 50% of dealer's round-start balance
-      const pool = 0.5 * startBals[dId];
-      const perStealer = round2(pool / stealers.length);
-      for (const sId of stealers) {
-        balances[sId] = round2(balances[sId] + perStealer);
-      }
-      // Dealer loses 25% of round-start balance
-      balances[dId] = round2(balances[dId] - 0.25 * startBals[dId]);
+  // ── Step 1: Detect and resolve mutual steals ──────────────────────────────
+  const mutualStealers   = new Set();
+  const processedMutuals = new Set();
+
+  for (const aId of playerIds) {
+    const aAct = actions[aId];
+    if (!aAct || aAct.action !== 'steal') continue;
+    const bId = aAct.target;
+    if (!bId) continue;
+    const bAct = actions[bId];
+    if (!bAct || bAct.action !== 'steal' || bAct.target !== aId) continue;
+
+    const pairKey = [aId, bId].sort().join(':');
+    if (processedMutuals.has(pairKey)) continue;
+    processedMutuals.add(pairKey);
+    mutualStealers.add(aId);
+    mutualStealers.add(bId);
+
+    balances[aId] = round2(balances[aId] - 0.2 * startBals[aId]);
+    balances[bId] = round2(balances[bId] - 0.2 * startBals[bId]);
+    console.log('[scoreDoSRound] mutual steal: %s ↔ %s — each -20%%', aId, bId);
+  }
+
+  // ── Step 2: Classify non-mutual steal attempts ────────────────────────────
+  const successfulStealTargets = {}; // targetId → [stealerId, ...]
+  const failedStealers = [];
+
+  for (const stealerId of playerIds) {
+    const act = actions[stealerId];
+    if (!act || act.action !== 'steal') continue;
+    if (mutualStealers.has(stealerId)) continue;
+
+    const targetId = act.target;
+    if (!targetId || !playerIds.includes(targetId)) {
+      failedStealers.push(stealerId);
+      continue;
+    }
+
+    const targetAct = actions[targetId] || { action: 'neutral', target: null };
+    let valid = false;
+    if (targetAct.action === 'deal') {
+      valid = true;
+    } else if (targetAct.action === 'steal' && targetAct.target !== stealerId) {
+      // Target is stealing someone else (not the stealer) — valid target.
+      // Even if target is in a mutual steal with a third party, their action
+      // is still 'steal' so this branch fires correctly.
+      valid = true;
+    }
+
+    if (valid) {
+      if (!successfulStealTargets[targetId]) successfulStealTargets[targetId] = [];
+      successfulStealTargets[targetId].push(stealerId);
     } else {
-      // Steal fails — each stealer loses 20% of their own round-start balance
-      for (const sId of stealers) {
-        const penalty = round2(0.2 * startBals[sId]);
-        balances[sId] = round2(balances[sId] - penalty);
-        // Penalty goes to exposed dealers (split equally) or targeted dealer
-        if (exposedDealerIds.length > 0) {
-          const share = round2(penalty / exposedDealerIds.length);
-          for (const expId of exposedDealerIds) {
-            balances[expId] = round2(balances[expId] + share);
-          }
-        } else {
-          balances[dId] = round2(balances[dId] + penalty);
+      failedStealers.push(stealerId);
+    }
+  }
+
+  // ── Step 2b: Closed steal loop detection ──────────────────────────────────
+  // If the steal graph among successful non-mutual stealers contains a cycle
+  // (A steals B, B steals C, C steals A), all loop members' steal actions
+  // fail and each takes the -20% fail penalty. External stealers targeting
+  // loop members are unaffected by this rule and still apply normally.
+  const closedLoopMembers = new Set();
+  {
+    const stealerToTarget = {};
+    for (const [tid, sIds] of Object.entries(successfulStealTargets)) {
+      for (const sId of sIds) stealerToTarget[sId] = tid;
+    }
+    const loopVisited = {};
+    for (const startId of Object.keys(stealerToTarget)) {
+      if (loopVisited[startId]) continue;
+      const path = [];
+      const pathIdx = {};
+      let cur = startId;
+      while (cur && stealerToTarget[cur] && !loopVisited[cur]) {
+        if (cur in pathIdx) {
+          for (let i = pathIdx[cur]; i < path.length; i++) closedLoopMembers.add(path[i]);
+          break;
         }
+        pathIdx[cur] = path.length;
+        path.push(cur);
+        cur = stealerToTarget[cur];
+      }
+      for (const id of path) loopVisited[id] = true;
+    }
+    if (closedLoopMembers.size > 0) {
+      console.log('[scoreDoSRound] closed steal loop: %d members — all fail', closedLoopMembers.size);
+      for (const loopId of closedLoopMembers) {
+        const tid = stealerToTarget[loopId];
+        if (tid && successfulStealTargets[tid]) {
+          successfulStealTargets[tid] = successfulStealTargets[tid].filter(s => s !== loopId);
+          if (successfulStealTargets[tid].length === 0) delete successfulStealTargets[tid];
+        }
+        failedStealers.push(loopId);
       }
     }
   }
 
-  // Accusation eligibility: exposed dealers who were targeted by ≥1 successful steal
-  const accusationEligible = [d1Id, d2Id].filter(dId => {
-    if (!exposedDealerIds.includes(dId)) return false;
-    return nonDealerIds.some(id => {
-      const a = actions[id];
-      return a && a.action === 'steal' && a.target === dId;
-    });
+  // ── Step 3a: Snapshot initial steal profits (pre-chain-reaction) ──────────
+  // Each stealer targets exactly one player, so no accumulation needed.
+  const initialStealProfits = {}; // stealerId → pending profit before interceptions
+  for (const [targetId, stealerIds] of Object.entries(successfulStealTargets)) {
+    const lostAmount = round2(0.2 * startBals[targetId]);
+    const sharePerStealer = round2(lostAmount / stealerIds.length);
+    for (const sId of stealerIds) {
+      initialStealProfits[sId] = sharePerStealer;
+    }
+  }
+
+  // ── Step 3b: Chain-reaction interceptions (one clean pass) ────────────────
+  // If A successfully steals B, and B had a pending steal profit (B's steal of C
+  // was also going to succeed), A intercepts B's profit instead of B receiving it.
+  // Multiple interceptors split the intercepted amount evenly.
+  // Uses INITIAL profits only — circular chains resolve without recursion.
+  const interceptedVictims = new Set(); // stealers whose profit was intercepted
+  const chainBonuses = {};              // interceptorId → total bonus from chain
+
+  for (const [victimId, interceptorIds] of Object.entries(successfulStealTargets)) {
+    const victimProfit = initialStealProfits[victimId] || 0;
+    if (victimProfit <= 0) continue; // no pending profit to intercept
+
+    interceptedVictims.add(victimId);
+    const sharePerInterceptor = round2(victimProfit / interceptorIds.length);
+    for (const intId of interceptorIds) {
+      chainBonuses[intId] = (chainBonuses[intId] || 0) + sharePerInterceptor;
+    }
+    console.log('[scoreDoSRound] chain: interceptors %j take %s profit from %s (was stealing, profit=%s)',
+      interceptorIds, sharePerInterceptor, victimId, victimProfit);
+  }
+
+  // ── Step 3c: Apply drains and profits atomically ──────────────────────────
+  const stolenFromPlayers = new Set();
+  for (const [targetId] of Object.entries(successfulStealTargets)) {
+    stolenFromPlayers.add(targetId);
+    const lostAmount = round2(0.2 * startBals[targetId]);
+    balances[targetId] = round2(balances[targetId] - lostAmount);
+  }
+  for (const [stealerId, profit] of Object.entries(initialStealProfits)) {
+    if (!interceptedVictims.has(stealerId)) {
+      // Not intercepted — gets their steal profit
+      balances[stealerId] = round2(balances[stealerId] + profit);
+    }
+    // If intercepted, stealerId gets nothing (profit went to interceptors)
+  }
+  for (const [interceptorId, bonus] of Object.entries(chainBonuses)) {
+    balances[interceptorId] = round2(balances[interceptorId] + bonus);
+  }
+
+  // ── Step 4: Apply failed steal penalties ──────────────────────────────────
+  for (const stealerId of failedStealers) {
+    balances[stealerId] = round2(balances[stealerId] - 0.2 * startBals[stealerId]);
+  }
+
+// ── Step 5: Resolve deal outcomes (FIXED) ───────────────────────────────────
+const dealBonuses = {};
+const processedDealPairs = new Set();
+
+for (const actorId of playerIds) {
+  const actorAction = actions[actorId];
+  if (!actorAction || actorAction.action !== 'deal' || !actorAction.target) continue;
+
+  const targetId = actorAction.target;
+  const targetAction = actions[targetId];
+  const startBal = startBals[actorId] ?? 0;
+
+  console.log('[FIX CHECK] DEAL', {
+    actorId,
+    actorChoice: actorAction.action,
+    targetId,
+    targetChoice: targetAction?.action ?? 'NONE',
+    startBal,
   });
 
-  // stealMap: stealerId → dealerId they targeted (only successful steals)
-  const stealMap = {};
-  for (const id of nonDealerIds) {
-    const a = actions[id];
-    if (a && a.action === 'steal' && a.target && exposedDealerIds.includes(a.target)) {
-      stealMap[id] = a.target;
+  // 1. Mutual deal = +30% each
+  if (
+    targetAction &&
+    targetAction.action === 'deal' &&
+    targetAction.target === actorId
+  ) {
+    const pairKey = [actorId, targetId].sort().join(':');
+
+    if (!processedDealPairs.has(pairKey)) {
+      processedDealPairs.add(pairKey);
+
+      dealBonuses[actorId] =
+        (dealBonuses[actorId] || 0) + round2(startBal * 0.30);
+
+      dealBonuses[targetId] =
+        (dealBonuses[targetId] || 0) +
+        round2((startBals[targetId] ?? 0) * 0.30);
+
+      console.log('[FIX] mutual deal applied', {
+        actorId,
+        targetId,
+        actorGain: round2(startBal * 0.30),
+        targetGain: round2((startBals[targetId] ?? 0) * 0.30),
+      });
+    }
+
+    continue;
+  }
+
+  // 2. Deal into neutral or missing target action = +15%
+  if (!targetAction || targetAction.action === 'neutral') {
+    const gain = round2(startBal * 0.15);
+
+    dealBonuses[actorId] = (dealBonuses[actorId] || 0) + gain;
+
+    console.log('[FIX] deal→neutral SUCCESS', {
+      actorId,
+      targetId,
+      gain,
+    });
+
+    continue;
+  }
+
+  // 3. Deal into someone dealing elsewhere = 0
+  if (
+    targetAction.action === 'deal' &&
+    targetAction.target !== actorId
+  ) {
+    console.log('[FIX] deal→other deal = 0', {
+      actorId,
+      targetId,
+    });
+    continue;
+  }
+
+  // 4. Deal into steal = 0
+  if (targetAction.action === 'steal') {
+    console.log('[FIX] deal→steal = 0', {
+      actorId,
+      targetId,
+    });
+    continue;
+  }
+}
+
+  const dealGainers = new Set();
+  for (const [gId, bonus] of Object.entries(dealBonuses)) {
+    if (bonus > 0) {
+      balances[gId] = round2(balances[gId] + bonus);
+      dealGainers.add(gId);
     }
   }
 
-  // Per-player balance deltas for standings
+  // ── Compute deltas and stats ──────────────────────────────────────────────
+  // Iterate all keys in balances (not just playerIds) so any actor whose
+  // socket ID was in actions but not in roundStartBalances still gets a delta.
+  const allIds = new Set([...playerIds, ...Object.keys(balances)]);
   const deltas = {};
-  for (const p of players) {
-    deltas[p.id] = round2((balances[p.id] !== undefined ? balances[p.id] : startBals[p.id]) - startBals[p.id]);
+  for (const pid of allIds) {
+    const startB = startBals[pid] ?? 0;
+    deltas[pid] = round2((balances[pid] ?? startB) - startB);
   }
 
-  const dealCount = [d1Action, d2Action].filter(a => a === 'deal').length;
-  const stealCount = nonDealerIds.filter(id => actions[id] && actions[id].action === 'steal').length;
+  const dealAttemptCount  = playerIds.filter(id => actions[id] && actions[id].action === 'deal').length;
+  const dealSuccessCount  = dealGainers.size;
+  const stealAttemptCount = playerIds.filter(id => actions[id] && actions[id].action === 'steal').length;
+  const stealSuccessCount = Object.values(successfulStealTargets).reduce((s, arr) => s + arr.length, 0);
+  const mutualStealCount  = processedMutuals.size;
+  const neutralCount      = playerIds.filter(id => !actions[id] || actions[id].action === 'neutral').length;
+  const stolenFromCount   = stolenFromPlayers.size;
+  const chainBonusCount   = interceptedVictims.size;
+  const closedLoopCount   = closedLoopMembers.size;
 
-  // Sanitised action log for end-game history (no targets visible until reveal)
+  console.log('[scoreDoSRound] result | dealAttempt=%d dealSuccess=%d stealSuccess=%d neutral=%d deltas=%j',
+    dealAttemptCount, dealSuccessCount, stealSuccessCount, neutralCount, deltas);
+
   const actionLog = {};
-  for (const p of players) {
-    const a = actions[p.id];
-    actionLog[p.id] = {
+  for (const pid of playerIds) {
+    const a = actions[pid];
+    actionLog[pid] = {
       action: (a && a.action) || 'neutral',
       target: (a && a.target) || null,
     };
@@ -209,54 +470,27 @@ function scoreDoSRound(room, code) {
 
   const roundSummary = {
     round: gs.round,
-    dealers: [d1Id, d2Id],
     actionLog,
-    exposedDealerIds,
-    dealCount,
-    stealCount,
+    dealAttemptCount,
+    dealSuccessCount,
+    stealAttemptCount,
+    stealSuccessCount,
+    mutualStealCount,
+    neutralCount,
+    stolenFromCount,
+    chainBonusCount,
+    closedLoopCount,
     deltas,
     startBalances: Object.assign({}, startBals),
-    endBalances: Object.assign({}, balances),
+    endBalances:   Object.assign({}, balances),
   };
 
-  return { balances, accusationEligible, stealMap, dealCount, stealCount, exposedDealerIds, deltas, roundSummary };
-}
-
-/**
- * Resolve accusations for a Deal or Steal round.
- * stealMap: stealerId → dealerId they successfully stole from.
- * Returns { balances, accusationOutcomes }
- */
-function resolveDoSAccusations(room, code) {
-  const gs = room.gameState;
-  const accusations = (dosRoundData[code] && dosRoundData[code].accusations) || {};
-  const stealMap = (dosRoundData[code] && dosRoundData[code].stealMap) || {};
-
-  const balances = Object.assign({}, gs.balances);
-  const startBals = gs.roundStartBalances || {};
-  const accusationOutcomes = {};
-
-  for (const accuserId in accusations) {
-    const target = accusations[accuserId] && accusations[accuserId].target;
-    if (!target) {
-      accusationOutcomes[accuserId] = { target: null, correct: false, skipped: true, delta: 0 };
-      continue;
-    }
-    // Correct if the accused player stole from the accuser
-    const isCorrect = stealMap[target] === accuserId;
-    if (isCorrect) {
-      const recovered = round2(0.25 * (startBals[accuserId] || 0));
-      balances[accuserId] = round2(balances[accuserId] + recovered);
-      balances[target]    = round2(balances[target]    - recovered);
-      accusationOutcomes[accuserId] = { target, correct: true,  delta: recovered };
-    } else {
-      const penalty = round2(0.1 * balances[accuserId]);
-      balances[accuserId] = round2(balances[accuserId] - penalty);
-      accusationOutcomes[accuserId] = { target, correct: false, delta: -penalty };
-    }
-  }
-
-  return { balances, accusationOutcomes };
+  return {
+    balances, deltas, roundSummary,
+    dealAttemptCount, dealSuccessCount,
+    stealAttemptCount, stealSuccessCount,
+    mutualStealCount, neutralCount, stolenFromCount, chainBonusCount, closedLoopCount,
+  };
 }
 
 /** Remove player from every room they're in. Returns array of affected room codes. */
@@ -319,7 +553,7 @@ function buildInitialGameState(game) {
     case 'pieCharts':
       return { game, phase: 'setup', questions: [], questionIdx: 0, submittedVoterIds: [], allVotes: [] };
     case 'dealOrSteal':
-      return { game, phase: 'setup', round: 1, dealers: [], balances: {} };
+      return { game, phase: 'setup', round: 1, balances: {} };
     default:
       return { game, phase: 'start' };
   }
@@ -443,6 +677,12 @@ io.on('connection', (socket) => {
     if (room.hostId !== socket.id) {
       console.warn('[startGame] socket %s is not host of %s', socket.id, code);
       if (ack) ack({ ok: false, message: 'Not the host' });
+      return;
+    }
+    // Guard: Deal or Steal requires 4–6 players
+    if (game === 'dealOrSteal' && (room.players.length < 4 || room.players.length > 6)) {
+      console.warn('[startGame] dealOrSteal requires 4-6 players, got %d in room %s', room.players.length, code);
+      if (ack) ack({ ok: false, message: `Deal or Steal requires 4–6 players. Currently: ${room.players.length}` });
       return;
     }
     room.phase     = 'playing';
@@ -645,86 +885,127 @@ io.on('connection', (socket) => {
     // ── Deal or Steal: player submits action ──────────────────────────────────
     if (room.gameState?.game === 'dealOrSteal' && action === 'dos-action') {
       const gs = room.gameState;
-      if (gs.phase !== 'action') return;
-      if (!gs.submittedActionIds) gs.submittedActionIds = [];
-      if (gs.submittedActionIds.includes(socket.id)) return;
-
       const { choice, target } = data || {};
-      const isDealerRole = gs.dealers && gs.dealers.includes(socket.id);
 
-      // Validate choice
-      if (!['deal', 'steal', 'neutral'].includes(choice)) return;
-      if (isDealerRole  && choice === 'steal') return;
-      if (!isDealerRole && choice === 'deal')  return;
-      if (choice === 'steal') {
-        if (!target || !gs.dealers || !gs.dealers.includes(target)) return;
+      console.log('[dos-action] recv | socket:%s | room:%s | choice:%s | target:%s | phase:%s | submitted:%d/%d',
+        socket.id, code,
+        choice ?? '?', target ?? 'none',
+        gs.phase,
+        gs.submittedActionIds?.length ?? 0,
+        room.players.length);
+
+      // Phase guard
+      if (gs.phase !== 'action') {
+        console.log('[dos-action] REJECTED — wrong phase: %s', gs.phase);
+        return;
+      }
+
+      // Duplicate guard
+      if (!gs.submittedActionIds) gs.submittedActionIds = [];
+      if (gs.submittedActionIds.includes(socket.id)) {
+        console.log('[dos-action] REJECTED — duplicate from socket:%s', socket.id);
+        return;
+      }
+
+      // Choice must be a known action
+      if (!['deal', 'steal', 'neutral'].includes(choice)) {
+        console.log('[dos-action] REJECTED — invalid choice: %s', choice);
+        return;
+      }
+
+      // Deal and steal require a non-self target that is in this game session.
+      // We validate against gs.balances (set by host at game start) rather than
+      // room.players, because room.players is the live server list which can drift
+      // from the frontend's player list due to reconnect timing. gs.balances is
+      // the authoritative set of participants for this game session.
+      if (choice === 'deal' || choice === 'steal') {
+        if (!target || target === socket.id) {
+          console.log('[dos-action] REJECTED — target missing or self | target:%s socket:%s', target ?? 'none', socket.id);
+          return;
+        }
+        if (!gs.balances || !(target in gs.balances)) {
+          console.log('[dos-action] REJECTED — target not in game balances | target:%s | balanceKeys:%j',
+            target, gs.balances ? Object.keys(gs.balances) : []);
+          return;
+        }
+        console.log('[dos-action] target OK | target:%s', target);
       }
 
       // Store privately — never enters broadcast gameState
-      if (!dosRoundData[code]) dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
-      dosRoundData[code].actions[socket.id] = { action: choice, target: choice === 'steal' ? target : null };
+      if (!dosRoundData[code]) dosRoundData[code] = { actions: {} };
+      dosRoundData[code].actions[socket.id] = {
+        action: choice,
+        target: choice !== 'neutral' ? target : null,
+      };
 
       gs.submittedActionIds.push(socket.id);
+
+      console.log('[dos-action] counted | socket:%s | choice:%s | now %d/%d submitted',
+        socket.id, choice, gs.submittedActionIds.length, room.players.length);
+
       io.to(code).emit('gameStateUpdated', gs);
 
       // All players submitted → resolve round
       if (gs.submittedActionIds.length >= room.players.length) {
+        console.log('[dos-action] all submitted — resolving round %d', gs.round);
         const result = scoreDoSRound(room, code);
-
-        // Save stealMap for accusation resolution
-        if (!dosRoundData[code]) dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
-        dosRoundData[code].stealMap = result.stealMap;
 
         gs.phase = 'round-results';
         gs.balances = result.balances;
         gs.roundOutcome = {
-          dealCount:        result.dealCount,
-          stealCount:       result.stealCount,
-          exposedDealerIds: result.exposedDealerIds,
-          deltas:           result.deltas,
+          dealAttemptCount:  result.dealAttemptCount,
+          dealSuccessCount:  result.dealSuccessCount,
+          stealAttemptCount: result.stealAttemptCount,
+          stealSuccessCount: result.stealSuccessCount,
+          mutualStealCount:  result.mutualStealCount,
+          neutralCount:      result.neutralCount,
+          stolenFromCount:   result.stolenFromCount,
+          chainBonusCount:   result.chainBonusCount,
+          closedLoopCount:   result.closedLoopCount,
+          deltas:            result.deltas,
         };
-        gs.accusationEligible    = result.accusationEligible;
-        gs.submittedAccusationIds = [];
         if (!gs.roundHistory) gs.roundHistory = [];
         gs.roundHistory.push(result.roundSummary);
 
+        // Clear private round data — history is now in gs.roundHistory
+        dosRoundData[code] = { actions: {} };
+
+        console.log('[dos-action] round resolved | phase->round-results | round=%d', gs.round);
         io.to(code).emit('gameStateUpdated', gs);
       }
       return;
     }
 
-    // ── Deal or Steal: player submits accusation ──────────────────────────────
-    if (room.gameState?.game === 'dealOrSteal' && action === 'dos-accuse') {
+    // ── Deal or Steal: host force-scores with submitted actions ───────────────
+    // Unsubmitted players are treated as Neutral by scoreDoSRound's default.
+    if (room.gameState?.game === 'dealOrSteal' && action === 'dos-force-score') {
       const gs = room.gameState;
-      if (gs.phase !== 'accusation') return;
-      if (!gs.accusationEligible || !gs.accusationEligible.includes(socket.id)) return;
-      if (!gs.submittedAccusationIds) gs.submittedAccusationIds = [];
-      if (gs.submittedAccusationIds.includes(socket.id)) return;
+      if (room.hostId !== socket.id) return;
+      if (gs.phase !== 'action') return;
 
-      const { target } = data || {};  // target: playerId or null/undefined to skip
+      console.log('[dos-force-score] host triggered force score | round=%d', gs.round);
+      const result = scoreDoSRound(room, code);
 
-      if (!dosRoundData[code]) dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
-      dosRoundData[code].accusations[socket.id] = { target: target || null };
+      gs.phase = 'round-results';
+      gs.balances = result.balances;
+      gs.roundOutcome = {
+        dealAttemptCount:  result.dealAttemptCount,
+        dealSuccessCount:  result.dealSuccessCount,
+        stealAttemptCount: result.stealAttemptCount,
+        stealSuccessCount: result.stealSuccessCount,
+        mutualStealCount:  result.mutualStealCount,
+        neutralCount:      result.neutralCount,
+        stolenFromCount:   result.stolenFromCount,
+        chainBonusCount:   result.chainBonusCount,
+        closedLoopCount:   result.closedLoopCount,
+        deltas:            result.deltas,
+      };
+      if (!gs.roundHistory) gs.roundHistory = [];
+      gs.roundHistory.push(result.roundSummary);
+      dosRoundData[code] = { actions: {} };
 
-      gs.submittedAccusationIds.push(socket.id);
+      console.log('[dos-force-score] round resolved | phase->round-results');
       io.to(code).emit('gameStateUpdated', gs);
-
-      // All eligible have responded → resolve
-      if (gs.submittedAccusationIds.length >= gs.accusationEligible.length) {
-        const result = resolveDoSAccusations(room, code);
-        gs.balances = result.balances;
-
-        // Attach outcomes to last round history entry (revealed at end-game only)
-        if (gs.roundHistory && gs.roundHistory.length > 0) {
-          gs.roundHistory[gs.roundHistory.length - 1].accusationOutcomes = result.accusationOutcomes;
-        }
-
-        // Reset private round data for next round
-        dosRoundData[code] = { actions: {}, accusations: {}, stealMap: {} };
-
-        gs.phase = 'round-end';
-        io.to(code).emit('gameStateUpdated', gs);
-      }
       return;
     }
 
