@@ -28,6 +28,7 @@ type Props = {
 type NGPhase = 'guessing' | 'reveal' | 'round-end' | 'game-over';
 
 const ROUND_OPTIONS = [5, 10, 20] as const;
+const GUESS_TIMER_SECS = 20;
 
 interface NGGameState {
   game: 'numberGuessor';
@@ -40,25 +41,95 @@ interface NGGameState {
   roundScores?: Record<string, number>;
   targetNumber?: number;
   results?: GuessResult[];
+  streaks?: Record<string, number>;
+  timerStartedAt?: number | null;
+}
+
+// ── Local reveal computation (mirrors server resolveNGRound) ─────────────────
+
+function computeNGReveal(gs: NGGameState, players: { id: string; name: string }[]): NGGameState {
+  const correctAnswer = gs.currentPrompt.correctAnswer;
+  const guesses = gs.guesses ?? [];
+
+  const results: GuessResult[] = players.map(player => {
+    const guessObj = guesses.find(g => g.playerId === player.id);
+    const timedOut = !guessObj || guessObj.timedOut;
+    const guess    = timedOut ? null : (guessObj!.value ?? null);
+    const distance = guess !== null ? Math.abs(guess - correctAnswer) : 100;
+    const timeTaken = timedOut ? 20 : Math.max(1, (guessObj as any)?.timeTaken ?? 20);
+    return { playerId: player.id, playerName: player.name, guess, distance, timeTaken, timedOut };
+  });
+
+  results.sort((a, b) => a.distance - b.distance);
+
+  const totalScores = { ...(gs.totalScores ?? {}) };
+  const roundScores: Record<string, number> = {};
+  for (const r of results) {
+    const penalty = r.distance + r.timeTaken;
+    roundScores[r.playerId] = penalty;
+    totalScores[r.playerId] = (totalScores[r.playerId] ?? 0) + penalty;
+  }
+
+  return { ...gs, phase: 'reveal', targetNumber: correctAnswer, results, roundScores, totalScores };
+}
+
+// ── Timer hook ────────────────────────────────────────────────────────────────
+
+function useNGTimer(timerStartedAt: number | null | undefined) {
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (!timerStartedAt) return;
+    const interval = setInterval(() => forceUpdate(n => n + 1), 200);
+    return () => clearInterval(interval);
+  }, [timerStartedAt]);
+  if (!timerStartedAt) return { secondsLeft: GUESS_TIMER_SECS, isExpired: false };
+  const msLeft = Math.min(GUESS_TIMER_SECS * 1000, Math.max(0, GUESS_TIMER_SECS * 1000 - (Date.now() - timerStartedAt)));
+  return { secondsLeft: Math.ceil(msLeft / 1000), isExpired: msLeft === 0 };
 }
 
 export default function NumberGuessorScreen({ navigation }: Props) {
-  const { players, room, isHost, sendGameState, sendPlayerAction } = useGame();
-  const myId = socket.id;
+  const { players: contextPlayers, room, isHost, currentUser, sendGameState, sendPlayerAction, startGame } = useGame();
+  // Use room.players as the authoritative source — always includes all players
+  const allPlayers = room?.players ?? contextPlayers;
+
+  const myId = (() => {
+    if (currentUser?.id) {
+      const byPersistent = allPlayers.find(
+        p => p.persistentId === currentUser.id || p.id === currentUser.id,
+      );
+      if (byPersistent) return byPersistent.id;
+    }
+    const bySocket = allPlayers.find(p => p.id === socket.id);
+    if (bySocket) return bySocket.id;
+    return currentUser?.id ?? socket.id ?? '';
+  })();
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const usedPromptIds = useRef(new Set<string>());
   const gsRef = useRef<NGGameState | null>(null);
+  const allPlayersRef = useRef(allPlayers);
   const sendGameStateRef = useRef(sendGameState);
+  const timerFiredRef = useRef(false);
 
+  useEffect(() => { allPlayersRef.current = allPlayers; }, [allPlayers]);
   useEffect(() => {
     sendGameStateRef.current = sendGameState;
   }, [sendGameState]);
 
   const gs = (room?.gameState?.game === 'numberGuessor' ? room.gameState : null) as NGGameState | null;
 
+  // Block header back button for non-hosts
+  useEffect(() => {
+    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
+  }, [isHost]);
+
+  // Keep ref fresh on every gs change so computeNGReveal sees the latest guesses
   useEffect(() => {
     gsRef.current = gs;
+  }, [gs]);
+
+  // Fade animation on phase transitions only
+  useEffect(() => {
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -66,6 +137,13 @@ export default function NumberGuessorScreen({ navigation }: Props) {
       useNativeDriver: true,
     }).start();
   }, [gs?.phase, fadeAnim]);
+
+  // Reset timer-fired guard whenever a new guessing phase starts
+  useEffect(() => {
+    if (gs?.phase === 'guessing') {
+      timerFiredRef.current = false;
+    }
+  }, [gs?.phase, gs?.round]);
 
   const [setupTimedOut, setSetupTimedOut] = useState(false);
   const setupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,32 +161,40 @@ export default function NumberGuessorScreen({ navigation }: Props) {
 
   const [inputText, setInputText] = useState('');
 
-  // Host initializes the first round only.
+  const { secondsLeft, isExpired } = useNGTimer(gs?.timerStartedAt);
+
+  // When timer hits 0, host computes reveal locally and broadcasts — no server roundtrip
   useEffect(() => {
+    if (!isExpired) return;
     if (!isHost) return;
+    if (gsRef.current?.phase !== 'guessing') return;
+    if (timerFiredRef.current) return;
+    timerFiredRef.current = true;
+    const next = computeNGReveal(gsRef.current, allPlayersRef.current);
+    gsRef.current = next;
+    sendGameStateRef.current(next);
+  }, [isExpired, isHost]); // eslint-disable-line
 
-    const prompt = pickNumberPrompt(usedPromptIds.current);
-    usedPromptIds.current.add(prompt.id);
+  // Track the server's initial prompt so it isn't repeated in later rounds
+  useEffect(() => {
+    if (gs?.currentPrompt?.id) {
+      usedPromptIds.current.add(gs.currentPrompt.id);
+    }
+  }, [gs?.currentPrompt?.id]);
 
-    const totalScores = Object.fromEntries(players.map((p) => [p.id, 0]));
-
-    const init: NGGameState = {
-      game: 'numberGuessor',
-      phase: 'guessing',
-      round: 1,
-      currentPrompt: prompt,
-      submittedGuesserIds: [],
-      totalScores,
-      // totalRounds intentionally omitted — triggers setup screen
-    };
-
-    gsRef.current = init;
-    sendGameStateRef.current(init);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  // When host picks number of rounds, fully initialize the game state.
+  // The server's buildInitialGameState already set the first prompt — we just
+  // add totalRounds, seed totalScores for all players, and start the timer.
   const handleSelectRounds = (n: number) => {
-    if (!gs) return;
-    const next: NGGameState = { ...gs, totalRounds: n };
+    if (!isHost || !gs) return;
+    const totalScores = Object.fromEntries(allPlayersRef.current.map((p) => [p.id, 0]));
+    const next: NGGameState = {
+      ...gs,
+      totalRounds: n,
+      totalScores,
+      timerStartedAt: Date.now(),
+      submittedGuesserIds: [],
+    };
     gsRef.current = next;
     sendGameStateRef.current(next);
   };
@@ -144,6 +230,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
       targetNumber: undefined,
       results: undefined,
       roundScores: undefined,
+      timerStartedAt: Date.now(),
     };
 
     gsRef.current = next;
@@ -210,7 +297,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
   const iHaveGuessed = (gs.submittedGuesserIds ?? []).includes(myId ?? '');
 
   // Sort ascending by totalScores (lower = better)
-  const sortedStandings = [...players].sort(
+  const sortedStandings = [...allPlayers].sort(
     (a, b) => ((gs.totalScores ?? {})[a.id] ?? 0) - ((gs.totalScores ?? {})[b.id] ?? 0)
   );
 
@@ -223,26 +310,36 @@ export default function NumberGuessorScreen({ navigation }: Props) {
     return (
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <Text style={styles.gameOverEmoji}>🎯</Text>
+          <Text style={styles.gameOverEmoji}>🏆</Text>
           <Text style={styles.gameOverTitle}>{winnerText} wins!</Text>
-          <Text style={styles.gameOverSub}>Closest guesser after {totalRounds} rounds.</Text>
+          <Text style={styles.gameOverSub}>Lowest penalty (distance + time) after {totalRounds} rounds.</Text>
 
           <View style={styles.divider} />
-          <Text style={styles.sectionLabel}>Final Standings · lower distance is better</Text>
+          <Text style={styles.sectionLabel}>Final Standings · lower = better (distance + seconds)</Text>
 
-          {sortedStandings.map((p, i) => (
-            <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst]}>
-              <Text style={styles.standingRank}>#{i + 1}</Text>
-              <Text style={styles.standingName}>{p.name}</Text>
-              <Text style={[styles.standingScore, i === 0 && { color: COLORS.success }]}>
-                {(gs.totalScores ?? {})[p.id] ?? 0} off
-              </Text>
-            </View>
-          ))}
+          {sortedStandings.map((p, i) => {
+            const isMe = p.id === myId;
+            const scoreColor = i === 0 ? COLORS.success : isMe ? COLORS.warning : COLORS.text2;
+            return (
+              <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst, isMe && styles.standingRowMe]}>
+                <Text style={[styles.standingRank, isMe && styles.standingRankMe]}>#{i + 1}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                  <Text style={[styles.standingName, isMe && styles.standingNameMe]}>{p.name}</Text>
+                  {isMe && <Text style={styles.standingYouBadge}>YOU</Text>}
+                </View>
+                <Text style={[styles.standingScore, { color: scoreColor }]}>
+                  {(gs.totalScores ?? {})[p.id] ?? 0} pts
+                </Text>
+              </View>
+            );
+          })}
 
           <View style={styles.actions}>
             {isHost ? (
-              <PrimaryButton title="Back to Games" onPress={() => navigation.navigate('GameSelect')} />
+              <>
+                <PrimaryButton title="Play Again" onPress={() => startGame('numberGuessor')} />
+                <SecondaryButton title="Choose New Game" onPress={() => navigation.navigate('GameSelect')} />
+              </>
             ) : (
               <Text style={styles.waitSub}>Waiting for host to continue...</Text>
             )}
@@ -258,6 +355,21 @@ export default function NumberGuessorScreen({ navigation }: Props) {
     const guessValid = !Number.isNaN(parsedGuess) && parsedGuess >= 1 && parsedGuess <= 100;
     const guessesIn = (gs.submittedGuesserIds ?? []).length;
 
+    // Timer colour: green → yellow → red
+    const timerColor = secondsLeft <= 5 ? COLORS.danger : secondsLeft <= 10 ? COLORS.warning : COLORS.success;
+
+    if (isExpired) {
+      return (
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.centered}>
+            <Text style={styles.waitEmoji}>⏰</Text>
+            <Text style={styles.waitTitle}>Time's up!</Text>
+            <Text style={styles.waitSub}>Loading results...</Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
     if (iHaveGuessed) {
       return (
         <SafeAreaView style={styles.safe}>
@@ -265,8 +377,12 @@ export default function NumberGuessorScreen({ navigation }: Props) {
             <Text style={styles.waitEmoji}>✅</Text>
             <Text style={styles.waitTitle}>Guess locked in!</Text>
             <Text style={styles.waitSub}>
-              {guessesIn} / {players.length} guessed
+              {guessesIn} / {allPlayers.length} guessed
             </Text>
+            {/* Still show the countdown */}
+            <View style={[styles.timerBadge, { borderColor: timerColor }]}>
+              <Text style={[styles.timerText, { color: timerColor }]}>{secondsLeft}s</Text>
+            </View>
           </Animated.View>
         </SafeAreaView>
       );
@@ -279,15 +395,22 @@ export default function NumberGuessorScreen({ navigation }: Props) {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <Animated.View style={[styles.centeredContainer, { opacity: fadeAnim }]}>
-            <View style={styles.roundBadge}>
-              <Text style={styles.roundBadgeText}>
-                ROUND {gs.round} / {totalRounds}
-              </Text>
+            <View style={styles.topRow}>
+              <View style={styles.roundBadge}>
+                <Text style={styles.roundBadgeText}>
+                  ROUND {gs.round} / {totalRounds}
+                </Text>
+              </View>
+              <View style={[styles.timerBadge, { borderColor: timerColor }]}>
+                <Text style={[styles.timerText, { color: timerColor }]}>{secondsLeft}s</Text>
+              </View>
             </View>
 
             <View style={styles.promptBox}>
               <Text style={styles.promptText}>{gs.currentPrompt.text}</Text>
             </View>
+
+            <Text style={styles.timerHint}>Score = how far off + seconds taken</Text>
 
             <Text style={styles.enterInstruction}>Your guess (1 – 100):</Text>
 
@@ -322,7 +445,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
             />
 
             <Text style={styles.guesserProgress}>
-              {guessesIn} / {players.length} guessed
+              {guessesIn} / {allPlayers.length} guessed
             </Text>
           </Animated.View>
         </KeyboardAvoidingView>
@@ -333,8 +456,8 @@ export default function NumberGuessorScreen({ navigation }: Props) {
   // ── Reveal ────────────────────────────────────────────────────────────────
   if (gs.phase === 'reveal') {
     const results = gs.results ?? [];
-    const minDist = results.length > 0 ? results[0].distance : null;
-    const closestPlayers = results.filter((r) => r.distance === minDist);
+    const minDistance = results.length > 0 ? Math.min(...results.map(r => r.distance ?? 100)) : null;
+    const bestPlayers = minDistance !== null ? results.filter(r => (r.distance ?? 100) === minDistance) : [];
 
     return (
       <SafeAreaView style={styles.safe}>
@@ -354,26 +477,34 @@ export default function NumberGuessorScreen({ navigation }: Props) {
             <Text style={styles.sectionLabel}>Guesses · off by</Text>
 
             {results.map((r) => {
-              const isClosest = r.distance === minDist;
+              const isBest = minDistance !== null && (r.distance ?? 100) === minDistance;
+              const isMe = r.playerId === myId;
               return (
-                <View key={r.playerId} style={[styles.guessRow, isClosest && styles.guessRowWinner]}>
-                  <Text style={styles.guessRank}>{isClosest ? '🎯' : '·'}</Text>
+                <View key={r.playerId} style={[styles.guessRow, isBest && styles.guessRowWinner, isMe && styles.guessRowMe]}>
+                  <Text style={styles.guessRank}>{r.timedOut ? '⏰' : isBest ? '🎯' : '·'}</Text>
                   <View style={styles.guessInfo}>
-                    <Text style={styles.guessName}>{r.playerName}</Text>
-                    <Text style={styles.guessValue}>guessed {r.guess}</Text>
+                    <View style={styles.guessNameRow}>
+                      <Text style={[styles.guessName, isMe && styles.guessNameMe]}>{r.playerName}</Text>
+                      <View style={styles.timeBadge}>
+                        <Text style={styles.timeBadgeText}>⏱ {r.timeTaken}s</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.guessValue}>
+                      {r.timedOut ? 'timed out' : `guessed ${r.guess}`}
+                    </Text>
                   </View>
-                  <Text style={[styles.guessDist, { color: isClosest ? COLORS.success : COLORS.text2 }]}>
+                  <Text style={[styles.guessDist, { color: isBest ? COLORS.success : COLORS.text2 }]}>
                     {r.distance === 0 ? 'exact!' : `off by ${r.distance}`}
                   </Text>
                 </View>
               );
             })}
 
-            {minDist !== null && (
+            {bestPlayers.length > 0 && (
               <View style={styles.closestBanner}>
                 <Text style={styles.closestText}>
-                  🏅 {closestPlayers.map((r) => r.playerName).join(' & ')}
-                  {minDist === 0 ? ' got it exactly!' : ` closest (off by ${minDist})`}
+                  🎯 {bestPlayers.map((r) => r.playerName).join(' & ')}
+                  {minDistance === 0 ? ' — exact answer!' : ' — closest guess'}
                 </Text>
               </View>
             )}
@@ -397,17 +528,36 @@ export default function NumberGuessorScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Animated.View style={{ opacity: fadeAnim, gap: 16 }}>
           <Text style={styles.revealTitle}>After round {gs.round}</Text>
-          <Text style={styles.sectionLabel}>Standings · lower is better</Text>
+          <Text style={styles.sectionLabel}>Standings · lower = better</Text>
 
-          {sortedStandings.map((p, i) => (
-            <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst]}>
-              <Text style={styles.standingRank}>#{i + 1}</Text>
-              <Text style={styles.standingName}>{p.name}</Text>
-              <Text style={[styles.standingScore, i === 0 && { color: COLORS.success }]}>
-                {(gs.totalScores ?? {})[p.id] ?? 0} off
-              </Text>
-            </View>
-          ))}
+          {sortedStandings.map((p, i) => {
+            const isMe = p.id === myId;
+            const result = (gs.results ?? []).find(r => r.playerId === p.id);
+            const roundPenalty = (gs.roundScores ?? {})[p.id] ?? 0;
+            const totalScore = (gs.totalScores ?? {})[p.id] ?? 0;
+            const scoreColor = i === 0 ? COLORS.success : isMe ? COLORS.warning : COLORS.text2;
+            return (
+              <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst, isMe && styles.standingRowMe]}>
+                <Text style={[styles.standingRank, isMe && styles.standingRankMe]}>#{i + 1}</Text>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.standingName, isMe && styles.standingNameMe]}>{p.name}</Text>
+                    {isMe && <Text style={styles.standingYouBadge}>YOU</Text>}
+                  </View>
+                  {result && (
+                    <Text style={styles.roundBreakdown}>
+                      {result.timedOut
+                        ? '⏰ timed out · +20'
+                        : `${result.distance} off + ${result.timeTaken}s = +${roundPenalty}`}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.standingScore, { color: scoreColor }]}>
+                  {totalScore} pts
+                </Text>
+              </View>
+            );
+          })}
 
           <View style={styles.actions}>
             {isHost ? (
@@ -506,6 +656,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   roundBadge: {
     backgroundColor: COLORS.surface2,
     borderRadius: RADIUS.full,
@@ -519,6 +674,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.text2,
     letterSpacing: 1.5,
+  },
+  timerBadge: {
+    backgroundColor: COLORS.surface2,
+    borderRadius: RADIUS.full,
+    borderWidth: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+  },
+  timerText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  timerHint: {
+    fontSize: 12,
+    color: COLORS.text3,
+    letterSpacing: 0.5,
+    alignSelf: 'flex-start',
+    width: '100%',
   },
   guesserProgress: { fontSize: 12, color: COLORS.text3, letterSpacing: 1 },
   promptBox: {
@@ -614,7 +788,19 @@ const styles = StyleSheet.create({
   },
   guessRank: { fontSize: 18, width: 30, textAlign: 'center' },
   guessInfo: { flex: 1, gap: 2 },
+  guessNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   guessName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  guessNameMe: { color: COLORS.warning },
+  guessRowMe: { borderColor: COLORS.warning, borderWidth: 1.5, backgroundColor: '#2a2000' },
+  timeBadge: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: COLORS.text3,
+  },
+  timeBadgeText: { fontSize: 11, fontWeight: '700', color: COLORS.text2 },
   guessValue: { fontSize: 13, color: COLORS.text2 },
   guessDist: { fontSize: 14, fontWeight: '700' },
   closestBanner: {
@@ -639,9 +825,23 @@ const styles = StyleSheet.create({
     borderColor: COLORS.success,
     backgroundColor: '#071d0f',
   },
+  roundBreakdown: { fontSize: 12, color: COLORS.text2, marginTop: 2 },
   standingRank: { fontSize: 13, fontWeight: '700', color: COLORS.text2, width: 28 },
+  standingRankMe: { color: COLORS.warning },
   standingName: { flex: 1, fontSize: 16, fontWeight: '700', color: COLORS.text },
+  standingNameMe: { color: COLORS.warning, fontWeight: '800' },
   standingScore: { fontSize: 15, fontWeight: '700', color: COLORS.text2 },
+  standingScoreMe: { color: COLORS.warning },
+  standingYouBadge: {
+    fontSize: 10, fontWeight: '800', color: COLORS.warning,
+    backgroundColor: COLORS.warning + '22', borderRadius: 4,
+    paddingHorizontal: 5, paddingVertical: 2, letterSpacing: 0.5,
+  },
+  standingRowMe: {
+    borderColor: COLORS.warning,
+    borderWidth: 1.5,
+    backgroundColor: '#2a2000',
+  },
   gameOverEmoji: { fontSize: 64, textAlign: 'center' },
   gameOverTitle: {
     fontSize: 36,

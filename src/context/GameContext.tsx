@@ -4,11 +4,12 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   ReactNode,
 } from 'react';
 import socket, { ensureSocketConnected } from '../socket';
 import { LocalUser, getProfileById } from '../storage/userStorage';
-import { navigateTo } from '../navigation/navigationRef';
+import { navigateTo, resetToMain, goBack } from '../navigation/navigationRef';
 import { supabase } from '../lib/supabase';
 import { usePresence } from '../hooks/usePresence';
 
@@ -19,6 +20,7 @@ export type Player = {
   name: string;
   score: number;
   eliminated?: boolean;
+  persistentId?: string | null;
 };
 
 export type GameType =
@@ -35,6 +37,7 @@ type Room = {
   hostId: string;
   players: Player[];
   phase: string;
+  hostScreen?: string;
   gameState: any;
 };
 
@@ -71,6 +74,7 @@ type GameContextType = {
   sendGameState: (gameState: any) => void;
   sendPlayerAction: (action: string, data: any) => void;
   updateRoomScores: (players: Player[]) => void;
+  setHostScreen: (screen: string) => void;
 };
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -93,6 +97,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [room, setRoom]           = useState<Room | null>(null);
   const [isHost, setIsHost]       = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+
+  // Keep refs so socket callbacks always see the latest values without re-creating them
+  const currentUserRef   = useRef<LocalUser | null>(null);
+  const isHostRef        = useRef(false);
+  const prevHostScreenRef = useRef<string | undefined>(undefined);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
   // ── Presence tracking (app-level online status) ───────────────────────────
   usePresence(currentUser);
@@ -141,6 +152,11 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     socket.on('connect', () => {
       console.log('[Socket] connected id=', socket.id);
       setIsConnected(true);
+      // Re-register persistentId so stableId() works after a reconnect
+      const pid = currentUserRef.current?.id;
+      if (pid) {
+        socket.emit('registerPersistentId', { persistentId: pid });
+      }
     });
     socket.on('disconnect', (reason) => {
       console.log('[Socket] disconnected reason=', reason);
@@ -160,12 +176,27 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     });
 
     socket.on('roomUpdated', (r: Room) => {
+      const prevHostScreen = prevHostScreenRef.current;
+      prevHostScreenRef.current = r.hostScreen;
+
       setRoom(r);
       setPlayers(r.players);
+      const myStableId = currentUserRef.current?.id ?? socket.id;
+      const iAmHost = r.hostId === myStableId;
+      setIsHost(iAmHost);
+
+      // If host navigated away from a live game, send non-hosts back one screen (to JoinRoom)
+      if (!iAmHost && prevHostScreen === 'playing' && r.hostScreen !== 'playing') {
+        goBack();
+      }
     });
 
     socket.on('gameStarted', (r: Room) => {
+      prevHostScreenRef.current = r.hostScreen ?? 'playing';
       setRoom(r);
+      setPlayers(r.players);
+      const myStableId = currentUserRef.current?.id ?? socket.id;
+      setIsHost(r.hostId === myStableId);
       setSelectedGame(r.gameState.game);
 
       switch (r.gameState.game) {
@@ -207,9 +238,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     socket.on('hostChanged', ({ newHostId, room: r }: { newHostId: string; room: Room }) => {
       setRoom(r);
       setPlayers(r.players);
-      if (newHostId === socket.id) {
-        setIsHost(true);
-      }
+      const myStableId = currentUserRef.current?.id ?? socket.id;
+      setIsHost(newHostId === myStableId);
     });
 
     // Room was cancelled by the host — all non-host players get kicked
@@ -217,7 +247,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       setRoom(null);
       setIsHost(false);
       setPlayers([]);
-      navigateTo('MainTabs');
+      resetToMain();
     });
 
     // We successfully left a room voluntarily
@@ -225,7 +255,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       setRoom(null);
       setIsHost(false);
       setPlayers([]);
-      navigateTo('MainTabs');
+      resetToMain();
     });
 
     socket.on('error', ({ message }: { message: string }) => {
@@ -267,9 +297,10 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
   const createRoom = useCallback((playerName: string) => {
     console.log('[createRoom] emit — connected:', socket.connected, 'existingRoom:', room?.code ?? 'none');
+    const persistentId = currentUserRef.current?.id ?? socket.id;
     if (room) exitCurrentRoom();
     ensureSocketConnected()
-      .then(() => socket.emit('createRoom', { playerName }, (ack: { ok: boolean; message?: string }) => {
+      .then(() => socket.emit('createRoom', { playerName, persistentId }, (ack: { ok: boolean; message?: string }) => {
         if (!ack.ok) console.error('[createRoom] server rejected:', ack.message);
       }))
       .catch((err) => console.error('[createRoom] could not connect:', err.message));
@@ -277,9 +308,10 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
   const joinRoom = useCallback((code: string, playerName: string) => {
     // Clear any existing room (e.g. user was hosting and switched to join)
+    const persistentId = currentUserRef.current?.id ?? socket.id;
     if (room) exitCurrentRoom();
     ensureSocketConnected()
-      .then(() => socket.emit('joinRoom', { code, playerName }, (ack: { ok: boolean; message?: string }) => {
+      .then(() => socket.emit('joinRoom', { code, playerName, persistentId }, (ack: { ok: boolean; message?: string }) => {
         if (!ack.ok) console.error('[joinRoom] server rejected:', ack.message);
       }))
       .catch((err) => console.error('[joinRoom] could not connect:', err.message));
@@ -288,14 +320,21 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const leaveRoom = useCallback(() => {
     if (!room) return;
     socket.emit('leaveRoom', { code: room.code });
-    // State is cleared when the server echoes back 'leftRoom'
+    // Navigate immediately — don't wait for server echo (which may not arrive if disconnected)
+    setRoom(null);
+    setIsHost(false);
+    setPlayers([]);
+    resetToMain();
   }, [room]);
 
   const cancelRoom = useCallback(() => {
     if (!room || !isHost) return;
     socket.emit('cancelRoom', { code: room.code });
-    // Server emits 'roomCancelled' to all, which clears state for everyone
-    // including us (handled by the 'roomCancelled' listener above)
+    // Navigate immediately — don't wait for server echo
+    setRoom(null);
+    setIsHost(false);
+    setPlayers([]);
+    resetToMain();
   }, [room, isHost]);
 
   const startGame = useCallback((game: GameType) => {
@@ -303,9 +342,10 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       console.warn('[startGame] no room in context — emit skipped');
       return;
     }
-    console.log('[startGame] emit — code:', room.code, 'game:', game, 'connected:', socket.connected);
+    const persistentId = currentUserRef.current?.id ?? socket.id;
+    console.log('[startGame] emit — code:', room.code, 'game:', game, 'persistentId:', persistentId, 'connected:', socket.connected);
     ensureSocketConnected()
-      .then(() => socket.emit('startGame', { code: room.code, game }, (ack: { ok: boolean; message?: string }) => {
+      .then(() => socket.emit('startGame', { code: room.code, game, persistentId }, (ack: { ok: boolean; message?: string }) => {
         if (!ack.ok) console.error('[startGame] server rejected:', ack.message);
       }))
       .catch((err) => console.error('[startGame] could not connect:', err.message));
@@ -334,6 +374,11 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     ensureSocketConnected()
       .then(() => socket.emit('updateScores', { code: room.code, players: updatedPlayers }))
       .catch((err) => console.error('[updateRoomScores] could not connect:', err.message));
+  }, [room]);
+
+  const setHostScreen = useCallback((screen: string) => {
+    if (!room) return;
+    socket.emit('setHostScreen', { code: room.code, screen });
   }, [room]);
 
   // ── Single-device helpers ─────────────────────────────────────────────────
@@ -392,6 +437,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       sendGameState,
       sendPlayerAction,
       updateRoomScores,
+      setHostScreen,
     }}>
       {children}
     </GameContext.Provider>

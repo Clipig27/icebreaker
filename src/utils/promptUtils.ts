@@ -151,7 +151,9 @@ export interface GuessResult {
   playerId: string;
   playerName: string;
   guess: number | null;
-  distance: number; // abs(guess - correctAnswer), lower = better
+  distance: number;   // abs(guess - correctAnswer), shown for display only
+  timeTaken: number;  // seconds elapsed (1–20); this is the score/penalty
+  timedOut?: boolean;
 }
 
 export function calculateGuessResults(

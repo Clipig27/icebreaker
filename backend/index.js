@@ -5,6 +5,8 @@ const cors    = require('cors');
 const {
   LIE_DETECTOR_PROMPTS,
   TALENT_SHOW_PROMPTS,
+  TALENT_SHOW_TIEBREAK_PROMPTS,
+  TALENT_SHOW_FINAL_PROMPTS,
   STAND_OUT_PROMPTS,
   NUMBER_GUESSOR_PROMPTS,
   PIE_CHARTS_PROMPTS,
@@ -15,7 +17,11 @@ app.use(cors());
 app.use(express.json());
 
 const httpServer = http.createServer(app);
-const io = new Server(httpServer, { cors: { origin: '*' } });
+const io = new Server(httpServer, {
+  cors: { origin: '*' },
+  pingInterval: 10000,
+  pingTimeout:   5000,
+});
 
 // ── In-memory state ───────────────────────────────────────────────────────────
 const rooms = {};   // code → room object
@@ -96,6 +102,15 @@ const usernames = {};
 // dosRoundData[code] = { actions: { [playerId]: { action, target } } }
 const dosRoundData = {};
 
+// Lie Detector — server-side secret store (truth statement + votes, never broadcast until results)
+// ldRoomData[code] = { truthStatement: 1|2, votes: [] }
+const ldRoomData = {};
+
+// ── Disconnect grace period ───────────────────────────────────────────────────
+const disconnectTimers   = {};  // socketId     → timeout handle
+const playerPersistentIds = {}; // socketId     → persistentId (userId)
+const persistentToSocket  = {}; // persistentId → current socketId
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function generateCode() {
   return Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -110,28 +125,30 @@ function round2(x) {
  * Resolve all actions for a Deal or Steal round.
  *
  * Economy (all % of round-start balance):
- *   Mutual deal        +30% each  (A deals B, B deals A — not voided by steals)
- *   Deal into Neutral  +15%       (target chose Neutral — half reward for dealer)
+ *   Mutual deal        +50% each  (A deals B, B deals A — not voided by steals)
+ *   Deal into Neutral  +25%       (target chose Neutral — half reward for dealer)
  *   Deal into Steal     0         (no bonus, no penalty for dealer)
  *   Deal into elsewhere 0         (target is dealing someone else — no penalty)
- *   Steal success      +20% profit (split evenly among stealers of same target)
- *   Steal fail         -20%        (Neutral target, mutual steal, or closed loop)
+ *   Steal success      +30% profit (split evenly among stealers of same target)
+ *   Steal fail         -30%        (Neutral target, mutual steal, or closed loop)
  *   Neutral             0
  *
  * Resolution order:
- *   1. Mutual steals    → both fail; both lose 20% of round-start balance.
+ *   1. Mutual steals    → both fail; both lose 30% of round-start balance.
  *   2. Classify steals  → succeed if target chose Deal OR target is stealing
  *                         someone other than the stealer. Fail vs Neutral.
  *   2b.Closed loops     → detect steal cycles (A→B→C→A). All loop members'
- *                         steal actions fail (-20%). External stealers targeting
+ *                         steal actions fail (-30%). External stealers targeting
  *                         loop members still apply normally.
+ *   5b. Mutual deal + stolen → deal bonus voided for the stolen party. They only
+ *                         take the steal loss (same as if partner hadn't dealt back).
  *   3a. Snapshot profits → pending profit per successful stealer before interceptions.
  *   3b. Chain-reaction  → if a successful stealer is ALSO a successful steal
  *                         target, their pending profit is intercepted by whoever
  *                         stole them (split evenly). One clean pass only.
- *   3c. Apply atomically → drain targets (20%), credit stealers, credit interceptors.
- *   4. Failed steals    → each failed stealer loses 20% of round-start balance.
- *   5. Deal outcomes    → mutual +30%, into-neutral +15%, into-steal/elsewhere 0.
+ *   3c. Apply atomically → drain targets (30%), credit stealers, credit interceptors.
+ *   4. Failed steals    → each failed stealer loses 30% of round-start balance.
+ *   5. Deal outcomes    → mutual +50%, into-neutral +25%, into-steal/elsewhere 0.
  *                         Deals resolve independently of steal outcomes.
  *   6. Neutral          → no change, protected from steals.
  *
@@ -145,7 +162,7 @@ function round2(x) {
  *   Per-stealer share: round2(totalLost / stealerCount).
  *   Rounding artifacts (≤$0.01) are acceptable for a casual game.
  *
- * Deal rewards: mutual deal +30% each, deal-into-neutral +15%, deal-into-steal/elsewhere 0.
+ * Deal rewards: mutual deal +50% each, deal-into-neutral +25%, deal-into-steal/elsewhere 0.
  *
  * Returns:
  *   { balances, deltas, roundSummary,
@@ -207,9 +224,9 @@ function scoreDoSRound(room, code) {
     mutualStealers.add(aId);
     mutualStealers.add(bId);
 
-    balances[aId] = round2(balances[aId] - 0.2 * startBals[aId]);
-    balances[bId] = round2(balances[bId] - 0.2 * startBals[bId]);
-    console.log('[scoreDoSRound] mutual steal: %s ↔ %s — each -20%%', aId, bId);
+    balances[aId] = round2(balances[aId] - 0.3 * startBals[aId]);
+    balances[bId] = round2(balances[bId] - 0.3 * startBals[bId]);
+    console.log('[scoreDoSRound] mutual steal: %s ↔ %s — each -30%%', aId, bId);
   }
 
   // ── Step 2: Classify non-mutual steal attempts ────────────────────────────
@@ -291,7 +308,7 @@ function scoreDoSRound(room, code) {
   // Each stealer targets exactly one player, so no accumulation needed.
   const initialStealProfits = {}; // stealerId → pending profit before interceptions
   for (const [targetId, stealerIds] of Object.entries(successfulStealTargets)) {
-    const lostAmount = round2(0.2 * startBals[targetId]);
+    const lostAmount = round2(0.3 * startBals[targetId]);
     const sharePerStealer = round2(lostAmount / stealerIds.length);
     for (const sId of stealerIds) {
       initialStealProfits[sId] = sharePerStealer;
@@ -323,7 +340,7 @@ function scoreDoSRound(room, code) {
   const stolenFromPlayers = new Set();
   for (const [targetId] of Object.entries(successfulStealTargets)) {
     stolenFromPlayers.add(targetId);
-    const lostAmount = round2(0.2 * startBals[targetId]);
+    const lostAmount = round2(0.3 * startBals[targetId]);
     balances[targetId] = round2(balances[targetId] - lostAmount);
   }
   for (const [stealerId, profit] of Object.entries(initialStealProfits)) {
@@ -339,7 +356,7 @@ function scoreDoSRound(room, code) {
 
   // ── Step 4: Apply failed steal penalties ──────────────────────────────────
   for (const stealerId of failedStealers) {
-    balances[stealerId] = round2(balances[stealerId] - 0.2 * startBals[stealerId]);
+    balances[stealerId] = round2(balances[stealerId] - 0.3 * startBals[stealerId]);
   }
 
 // ── Step 5: Resolve deal outcomes (FIXED) ───────────────────────────────────
@@ -362,7 +379,9 @@ for (const actorId of playerIds) {
     startBal,
   });
 
-  // 1. Mutual deal = +30% each
+  // 1. Mutual deal = +50% each — but voided for anyone who was stolen from.
+  // Being stolen from while dealing means you get nothing from the deal
+  // (same outcome as if your partner hadn't dealt back), so the risk is real.
   if (
     targetAction &&
     targetAction.action === 'deal' &&
@@ -373,27 +392,31 @@ for (const actorId of playerIds) {
     if (!processedDealPairs.has(pairKey)) {
       processedDealPairs.add(pairKey);
 
-      dealBonuses[actorId] =
-        (dealBonuses[actorId] || 0) + round2(startBal * 0.30);
+      if (!stolenFromPlayers.has(actorId)) {
+        dealBonuses[actorId] =
+          (dealBonuses[actorId] || 0) + round2(startBal * 0.50);
+      }
 
-      dealBonuses[targetId] =
-        (dealBonuses[targetId] || 0) +
-        round2((startBals[targetId] ?? 0) * 0.30);
+      if (!stolenFromPlayers.has(targetId)) {
+        dealBonuses[targetId] =
+          (dealBonuses[targetId] || 0) +
+          round2((startBals[targetId] ?? 0) * 0.50);
+      }
 
       console.log('[FIX] mutual deal applied', {
-        actorId,
-        targetId,
-        actorGain: round2(startBal * 0.30),
-        targetGain: round2((startBals[targetId] ?? 0) * 0.30),
+        actorId, actorStolen: stolenFromPlayers.has(actorId),
+        actorGain: stolenFromPlayers.has(actorId) ? 0 : round2(startBal * 0.50),
+        targetId, targetStolen: stolenFromPlayers.has(targetId),
+        targetGain: stolenFromPlayers.has(targetId) ? 0 : round2((startBals[targetId] ?? 0) * 0.50),
       });
     }
 
     continue;
   }
 
-  // 2. Deal into neutral or missing target action = +15%
+  // 2. Deal into neutral or missing target action = +25%
   if (!targetAction || targetAction.action === 'neutral') {
-    const gain = round2(startBal * 0.15);
+    const gain = round2(startBal * 0.25);
 
     dealBonuses[actorId] = (dealBonuses[actorId] || 0) + gain;
 
@@ -493,15 +516,180 @@ for (const actorId of playerIds) {
   };
 }
 
+// ── Game-progress helpers (called after a player leaves) ──────────────────────
+
+/** Resolve Lie Detector voting with votes collected so far. */
+function resolveLieDetectorRound(code) {
+  const room = rooms[code];
+  if (!room) return;
+  const gs = room.gameState;
+  if (gs?.game !== 'lieDetector' || gs?.phase !== 'voting') return;
+  const ld = ldRoomData[code];
+  if (!ld) return;
+  const order = gs.playerOrder ?? room.players.map(p => p.id);
+  const speakerId = order[gs.speakerIndex ?? 0];
+  const speaker = room.players.find(p => p.id === speakerId);
+  const nonSpeakers = room.players.filter(p => p.id !== speakerId);
+  const correctLie = ld.truthStatement === 1 ? 2 : 1;
+  const fooled = (ld.votes ?? []).filter(v => v.lieVote !== correctLie).length;
+  const pointsAwarded = [];
+  if (speaker) {
+    pointsAwarded.push({ playerId: speakerId, playerName: speaker.name, points: fooled });
+    speaker.score = (speaker.score ?? 0) + fooled;
+  }
+  for (const p of nonSpeakers) {
+    const vote = (ld.votes ?? []).find(v => v.playerId === p.id);
+    const correct = vote?.lieVote === correctLie;
+    pointsAwarded.push({ playerId: p.id, playerName: p.name, points: correct ? 1 : 0 });
+    if (correct) p.score = (p.score ?? 0) + 1;
+  }
+  const next = {
+    ...gs, phase: 'results',
+    votedPlayerIds: (ld.votes ?? []).map(v => v.playerId),
+    truthStatement: ld.truthStatement,
+    votes: ld.votes,
+    pointsAwarded,
+  };
+  room.gameState = next;
+  io.to(code).emit('gameStateUpdated', next);
+  io.to(code).emit('scoresUpdated', room.players);
+}
+
+/** Advance Lie Detector to the next speaker, skipping anyone no longer in the room. */
+function advanceLieDetector(code) {
+  const room = rooms[code];
+  if (!room) return;
+  const gs = room.gameState;
+  if (gs?.game !== 'lieDetector') return;
+  const order = gs.playerOrder ?? room.players.map(p => p.id);
+  const totalRounds = gs.totalRounds ?? 1;
+  const currentRound = gs.currentRound ?? 1;
+  let nextIdx = (gs.speakerIndex + 1) % order.length;
+  let checked = 0;
+  while (checked < order.length) {
+    if (room.players.find(p => p.id === order[nextIdx])) break;
+    nextIdx = (nextIdx + 1) % order.length;
+    checked++;
+  }
+  if (checked >= order.length || room.players.length < 2) {
+    const next = { ...gs, phase: 'game-over' };
+    room.gameState = next;
+    io.to(code).emit('gameStateUpdated', next);
+    return;
+  }
+  const completingRound = nextIdx <= gs.speakerIndex;
+  const nextRound = completingRound ? currentRound + 1 : currentRound;
+  if (completingRound && nextRound > totalRounds) {
+    const next = { ...gs, phase: 'game-over' };
+    room.gameState = next;
+    io.to(code).emit('gameStateUpdated', next);
+    return;
+  }
+  ldRoomData[code] = null;
+  const prompt = LIE_DETECTOR_PROMPTS[Math.floor(Math.random() * LIE_DETECTOR_PROMPTS.length)];
+  const next = {
+    ...gs, phase: 'entering', prompt,
+    speakerIndex: nextIdx, totalRounds, currentRound: nextRound,
+    playerOrder: order, votedPlayerIds: [],
+    statement1: undefined, statement2: undefined,
+  };
+  room.gameState = next;
+  io.to(code).emit('gameStateUpdated', next);
+}
+
+/** Called after a player is removed from a room mid-game to unblock any stuck state. */
+function checkGameProgressAfterLeave(code, leaverId) {
+  const room = rooms[code];
+  if (!room || room.phase !== 'playing' || room.players.length === 0) return;
+  const gs = room.gameState;
+  if (!gs) return;
+
+  if (gs.game === 'lieDetector') {
+    const order = gs.playerOrder ?? room.players.map(p => p.id);
+    const speakerId = order[gs.speakerIndex ?? 0];
+    if (gs.phase === 'entering' && leaverId === speakerId) {
+      console.log('[leave] LD speaker left during entering — auto-advancing');
+      advanceLieDetector(code);
+    } else if (gs.phase === 'voting') {
+      const nonSpeakers = room.players.filter(p => p.id !== speakerId);
+      const votedIds = gs.votedPlayerIds ?? [];
+      if (nonSpeakers.length === 0 || nonSpeakers.every(p => votedIds.includes(p.id))) {
+        console.log('[leave] LD non-speaker left — all remaining voted, resolving round');
+        resolveLieDetectorRound(code);
+      }
+    }
+    return;
+  }
+
+  if (gs.game === 'standOut' && gs.phase === 'entering' && !room.standOutRoundScored) {
+    const uniqueSubmitters = new Set((room.standOutAnswers ?? []).map(a => a.playerId));
+    if (room.players.length > 0 && room.players.every(p => uniqueSubmitters.has(p.id))) {
+      console.log('[leave] SO player left — all remaining submitted, scoring');
+      room.standOutRoundScored = true;
+      const { deltas, newStreaks, updatedPlayers } = scoreStandOutRound(
+        room.standOutAnswers, room.standOutStreaks, room.players,
+      );
+      room.standOutStreaks = newStreaks;
+      room.players = updatedPlayers;
+      const top = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
+      const isGameOver = top && top.score >= STAND_OUT_WIN_SCORE;
+      const nextGs = {
+        ...gs,
+        phase: isGameOver ? 'game-over' : 'reveal',
+        submittedPlayerIds: [...uniqueSubmitters],
+        answers: room.standOutAnswers,
+        roundDeltas: deltas,
+        ...(isGameOver ? { winnerName: top.name } : {}),
+      };
+      room.gameState = nextGs;
+      io.to(code).emit('gameStateUpdated', nextGs);
+      io.to(code).emit('scoresUpdated', updatedPlayers);
+    }
+    return;
+  }
+
+  if (gs.game === 'numberGuessor' && gs.phase === 'guessing') {
+    const submitted = gs.submittedGuesserIds ?? [];
+    if (room.players.length > 0 && room.players.every(p => submitted.includes(p.id))) {
+      console.log('[leave] NG player left — all remaining guessed, resolving');
+      resolveNGRound(code);
+    }
+    return;
+  }
+
+  if (gs.game === 'dealOrSteal' && gs.phase === 'action') {
+    const submitted = gs.submittedActionIds ?? [];
+    if (room.players.length > 0 && room.players.every(p => submitted.includes(p.id))) {
+      console.log('[leave] DoS player left — all remaining submitted, scoring');
+      const result = scoreDoSRound(room, code);
+      gs.phase = 'round-results';
+      gs.balances = result.balances;
+      gs.roundOutcome = {
+        dealAttemptCount: result.dealAttemptCount, dealSuccessCount: result.dealSuccessCount,
+        stealAttemptCount: result.stealAttemptCount, stealSuccessCount: result.stealSuccessCount,
+        mutualStealCount: result.mutualStealCount, neutralCount: result.neutralCount,
+        stolenFromCount: result.stolenFromCount, chainBonusCount: result.chainBonusCount,
+        closedLoopCount: result.closedLoopCount, deltas: result.deltas,
+      };
+      if (!gs.roundHistory) gs.roundHistory = [];
+      gs.roundHistory.push(result.roundSummary);
+      dosRoundData[code] = { actions: {} };
+      io.to(code).emit('gameStateUpdated', gs);
+    }
+    return;
+  }
+}
+
 /** Remove player from every room they're in. Returns array of affected room codes. */
 function removeSocketFromAllRooms(socketId) {
+  const pid = stableId(socketId);
   const affected = [];
   for (const code in rooms) {
     const room = rooms[code];
-    if (!room.players.find(p => p.id === socketId)) continue;
+    if (!room.players.find(p => p.id === pid)) continue;
 
-    const wasHost = room.hostId === socketId;
-    room.players   = room.players.filter(p => p.id !== socketId);
+    const wasHost = room.hostId === pid;
+    room.players   = room.players.filter(p => p.id !== pid);
     affected.push(code);
 
     if (room.players.length === 0) {
@@ -519,6 +707,8 @@ function removeSocketFromAllRooms(socketId) {
     } else {
       io.to(code).emit('roomUpdated', room);
     }
+
+    checkGameProgressAfterLeave(code, pid);
   }
   return affected;
 }
@@ -531,9 +721,24 @@ function buildInitialGameState(game) {
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
   switch (game) {
     case 'lieDetector':
-      return { game, phase: 'speaker-choice', prompt: pick(LIE_DETECTOR_PROMPTS), speakerIndex: 0, votedPlayerIds: [] };
+      return { game, phase: 'setup', prompt: '', speakerIndex: 0, votedPlayerIds: [] };
     case 'talentShow':
-      return { game, phase: 'prep', currentPrompt: pick(TALENT_SHOW_PROMPTS), currentPerformerIdx: 0, buzzCount: 0, performResults: [], submittedVoterIds: [] };
+      return {
+        game, round: 1, phase: 'prep',
+        prompt: pick(TALENT_SHOW_PROMPTS),
+        timerStartedAt: null, timerDuration: 3000, nextActDuration: 30000,
+        performerQueue: [], currentPerformerIdx: 0,
+        buzzedPlayerIds: [], goldenPlayerIds: [], totalVoters: 0,
+        r1Results: [], eliminatedPlayerIds: [],
+        r2Results: [], r2VoterIds: [],
+        r2Votes: [], r2SubmittedVoterIds: [],
+        tiebreakerCandidates: [], tiebreakerSpotsNeeded: 1, tiebreakerAlreadyAdvanced: [],
+        tbVotes: [], tbSubmittedVoterIds: [], tbVoterIds: [],
+        r1NeutralVoterIds: [], r1NeutralVotes: [], r1NeutralSubmittedIds: [],
+        r3FinalistIds: [], r3Results: [],
+        r3Votes: [], r3SubmittedVoterIds: [], r3VoterIds: [],
+        winnerId: null, runnerUpId: null,
+      };
     case 'standOut': {
       const prompt = pick(STAND_OUT_PROMPTS);
       return { game, phase: 'prompt', roundNumber: 1, currentPrompt: prompt, submittedPlayerIds: [] };
@@ -548,6 +753,8 @@ function buildInitialGameState(game) {
         submittedGuesserIds: [],
         guesses: [],
         totalScores: {},
+        timerStartedAt: null,
+        streaks: {},
       };
     }
     case 'pieCharts':
@@ -564,22 +771,116 @@ app.get('/api/status', (_req, res) => {
   res.json({ ok: true, rooms: Object.keys(rooms).length });
 });
 
+/** Returns the stable canonical player ID for a socket (persistentId if known, else socket.id). */
+function stableId(socketId) {
+  return playerPersistentIds[socketId] ?? socketId;
+}
+
+/** Cancel a pending disconnect timer for a player identified by persistentId. */
+function cancelPendingDisconnect(persistentId) {
+  const oldSocketId = persistentId && persistentToSocket[persistentId];
+  if (oldSocketId && disconnectTimers[oldSocketId]) {
+    clearTimeout(disconnectTimers[oldSocketId]);
+    delete disconnectTimers[oldSocketId];
+    console.log('[grace] cancelled timer for persistentId=%s oldSocket=%s', persistentId, oldSocketId);
+  }
+}
+
+// ── Number Guessor: reveal/scoring helper ─────────────────────────────────────
+function resolveNGRound(code) {
+  const room = rooms[code];
+  if (!room || room.gameState?.game !== 'numberGuessor') return;
+  if (room.gameState.phase !== 'guessing') return;
+
+  // Cancel any pending server-side timer
+  if (room.ngTimerTimeout) {
+    clearTimeout(room.ngTimerTimeout);
+    room.ngTimerTimeout = null;
+  }
+
+  const gs = room.gameState;
+  const correctAnswer = gs.currentPrompt.correctAnswer;
+
+  const results = room.players.map((player) => {
+    const guessObj = (gs.guesses ?? []).find((g) => g.playerId === player.id);
+    const timedOut = guessObj?.timedOut ?? false;
+    const guess    = timedOut ? null : (guessObj?.value ?? null);
+    const distance = guess !== null ? Math.abs(guess - correctAnswer) : 100;
+    // timeTaken: seconds elapsed when submitted (1–20); timed-out = 20
+    const timeTaken = timedOut ? 20 : Math.max(1, guessObj?.timeTaken ?? 20);
+    return { playerId: player.id, playerName: player.name, guess, distance, timeTaken, timedOut };
+  });
+
+  // sort by distance ascending for display (closest first)
+  results.sort((a, b) => a.distance - b.distance);
+
+  // accumulate scores (lower = better); penalty = distance off + seconds taken
+  if (!gs.totalScores) gs.totalScores = {};
+  const roundScores = {};
+  for (const r of results) {
+    const penalty = r.distance + r.timeTaken;
+    roundScores[r.playerId] = penalty;
+    gs.totalScores[r.playerId] = (gs.totalScores[r.playerId] ?? 0) + penalty;
+  }
+
+  gs.phase        = 'reveal';
+  gs.targetNumber = correctAnswer;
+  gs.results      = results;
+  gs.roundScores  = roundScores;
+
+  io.to(code).emit('gameStateUpdated', gs);
+}
+
 // ── Socket events ─────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log('[connect] id=%s totalClients=%d', socket.id, io.engine.clientsCount);
 
+  // ── Re-register persistentId after reconnect ─────────────────────────────────
+  // When a socket reconnects it gets a new socket.id. The client sends this
+  // immediately on 'connect' so stableId() keeps working for all subsequent events.
+  socket.on('registerPersistentId', ({ persistentId }) => {
+    if (!persistentId) return;
+    // Update the old socketId → persistentId mapping if it changed
+    const oldSocketId = persistentToSocket[persistentId];
+    if (oldSocketId && oldSocketId !== socket.id) {
+      delete playerPersistentIds[oldSocketId];
+    }
+    // Cancel pending disconnect BEFORE updating persistentToSocket, so it finds the old socket's timer
+    cancelPendingDisconnect(persistentId);
+    playerPersistentIds[socket.id] = persistentId;
+    persistentToSocket[persistentId] = socket.id;
+    // Re-join any room socket channel the player was already in
+    for (const code in rooms) {
+      const room = rooms[code];
+      if (room.players.find(p => p.id === persistentId || p.persistentId === persistentId)) {
+        socket.join(code);
+        console.log('[registerPersistentId] pid=%s rejoined channel %s', persistentId, code);
+        // Send fresh room state to the reconnecting player so their UI is up to date
+        socket.emit('roomUpdated', room);
+        break;
+      }
+    }
+  });
+
   // ── Create room ─────────────────────────────────────────────────────────────
-  socket.on('createRoom', ({ playerName }, ack) => {
-    console.log('[createRoom] socket=%s playerName=%s', socket.id, playerName);
-    // If already in a room, clean it up first
+  socket.on('createRoom', ({ playerName, persistentId }, ack) => {
+    console.log('[createRoom] socket=%s playerName=%s persistentId=%s', socket.id, playerName, persistentId);
+    // Register FIRST so stableId() works in removeSocketFromAllRooms
+    if (persistentId) {
+      playerPersistentIds[socket.id] = persistentId;
+      persistentToSocket[persistentId] = socket.id;
+    }
+    cancelPendingDisconnect(persistentId);
     removeSocketFromAllRooms(socket.id);
 
+    const playerId = stableId(socket.id);
     const code = generateCode();
     rooms[code] = {
-      hostId:    socket.id,
+      hostId:    playerId,
       code,
-      players:   [{ id: socket.id, name: playerName, score: 0 }],
+      players:   [{ id: playerId, name: playerName, score: 0, persistentId: persistentId ?? null }],
       phase:     'lobby',
+      hostScreen: 'lobby',
       gameState: {},
     };
     socket.join(code);
@@ -589,8 +890,8 @@ io.on('connection', (socket) => {
   });
 
   // ── Join room ────────────────────────────────────────────────────────────────
-  socket.on('joinRoom', ({ code, playerName }, ack) => {
-    console.log('[joinRoom] socket=%s code=%s playerName=%s', socket.id, code, playerName);
+  socket.on('joinRoom', ({ code, playerName, persistentId }, ack) => {
+    console.log('[joinRoom] socket=%s code=%s playerName=%s persistentId=%s', socket.id, code, playerName, persistentId);
     const room = rooms[code];
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
@@ -598,15 +899,44 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // If already in a different room (e.g. was a host), clean up that room first
-    // (skip the target room so we don't accidentally remove ourselves mid-join)
+    // Cancel any pending grace-period disconnect for this player
+    cancelPendingDisconnect(persistentId);
+
+    // Register persistentId → socket mapping
+    if (persistentId) {
+      playerPersistentIds[socket.id] = persistentId;
+      persistentToSocket[persistentId] = socket.id;
+    }
+
+    // ── Rejoin: player was previously in this room ────────────────────────────
+    const existingPlayer = persistentId
+      ? room.players.find(p => p.persistentId === persistentId)
+      : null;
+
+    if (existingPlayer) {
+      // existingPlayer.id is already the stable persistentId — no update needed
+      socket.join(code);
+      // Bring them up to date
+      if (room.phase === 'playing') {
+        socket.emit('gameStarted', room);
+      } else {
+        socket.emit('roomUpdated', room);
+      }
+      io.to(code).emit('roomUpdated', room);
+      console.log('[joinRoom] %s REJOINED room %s (was socket %s)', playerName, code, oldId);
+      if (ack) ack({ ok: true });
+      return;
+    }
+
+    // ── Leave any other rooms first ───────────────────────────────────────────
+    const joinerStableId = stableId(socket.id);
     for (const existingCode in rooms) {
       if (existingCode === code) continue;
       const existing = rooms[existingCode];
-      if (!existing.players.find(p => p.id === socket.id)) continue;
+      if (!existing.players.find(p => p.id === joinerStableId)) continue;
 
-      const wasHost = existing.hostId === socket.id;
-      existing.players = existing.players.filter(p => p.id !== socket.id);
+      const wasHost = existing.hostId === joinerStableId;
+      existing.players = existing.players.filter(p => p.id !== joinerStableId);
 
       if (existing.players.length === 0) {
         delete rooms[existingCode];
@@ -620,12 +950,17 @@ io.on('connection', (socket) => {
       socket.leave(existingCode);
     }
 
-    // Avoid double-joining
-    if (!room.players.find(p => p.id === socket.id)) {
-      room.players.push({ id: socket.id, name: playerName, score: 0 });
+    // ── New player joining (including mid-game) ───────────────────────────────
+    if (!room.players.find(p => p.id === joinerStableId)) {
+      room.players.push({ id: joinerStableId, name: playerName, score: 0, persistentId: persistentId ?? null });
     }
     socket.join(code);
-    io.to(code).emit('roomUpdated', room);
+    if (room.phase === 'playing') {
+      socket.emit('gameStarted', room);
+      io.to(code).emit('roomUpdated', room);
+    } else {
+      io.to(code).emit('roomUpdated', room);
+    }
     console.log('[joinRoom] %s joined room %s', playerName, code);
     if (ack) ack({ ok: true });
   });
@@ -635,8 +970,9 @@ io.on('connection', (socket) => {
     const room = rooms[code];
     if (!room) return;
 
-    const wasHost = room.hostId === socket.id;
-    room.players  = room.players.filter(p => p.id !== socket.id);
+    const leaverId = stableId(socket.id);
+    const wasHost = room.hostId === leaverId;
+    room.players  = room.players.filter(p => p.id !== leaverId);
     socket.leave(code);
     socket.emit('leftRoom', { code });
 
@@ -653,12 +989,14 @@ io.on('connection', (socket) => {
     } else {
       io.to(code).emit('roomUpdated', room);
     }
+
+    checkGameProgressAfterLeave(code, leaverId);
   });
 
   // ── Cancel room (host only — kicks everyone) ─────────────────────────────────
   socket.on('cancelRoom', ({ code }) => {
     const room = rooms[code];
-    if (!room || room.hostId !== socket.id) return;
+    if (!room || room.hostId !== stableId(socket.id)) return;
 
     io.to(code).emit('roomCancelled', { code });
     delete rooms[code];
@@ -666,16 +1004,24 @@ io.on('connection', (socket) => {
   });
 
   // ── Start game ───────────────────────────────────────────────────────────────
-  socket.on('startGame', ({ code, game }, ack) => {
-    console.log('[startGame] socket=%s code=%s game=%s', socket.id, code, game);
+  socket.on('startGame', ({ code, game, persistentId }, ack) => {
+    // Re-register persistentId mapping in case of reconnect before registerPersistentId arrived
+    if (persistentId) {
+      const old = persistentToSocket[persistentId];
+      if (old && old !== socket.id) delete playerPersistentIds[old];
+      playerPersistentIds[socket.id] = persistentId;
+      persistentToSocket[persistentId] = socket.id;
+      cancelPendingDisconnect(persistentId);
+    }
+    console.log('[startGame] socket=%s stableId=%s code=%s game=%s', socket.id, stableId(socket.id), code, game);
     const room = rooms[code];
     if (!room) {
       console.warn('[startGame] room %s not found', code);
       if (ack) ack({ ok: false, message: 'Room not found' });
       return;
     }
-    if (room.hostId !== socket.id) {
-      console.warn('[startGame] socket %s is not host of %s', socket.id, code);
+    if (room.hostId !== stableId(socket.id)) {
+      console.warn('[startGame] socket %s stableId %s is not host %s of room %s', socket.id, stableId(socket.id), room.hostId, code);
       if (ack) ack({ ok: false, message: 'Not the host' });
       return;
     }
@@ -685,8 +1031,15 @@ io.on('connection', (socket) => {
       if (ack) ack({ ok: false, message: `Deal or Steal requires 4–6 players. Currently: ${room.players.length}` });
       return;
     }
-    room.phase     = 'playing';
-    room.gameState = buildInitialGameState(game);
+    room.phase      = 'playing';
+    room.hostScreen = 'playing';
+    room.gameState  = buildInitialGameState(game);
+    // Reset all player scores at the start of every game
+    room.players = room.players.map(p => ({ ...p, score: 0 }));
+    // Reset Lie Detector secret store
+    if (game === 'lieDetector') {
+      ldRoomData[code] = null;
+    }
     // Reset Stand Out per-round accumulators
     if (game === 'standOut') {
       room.standOutAnswers     = [];
@@ -698,18 +1051,42 @@ io.on('connection', (socket) => {
     if (ack) ack({ ok: true });
   });
 
+  // ── Set host screen (host only) — mirrors host navigation to non-hosts ────────
+  socket.on('setHostScreen', ({ code, screen }) => {
+    const room = rooms[code];
+    if (!room) return;
+    if (room.hostId !== stableId(socket.id)) return;
+    room.hostScreen = screen;
+    io.to(code).emit('roomUpdated', room);
+  });
+
   // ── Update game state (host only) ────────────────────────────────────────────
   socket.on('updateGameState', ({ code, gameState }) => {
     console.log('[updateGameState] socket=%s code=%s phase=%s', socket.id, code, gameState?.phase ?? gameState?.currentPhase ?? '?');
     const room = rooms[code];
     if (!room) { console.warn('[updateGameState] room %s not found', code); return; }
-    if (room.hostId !== socket.id) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); return; }
+    if (room.hostId !== stableId(socket.id)) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); return; }
 
-    // Stand Out: clear accumulated answers + scored flag each time we enter the answering phase
-    if (gameState?.game === 'standOut' && gameState?.phase === 'entering') {
+    // Stand Out: clear accumulated answers + scored flag at the start of every round
+    if (gameState?.game === 'standOut' && (gameState?.phase === 'prompt' || gameState?.phase === 'entering')) {
       room.standOutAnswers     = [];
       room.standOutRoundScored = false;
-      console.log('[standOut] entering phase — answers + roundScored reset for room', code);
+      console.log('[standOut] %s phase — answers + roundScored reset for room %s', gameState.phase, code);
+    }
+
+    // Number Guessor: clear guesses each time a new guessing phase starts
+    if (gameState?.game === 'numberGuessor' && gameState?.phase === 'guessing') {
+      gameState.guesses = [];
+      gameState.submittedGuesserIds = [];
+      // timerStartedAt is set by the host client when it broadcasts the guessing phase
+      console.log('[numberGuessor] guessing phase — guesses reset for room', code);
+
+      // Server-side safety timer: resolve round 21s after it started (1s buffer)
+      if (room.ngTimerTimeout) clearTimeout(room.ngTimerTimeout);
+      room.ngTimerTimeout = setTimeout(() => {
+        console.log('[numberGuessor] server timer fired for room', code);
+        resolveNGRound(code);
+      }, 21000);
     }
 
     room.gameState = gameState;
@@ -733,29 +1110,30 @@ io.on('connection', (socket) => {
       if (actualGame !== 'standOut' || actualPhase !== 'entering') {
         console.warn('[SO-A] IGNORED — expected game=standOut phase=entering, got game=%s phase=%s | DIAGNOSE: host may not have sent updateGameState yet',
           actualGame, actualPhase);
-        io.to(code).emit('playerActionReceived', { playerId: socket.id, action, data });
+        io.to(code).emit('playerActionReceived', { playerId: stableId(socket.id), action, data });
         return;
       }
 
       const gs = room.gameState;
+      const soPlayerId = stableId(socket.id);
 
       // Deduplicate — ignore if this player already submitted this round
-      if ((gs.submittedPlayerIds ?? []).includes(socket.id)) {
-        console.warn('[SO-A] DUPLICATE — playerId already in submittedPlayerIds:', socket.id);
+      if ((gs.submittedPlayerIds ?? []).includes(soPlayerId)) {
+        console.warn('[SO-A] DUPLICATE — playerId already in submittedPlayerIds:', soPlayerId);
         return;
       }
 
       // Hard guard: scoring already ran (must be reset by updateGameState entering)
       if (room.standOutRoundScored) {
-        console.warn('[SO-A] BLOCKED by standOutRoundScored=true — late submission from', socket.id,
+        console.warn('[SO-A] BLOCKED by standOutRoundScored=true — late submission from', soPlayerId,
           '| This flag should have been reset when phase->entering arrived');
         return;
       }
 
-      const player = room.players.find(p => p.id === socket.id);
+      const player = room.players.find(p => p.id === soPlayerId);
       if (!player) {
-        console.warn('[SO-A] PLAYER NOT FOUND | socket:%s | room.players:%j',
-          socket.id, room.players.map(p => ({ id: p.id, name: p.name })));
+        console.warn('[SO-A] PLAYER NOT FOUND | socket:%s stableId:%s | room.players:%j',
+          socket.id, soPlayerId, room.players.map(p => ({ id: p.id, name: p.name })));
         return;
       }
 
@@ -763,8 +1141,8 @@ io.on('connection', (socket) => {
       if (!Array.isArray(room.standOutAnswers)) room.standOutAnswers = [];
       if (!room.standOutStreaks) room.standOutStreaks = {};
 
-      room.standOutAnswers.push({ playerId: socket.id, playerName: player.name, text: data.text });
-      const newSubmitted = [...(gs.submittedPlayerIds ?? []), socket.id];
+      room.standOutAnswers.push({ playerId: soPlayerId, playerName: player.name, text: data.text });
+      const newSubmitted = [...(gs.submittedPlayerIds ?? []), soPlayerId];
 
       // ── B. After inserting answer ──────────────────────────────────────────
       console.log('[SO-B] answer inserted | answers:%j | count:%d | playerIds:%j',
@@ -826,59 +1204,110 @@ io.on('connection', (socket) => {
       return; // Do NOT relay to playerActionReceived
     }
 
-    // ── Number Guessor: backend-authoritative handling ────────────────────────
+    // ── Stand Out: entering timer expired (host only) ────────────────────────
+    if (room.gameState?.game === 'standOut' && action === 'so-timer-expired') {
+      if (room.gameState.phase !== 'entering') return;
+      if (room.standOutRoundScored) return;
+
+      if (!Array.isArray(room.standOutAnswers)) room.standOutAnswers = [];
+      if (!room.standOutStreaks) room.standOutStreaks = {};
+
+      const gs = room.gameState;
+      const answeredIds = new Set(room.standOutAnswers.map(a => a.playerId));
+      const newSubmitted = [...(gs.submittedPlayerIds ?? [])];
+      const timedOutDeltas = [];
+
+      // Auto-submit every player who didn't answer with a -10 penalty
+      for (const player of room.players) {
+        if (!answeredIds.has(player.id)) {
+          room.standOutAnswers.push({ playerId: player.id, playerName: player.name, text: '(no answer)', timedOut: true });
+          newSubmitted.push(player.id);
+          room.standOutStreaks[player.id] = 0;
+          timedOutDeltas.push({ playerId: player.id, playerName: player.name, delta: -10, streakCount: 0, timedOut: true });
+        }
+      }
+
+      room.standOutRoundScored = true;
+
+      // Score only players who actually answered (exclude timed-out placeholders)
+      const answeredAnswers = room.standOutAnswers.filter(a => !a.timedOut);
+      const { deltas: answeredDeltas, newStreaks, updatedPlayers: intermediate } = scoreStandOutRound(
+        answeredAnswers, room.standOutStreaks, room.players,
+      );
+      room.standOutStreaks = newStreaks;
+
+      // Apply timeout penalties on top of the scored intermediate state
+      const updatedPlayers = intermediate.map(p => {
+        const timeout = timedOutDeltas.find(d => d.playerId === p.id);
+        return timeout ? { ...p, score: Math.max(0, p.score + timeout.delta) } : p;
+      });
+      room.players = updatedPlayers;
+
+      const allDeltas = [...answeredDeltas, ...timedOutDeltas];
+      const top = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
+      const isGameOver = top && top.score >= (gs.targetScore ?? STAND_OUT_WIN_SCORE);
+
+      const nextGs = {
+        ...gs,
+        phase: isGameOver ? 'game-over' : 'reveal',
+        submittedPlayerIds: newSubmitted,
+        answers: room.standOutAnswers,
+        roundDeltas: allDeltas,
+        ...(isGameOver ? { winnerName: top.name } : {}),
+      };
+      room.gameState = nextGs;
+
+      console.log('[SO-timer] expired — %d answered, %d timed out, new phase: %s', answeredAnswers.length, timedOutDeltas.length, nextGs.phase);
+      io.to(code).emit('gameStateUpdated', nextGs);
+      io.to(code).emit('scoresUpdated', updatedPlayers);
+      return;
+    }
+
+    // ── Number Guessor: player submits guess ─────────────────────────────────
     if (room.gameState?.game === 'numberGuessor' && action === 'ng-guess') {
       const value = Number(data?.value);
-
-      if (!Number.isInteger(value) || value < 1 || value > 100) {
-        return;
-      }
+      if (!Number.isInteger(value) || value < 1 || value > 100) return;
+      if (room.gameState.phase !== 'guessing') return;
 
       if (!room.gameState.guesses) room.gameState.guesses = [];
       if (!room.gameState.submittedGuesserIds) room.gameState.submittedGuesserIds = [];
 
-      // prevent duplicate submit
-      if (room.gameState.submittedGuesserIds.includes(socket.id)) {
-        return;
-      }
+      const ngPlayerId = stableId(socket.id);
+      if (room.gameState.submittedGuesserIds.includes(ngPlayerId)) return;
 
-      room.gameState.guesses.push({ playerId: socket.id, value });
-      room.gameState.submittedGuesserIds.push(socket.id);
+      // Time penalty: 1 pt per second elapsed (min 1, max 20)
+      const submittedAt    = Date.now();
+      const timerStartedAt = room.gameState.timerStartedAt ?? submittedAt;
+      const elapsed        = submittedAt - timerStartedAt;
+      const timeTaken      = Math.min(20, Math.max(1, Math.floor(elapsed / 1000)));
 
-      // update everyone with current submission count
+      room.gameState.guesses.push({ playerId: ngPlayerId, value, timeTaken });
+      room.gameState.submittedGuesserIds.push(ngPlayerId);
+
       io.to(code).emit('gameStateUpdated', room.gameState);
 
-      // all players submitted -> score and reveal
       if (room.gameState.submittedGuesserIds.length >= room.players.length) {
-        const correctAnswer = room.gameState.currentPrompt.correctAnswer;
+        resolveNGRound(code);
+      }
+      return;
+    }
 
-        const results = room.players.map((player) => {
-          const guessObj = room.gameState.guesses.find((g) => g.playerId === player.id);
-          const guess = guessObj?.value ?? null;
-          const distance = guess !== null ? Math.abs(guess - correctAnswer) : 999;
-          return { playerId: player.id, playerName: player.name, guess, distance };
-        });
+    // ── Number Guessor: timer expired (host fires when 20s elapses) ──────────
+    if (room.gameState?.game === 'numberGuessor' && action === 'ng-timer-expired') {
+      if (room.gameState.phase !== 'guessing') return;
 
-        // sort by distance ascending (closest first)
-        results.sort((a, b) => a.distance - b.distance);
+      if (!room.gameState.guesses) room.gameState.guesses = [];
+      if (!room.gameState.submittedGuesserIds) room.gameState.submittedGuesserIds = [];
 
-        // accumulate total scores (lower = better)
-        if (!room.gameState.totalScores) room.gameState.totalScores = {};
-        const roundScores = {};
-        for (const r of results) {
-          roundScores[r.playerId] = r.distance;
-          room.gameState.totalScores[r.playerId] =
-            (room.gameState.totalScores[r.playerId] ?? 0) + r.distance;
+      // Auto-submit timed-out players with max penalty
+      for (const player of room.players) {
+        if (!room.gameState.submittedGuesserIds.includes(player.id)) {
+          room.gameState.guesses.push({ playerId: player.id, value: null, timeTaken: 20, timedOut: true });
+          room.gameState.submittedGuesserIds.push(player.id);
         }
-
-        room.gameState.phase = 'reveal';
-        room.gameState.targetNumber = correctAnswer;
-        room.gameState.results = results;
-        room.gameState.roundScores = roundScores;
-
-        io.to(code).emit('gameStateUpdated', room.gameState);
       }
 
+      resolveNGRound(code);
       return;
     }
 
@@ -900,10 +1329,11 @@ io.on('connection', (socket) => {
         return;
       }
 
+      const dosPlayerId = stableId(socket.id);
       // Duplicate guard
       if (!gs.submittedActionIds) gs.submittedActionIds = [];
-      if (gs.submittedActionIds.includes(socket.id)) {
-        console.log('[dos-action] REJECTED — duplicate from socket:%s', socket.id);
+      if (gs.submittedActionIds.includes(dosPlayerId)) {
+        console.log('[dos-action] REJECTED — duplicate from socket:%s stableId:%s', socket.id, dosPlayerId);
         return;
       }
 
@@ -913,14 +1343,9 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Deal and steal require a non-self target that is in this game session.
-      // We validate against gs.balances (set by host at game start) rather than
-      // room.players, because room.players is the live server list which can drift
-      // from the frontend's player list due to reconnect timing. gs.balances is
-      // the authoritative set of participants for this game session.
       if (choice === 'deal' || choice === 'steal') {
-        if (!target || target === socket.id) {
-          console.log('[dos-action] REJECTED — target missing or self | target:%s socket:%s', target ?? 'none', socket.id);
+        if (!target || target === dosPlayerId) {
+          console.log('[dos-action] REJECTED — target missing or self | target:%s playerId:%s', target ?? 'none', dosPlayerId);
           return;
         }
         if (!gs.balances || !(target in gs.balances)) {
@@ -933,15 +1358,15 @@ io.on('connection', (socket) => {
 
       // Store privately — never enters broadcast gameState
       if (!dosRoundData[code]) dosRoundData[code] = { actions: {} };
-      dosRoundData[code].actions[socket.id] = {
+      dosRoundData[code].actions[dosPlayerId] = {
         action: choice,
         target: choice !== 'neutral' ? target : null,
       };
 
-      gs.submittedActionIds.push(socket.id);
+      gs.submittedActionIds.push(dosPlayerId);
 
-      console.log('[dos-action] counted | socket:%s | choice:%s | now %d/%d submitted',
-        socket.id, choice, gs.submittedActionIds.length, room.players.length);
+      console.log('[dos-action] counted | socket:%s stableId:%s | choice:%s | now %d/%d submitted',
+        socket.id, dosPlayerId, choice, gs.submittedActionIds.length, room.players.length);
 
       io.to(code).emit('gameStateUpdated', gs);
 
@@ -980,7 +1405,7 @@ io.on('connection', (socket) => {
     // Unsubmitted players are treated as Neutral by scoreDoSRound's default.
     if (room.gameState?.game === 'dealOrSteal' && action === 'dos-force-score') {
       const gs = room.gameState;
-      if (room.hostId !== socket.id) return;
+      if (room.hostId !== stableId(socket.id)) return;
       if (gs.phase !== 'action') return;
 
       console.log('[dos-force-score] host triggered force score | round=%d', gs.round);
@@ -1009,30 +1434,99 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // ── Lie Detector: ld-submit (speaker submits statements) ─────────────────
+    if (action === 'ld-submit') {
+      const gs = room.gameState;
+      if (gs?.game !== 'lieDetector' || gs?.phase !== 'entering') return;
+      const submitterId = stableId(socket.id);
+      const order = gs.playerOrder ?? room.players.map(p => p.id);
+      const speakerId = order[gs.speakerIndex ?? 0];
+      if (submitterId !== speakerId) return;
+      const expectedVoterCount = room.players.filter(p => p.id !== speakerId).length;
+      ldRoomData[code] = { truthStatement: data.truthStatement, votes: [] };
+      const next = { ...gs, phase: 'voting', statement1: data.statement1, statement2: data.statement2, votedPlayerIds: [], expectedVoterCount };
+      room.gameState = next;
+      io.to(code).emit('gameStateUpdated', next);
+      return;
+    }
+
+    // ── Lie Detector: ld-vote (non-speaker casts vote) ───────────────────────
+    if (action === 'ld-vote') {
+      const gs = room.gameState;
+      if (gs?.game !== 'lieDetector' || gs?.phase !== 'voting') return;
+      const voterId = stableId(socket.id);
+      const order = gs.playerOrder ?? room.players.map(p => p.id);
+      const speakerId = order[gs.speakerIndex ?? 0];
+      if (voterId === speakerId) return;
+      if ((gs.votedPlayerIds ?? []).includes(voterId)) return;
+      const voter = room.players.find(p => p.id === voterId);
+      if (!voter) return;
+      const ld = ldRoomData[code];
+      if (!ld) return;
+      ld.votes.push({ playerId: voterId, playerName: voter.name, lieVote: data.lieVote });
+      const newVotedIds = [...(gs.votedPlayerIds ?? []), voterId];
+      const speaker = room.players.find(p => p.id === speakerId);
+      const nonSpeakers = room.players.filter(p => p.id !== speakerId);
+      if (newVotedIds.length >= (gs.expectedVoterCount ?? nonSpeakers.length)) {
+        const correctLie = ld.truthStatement === 1 ? 2 : 1;
+        const fooled = ld.votes.filter(v => v.lieVote !== correctLie).length;
+        const pointsAwarded = [];
+        if (speaker) {
+          pointsAwarded.push({ playerId: speakerId, playerName: speaker.name, points: fooled });
+          speaker.score = (speaker.score ?? 0) + fooled;
+        }
+        for (const p of nonSpeakers) {
+          const vote = ld.votes.find(v => v.playerId === p.id);
+          const correct = vote?.lieVote === correctLie;
+          pointsAwarded.push({ playerId: p.id, playerName: p.name, points: correct ? 1 : 0 });
+          if (correct) p.score = (p.score ?? 0) + 1;
+        }
+        const next = { ...gs, phase: 'results', votedPlayerIds: newVotedIds, truthStatement: ld.truthStatement, votes: ld.votes, pointsAwarded };
+        room.gameState = next;
+        io.to(code).emit('gameStateUpdated', next);
+        io.to(code).emit('scoresUpdated', room.players);
+      } else {
+        const next = { ...gs, votedPlayerIds: newVotedIds };
+        room.gameState = next;
+        io.to(code).emit('gameStateUpdated', next);
+      }
+      return;
+    }
+
     // ── All other games: relay as before ─────────────────────────────────────
-    io.to(code).emit('playerActionReceived', { playerId: socket.id, action, data });
+    io.to(code).emit('playerActionReceived', { playerId: stableId(socket.id), action, data });
   });
 
   // ── Update scores (host only) ────────────────────────────────────────────────
   socket.on('updateScores', ({ code, players }) => {
     const room = rooms[code];
-    if (!room || room.hostId !== socket.id) return;
+    if (!room || room.hostId !== stableId(socket.id)) return;
     room.players = players;
     io.to(code).emit('scoresUpdated', players);
   });
 
-  // ── Disconnect ───────────────────────────────────────────────────────────────
+  // ── Disconnect — immediately transfer host, then 15-second grace period ──────
   socket.on('disconnect', (reason) => {
-    console.log('[disconnect] id=%s reason=%s', socket.id, reason);
-    removeSocketFromAllRooms(socket.id);
-
-    // Free username claim (if any)
-    for (const key in usernames) {
-      if (usernames[key] === socket.id) {
-        delete usernames[key];
-        break;
+    console.log('[disconnect] id=%s reason=%s — starting 15s grace period', socket.id, reason);
+    // Do NOT immediately transfer host — the reconnect window is 15 s.
+    // If the host doesn't reconnect in time, removeSocketFromAllRooms() handles the transfer.
+    disconnectTimers[socket.id] = setTimeout(() => {
+      console.log('[grace] expired for socket=%s — removing from rooms', socket.id);
+      removeSocketFromAllRooms(socket.id);
+      const pid = playerPersistentIds[socket.id];
+      if (pid && persistentToSocket[pid] === socket.id) {
+        delete persistentToSocket[pid];
       }
-    }
+      delete playerPersistentIds[socket.id];
+      delete disconnectTimers[socket.id];
+      // Free username claim (if any)
+      for (const key in usernames) {
+        if (usernames[key] === socket.id) {
+          delete usernames[key];
+          break;
+        }
+      }
+    }, 15_000);
   });
 });
 

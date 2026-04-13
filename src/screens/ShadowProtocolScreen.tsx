@@ -14,6 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 import { COLORS, RADIUS, SPACING } from '../constants/theme';
 import socket from '../socket';
+import PrimaryButton from '../components/PrimaryButton';
+import SecondaryButton from '../components/SecondaryButton';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -108,8 +110,8 @@ function useCountdown(phaseEndsAt: number | undefined): number {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function ShadowProtocolScreen() {
-  const { room, sendPlayerAction } = useGame();
+export default function ShadowProtocolScreen({ navigation }: any) {
+  const { room, players, currentUser, isHost, sendPlayerAction, startGame } = useGame();
 
   const [priv, setPriv]         = useState<PrivateState | null>(null);
   const [scan, setScan]         = useState<ScanResult | null>(null);
@@ -122,8 +124,23 @@ export default function ShadowProtocolScreen() {
   const prevPhase  = useRef<string>('');
 
   const gs = room?.gameState as PublicGS | undefined;
-  const myId = socket.id ?? '';
+  const myId = (() => {
+    if (currentUser?.id) {
+      const byPersistent = players.find(
+        p => p.persistentId === currentUser.id || p.id === currentUser.id,
+      );
+      if (byPersistent) return byPersistent.id;
+    }
+    const bySocket = players.find(p => p.id === socket.id);
+    if (bySocket) return bySocket.id;
+    return currentUser?.id ?? socket.id ?? '';
+  })();
   const timeLeft = useCountdown(gs?.phaseEndsAt);
+
+  // Block header back button for non-hosts
+  useEffect(() => {
+    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
+  }, [isHost]);
 
   // ── Request private state on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -548,6 +565,17 @@ export default function ShadowProtocolScreen() {
               ))}
             </View>
           )}
+
+          <View style={styles.actions}>
+            {isHost ? (
+              <>
+                <PrimaryButton title="Play Again" onPress={() => startGame('shadowProtocol')} />
+                <SecondaryButton title="Choose New Game" onPress={() => navigation.navigate('GameSelect')} />
+              </>
+            ) : (
+              <Text style={styles.waitSub}>Waiting for host to continue...</Text>
+            )}
+          </View>
         </ScrollView>
       </SafeAreaView>
     );
@@ -639,4 +667,7 @@ const styles = StyleSheet.create({
   roleRevealItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md },
   roleRevealName: { fontSize: 16, fontWeight: '600', color: COLORS.text },
   roleRevealRole: { fontSize: 14, fontWeight: '700' },
+
+  actions: { marginTop: SPACING.lg, gap: 10 },
+  waitSub: { fontSize: 14, color: COLORS.text2, textAlign: 'center', marginTop: SPACING.md },
 });

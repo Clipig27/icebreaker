@@ -49,15 +49,31 @@ interface PCGameState {
 }
 
 export default function PieChartsScreen({ navigation }: Props) {
-  const { players, room, isHost, sendGameState, sendPlayerAction } = useGame();
-  const myId = socket.id;
+  const { players, room, isHost, currentUser, sendGameState, sendPlayerAction, startGame } = useGame();
+  const myId = (() => {
+    if (currentUser?.id) {
+      const byPersistent = players.find(
+        p => p.persistentId === currentUser.id || p.id === currentUser.id,
+      );
+      if (byPersistent) return byPersistent.id;
+    }
+    const bySocket = players.find(p => p.id === socket.id);
+    if (bySocket) return bySocket.id;
+    return currentUser?.id ?? socket.id ?? '';
+  })();
 
   const gsRef = useRef<PCGameState | null>(null);
-  const playersRef = useRef(players);
-  useEffect(() => { playersRef.current = players; }, [players]);
+  const allPlayers = room?.players ?? players;
+  const playersRef = useRef(allPlayers);
+  useEffect(() => { playersRef.current = room?.players ?? players; }, [room?.players, players]);
 
   const gs = (room?.gameState?.game === 'pieCharts' ? room.gameState : null) as PCGameState | null;
   useEffect(() => { gsRef.current = gs; }, [gs]);
+
+  // Block header back button for non-hosts
+  useEffect(() => {
+    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
+  }, [isHost]);
 
   // Setup timeout — if no usable gameState within 8 s, socket is likely down
   const [setupTimedOut, setSetupTimedOut] = useState(false);
@@ -407,7 +423,10 @@ export default function PieChartsScreen({ navigation }: Props) {
           })}
           <View style={styles.actions}>
             {isHost ? (
-              <PrimaryButton title="Back to Games" onPress={() => navigation.navigate('GameSelect')} />
+              <>
+                <PrimaryButton title="Play Again" onPress={() => startGame('pieCharts')} />
+                <SecondaryButton title="Choose New Game" onPress={() => navigation.navigate('GameSelect')} />
+              </>
             ) : (
               <Text style={styles.waitSub}>Waiting for host to continue...</Text>
             )}

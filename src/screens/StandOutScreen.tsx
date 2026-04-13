@@ -66,17 +66,33 @@ interface SOGameState {
 }
 
 export default function StandOutScreen({ navigation }: Props) {
-  const { players, room, isHost, sendGameState, sendPlayerAction, setPlayers, updateRoomScores } = useGame();
-  const myId = socket.id;
+  const { players, room, isHost, currentUser, sendGameState, sendPlayerAction, setPlayers, updateRoomScores, startGame } = useGame();
+  const myId = (() => {
+    if (currentUser?.id) {
+      const byPersistent = players.find(
+        p => p.persistentId === currentUser.id || p.id === currentUser.id,
+      );
+      if (byPersistent) return byPersistent.id;
+    }
+    const bySocket = players.find(p => p.id === socket.id);
+    if (bySocket) return bySocket.id;
+    return currentUser?.id ?? socket.id ?? '';
+  })();
 
   const usedPromptIds = useRef(new Set<string>());
 
   const gsRef = useRef<SOGameState | null>(null);
-  const playersRef = useRef(players);
-  useEffect(() => { playersRef.current = players; }, [players]);
+  const allPlayers = room?.players ?? players;
+  const playersRef = useRef(allPlayers);
+  useEffect(() => { playersRef.current = room?.players ?? players; }, [room?.players, players]);
 
   const gs = (room?.gameState?.game === 'standOut' ? room.gameState : null) as SOGameState | null;
   useEffect(() => { gsRef.current = gs; }, [gs]);
+
+  // Block header back button for non-hosts
+  useEffect(() => {
+    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
+  }, [isHost]);
 
   // Setup timeout — if no usable gameState within 8 s, socket is likely down
   const [setupTimedOut, setSetupTimedOut] = useState(false);
@@ -92,6 +108,43 @@ export default function StandOutScreen({ navigation }: Props) {
 
   // Local text input (not synced to server — private to each player)
   const [inputText, setInputText] = useState('');
+  // Optimistic submitted flag — set immediately on submit so the UI transitions
+  // to "locked in" without waiting for the backend roundtrip.
+  const [hasSubmittedLocally, setHasSubmittedLocally] = useState(false);
+  // Reset optimistic flag + clear stale input whenever the round/phase changes
+  useEffect(() => {
+    setHasSubmittedLocally(false);
+    setInputText('');
+  }, [gs?.roundNumber, gs?.phase]);
+
+  // Entering-phase countdown (10 s). Resets each time the phase becomes 'entering'.
+  const [enteringSecondsLeft, setEnteringSecondsLeft] = useState(10);
+  const timerExpiredSentRef = useRef(false);
+
+  useEffect(() => {
+    if (gs?.phase !== 'entering') {
+      setEnteringSecondsLeft(10);
+      timerExpiredSentRef.current = false;
+      return;
+    }
+    const interval = setInterval(() => {
+      setEnteringSecondsLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [gs?.phase]); // eslint-disable-line
+
+  // Host fires so-timer-expired when the entering countdown hits 0
+  useEffect(() => {
+    if (
+      enteringSecondsLeft === 0 &&
+      gs?.phase === 'entering' &&
+      isHost &&
+      !timerExpiredSentRef.current
+    ) {
+      timerExpiredSentRef.current = true;
+      sendPlayerAction('so-timer-expired', {});
+    }
+  }, [enteringSecondsLeft]); // eslint-disable-line
 
   // ── Host: reset scores at game start ─────────────────────────────────────────
   // Answer collection and scoring are now handled by the backend.
@@ -264,7 +317,7 @@ export default function StandOutScreen({ navigation }: Props) {
           <Text style={styles.waitSub}>
             {isHost ? 'Choose a target score to win:' : 'Waiting for host to choose a target score...'}
           </Text>
-          {isHost && ([100, 200, 500] as const).map(t => (
+          {isHost && ([50, 100, 200] as const).map(t => (
             <PrimaryButton key={t} title={`Race to ${t}`} onPress={() => handleSelectTarget(t)} />
           ))}
         </ScrollView>
@@ -272,7 +325,7 @@ export default function StandOutScreen({ navigation }: Props) {
     );
   }
 
-  const iHaveSubmitted = (gs.submittedPlayerIds ?? []).includes(myId ?? '');
+  const iHaveSubmitted = hasSubmittedLocally || (gs.submittedPlayerIds ?? []).includes(myId ?? '');
 
   // ── Phase: game-over ───────────────────────────────────────────────────────
   if (gs.phase === 'game-over') {
@@ -287,7 +340,10 @@ export default function StandOutScreen({ navigation }: Props) {
           <ScoreDisplay players={players} />
           <View style={styles.actions}>
             {isHost ? (
-              <PrimaryButton title="Back to Games" onPress={() => navigation.navigate('GameSelect')} />
+              <>
+                <PrimaryButton title="Play Again" onPress={() => startGame('standOut')} />
+                <SecondaryButton title="Choose New Game" onPress={() => navigation.navigate('GameSelect')} />
+              </>
             ) : (
               <Text style={styles.waitSub}>Waiting for host to continue...</Text>
             )}
@@ -365,6 +421,7 @@ export default function StandOutScreen({ navigation }: Props) {
                 if (!t) return;
                 sendPlayerAction('so-answer', { text: t });
                 setInputText('');
+                setHasSubmittedLocally(true);
               }}
               maxLength={60}
             />
@@ -375,6 +432,7 @@ export default function StandOutScreen({ navigation }: Props) {
                 if (!t) return;
                 sendPlayerAction('so-answer', { text: t });
                 setInputText('');
+                setHasSubmittedLocally(true);
               }}
               disabled={!inputText.trim()}
               style={{ marginTop: 8 }}

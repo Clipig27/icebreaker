@@ -10,3 +10,17 @@ export function navigateTo(screen: string) {
     navigationRef.navigate(screen as never);
   }
 }
+
+/** Resets the navigation stack to just MainTabs — used after leaving/cancelling a room. */
+export function resetToMain() {
+  if (navigationRef.isReady()) {
+    navigationRef.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+  }
+}
+
+/** Goes back one screen — used when host leaves a game to send non-hosts back to JoinRoom. */
+export function goBack() {
+  if (navigationRef.isReady() && navigationRef.canGoBack()) {
+    navigationRef.goBack();
+  }
+}

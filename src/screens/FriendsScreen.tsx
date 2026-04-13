@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -134,12 +135,23 @@ export default function FriendsScreen({ navigation }: Props) {
   };
 
   const handleSendInvite = async (friend: Friend) => {
-    if (!room?.code) return;
+    if (!room?.code) {
+      Alert.alert(
+        'No Active Room',
+        'Create a game room first, then invite your friends.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Create Room', onPress: () => navigation.navigate('HostLobby') },
+        ]
+      );
+      return;
+    }
     setActionLoading('invite_' + friend.friendId);
     try {
       await sendGameInvite(friend.friendId, room.code);
+      Alert.alert('Invite Sent', `Invite sent to ${friend.friendUsername} ✓`);
     } catch (e: any) {
-      // duplicate invite or other error — silently ignore
+      // duplicate invite — silently ignore
     } finally {
       setActionLoading(null);
     }
@@ -216,8 +228,7 @@ export default function FriendsScreen({ navigation }: Props) {
                 }
               </TouchableOpacity>
             </View>
-            {sendStatus && <Text style={s.statusSuccess}>{sendStatus}</Text>}
-            {sendError  && <Text style={s.statusError}>{sendError}</Text>}
+            {sendError && <Text style={s.statusError}>{sendError}</Text>}
 
             {/* ── Incoming Requests ── */}
             {requests.length > 0 && (
@@ -294,6 +305,17 @@ export default function FriendsScreen({ navigation }: Props) {
               </>
             )}
 
+            {/* ── Active Room Banner ── */}
+            {room?.code && (
+              <View style={s.roomBanner}>
+                <View>
+                  <Text style={s.roomBannerLabel}>ACTIVE ROOM</Text>
+                  <Text style={s.roomBannerCode}>{room.code}</Text>
+                </View>
+                <Text style={s.roomBannerHint}>Tap Invite on any friend →</Text>
+              </View>
+            )}
+
             {/* ── Friends header ── */}
             <Text style={[s.sectionTitle, { marginTop: SPACING.xl }]}>
               FRIENDS <Text style={s.badge}>{friends.length}</Text>
@@ -306,24 +328,30 @@ export default function FriendsScreen({ navigation }: Props) {
         renderItem={({ item }) => (
           <View style={s.friendRow}>
             <View style={s.friendLeft}>
-              <View style={[s.onlineDot, { backgroundColor: item.friendIsOnline ? COLORS.success : COLORS.surface2 }]} />
+              <View style={[s.onlineDot, { backgroundColor: item.friendIsOnline ? COLORS.success : COLORS.border }]} />
               <View>
                 <Text style={s.friendUsername}>{item.friendUsername}</Text>
-                <Text style={s.friendTrophies}>🏆 {item.friendTrophies}</Text>
+                <Text style={[s.friendStatus, { color: item.friendIsOnline ? COLORS.success : COLORS.text2 }]}>
+                  {item.friendIsOnline ? 'Online' : 'Offline'}
+                </Text>
               </View>
             </View>
             <View style={s.friendActions}>
-              {room?.code && item.friendIsOnline && (
+              {item.friendIsOnline ? (
                 <TouchableOpacity
                   style={[s.inviteBtn, actionLoading === 'invite_' + item.friendId && s.btnDisabled]}
                   onPress={() => handleSendInvite(item)}
-                  disabled={actionLoading === 'invite_' + item.friendId}
+                  disabled={!!actionLoading}
                 >
                   {actionLoading === 'invite_' + item.friendId
                     ? <ActivityIndicator size="small" color="#fff" />
                     : <Text style={s.inviteBtnText}>Invite</Text>
                   }
                 </TouchableOpacity>
+              ) : (
+                <View style={s.offlineBadge}>
+                  <Text style={s.offlineBadgeText}>Offline</Text>
+                </View>
               )}
               <TouchableOpacity
                 style={[s.unfriendBtn, actionLoading === 'unfriend_' + item.friendId && s.btnDisabled]}
@@ -494,10 +522,22 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  friendTrophies: {
+  friendStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  offlineBadge: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  offlineBadgeText: {
     color: COLORS.text2,
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '600',
   },
   friendActions: {
     flexDirection: 'row',
@@ -534,6 +574,36 @@ const s = StyleSheet.create({
     color: COLORS.text2,
     fontSize: 14,
     marginTop: SPACING.sm,
+  },
+  roomBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
+    marginTop: SPACING.xl,
+  },
+  roomBannerLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2,
+    color: COLORS.accent,
+    marginBottom: 2,
+  },
+  roomBannerCode: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.text,
+    letterSpacing: 3,
+  },
+  roomBannerHint: {
+    fontSize: 12,
+    color: COLORS.text2,
+    fontWeight: '600',
   },
   btnDisabled: {
     opacity: 0.5,

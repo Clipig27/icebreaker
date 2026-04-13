@@ -32,6 +32,17 @@ export default function JoinRoomScreen({ navigation, route }: any) {
     if (room && !joined) setJoined(true);
   }, [room]);
 
+  // Back button while in lobby → leave the room
+  useEffect(() => {
+    if (!joined || !room) return;
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      if (e.data.action.type === 'RESET') return; // allow programmatic resets
+      e.preventDefault();
+      leaveRoom();
+    });
+    return unsub;
+  }, [joined, room]);
+
   // Navigate to the correct game screen once the host starts
   useEffect(() => {
     if (room?.phase === 'playing' && room?.gameState?.game) {
@@ -93,11 +104,15 @@ export default function JoinRoomScreen({ navigation, route }: any) {
   }
 
   // ── Waiting lobby (joined, host hasn't started yet) ──────────────────────────
+  const isHostSelecting = room?.hostScreen === 'selecting';
+
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Waiting for host…</Text>
+      <Text style={styles.title}>{isHostSelecting ? 'Get Ready…' : 'Waiting for host…'}</Text>
       <Text style={styles.code}>{room?.code}</Text>
-      <Text style={styles.subtitle}>The game will start when the host is ready</Text>
+      <Text style={styles.subtitle}>
+        {isHostSelecting ? 'Host is choosing a game…' : 'The game will start when the host is ready'}
+      </Text>
 
       <Text style={styles.label}>Players ({room?.players.length})</Text>
       <FlatList

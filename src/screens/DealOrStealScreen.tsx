@@ -81,7 +81,7 @@ type Props = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STARTING_BALANCE = 10.0;
+const STARTING_BALANCE = 100.0;
 
 /** Round options keyed by player count: 4→[4,8], 5→[5,10], 6→[6,12] */
 function getRoundOptions(playerCount: number): number[] {
@@ -106,8 +106,18 @@ function fmtDelta(n: number): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DealOrStealScreen({ navigation }: Props) {
-  const { players, room, isHost, sendGameState, sendPlayerAction } = useGame();
-  const myId = socket.id ?? '';
+  const { players, room, isHost, currentUser, sendGameState, sendPlayerAction, startGame } = useGame();
+  const myId = (() => {
+    if (currentUser?.id) {
+      const byPersistent = players.find(
+        p => p.persistentId === currentUser.id || p.id === currentUser.id,
+      );
+      if (byPersistent) return byPersistent.id;
+    }
+    const bySocket = players.find(p => p.id === socket.id);
+    if (bySocket) return bySocket.id;
+    return currentUser?.id ?? socket.id ?? '';
+  })();
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const gsRef = useRef<DSGameState | null>(null);
@@ -124,6 +134,11 @@ export default function DealOrStealScreen({ navigation }: Props) {
   }, [sendGameState]);
 
   const gs = (room?.gameState?.game === 'dealOrSteal' ? room.gameState : null) as DSGameState | null;
+
+  // Block header back button for non-hosts
+  useEffect(() => {
+    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
+  }, [isHost]);
 
   // Fade animation on phase / round change
   useEffect(() => {
@@ -668,7 +683,7 @@ export default function DealOrStealScreen({ navigation }: Props) {
         >
           <Text style={styles.actionOptionTitle}>🤝  Deal</Text>
           <Text style={styles.actionOptionDesc}>
-            Propose a deal. Mutual deal → both +30%. They go Neutral → you +15%. They steal or deal elsewhere → you get nothing, no penalty.
+            Propose a deal. Mutual deal → both +50% (voided if you get stolen from). They go Neutral → you +25%. They steal or deal elsewhere → you get nothing, no penalty.
           </Text>
         </TouchableOpacity>
 
@@ -678,7 +693,7 @@ export default function DealOrStealScreen({ navigation }: Props) {
         >
           <Text style={styles.actionOptionTitle}>🔪  Steal</Text>
           <Text style={styles.actionOptionDesc}>
-            Target a player who chose Deal or is stealing someone else. Succeed → gain 20% of their round-start balance (split if multiple stealers). Fail (Neutral target, mutual steal, or closed steal loop) → lose -20%.
+            Target a player who chose Deal or is stealing someone else. Succeed → gain 30% of their round-start balance (split if multiple stealers). Fail (Neutral target, mutual steal, or closed steal loop) → lose -30%.
           </Text>
         </TouchableOpacity>
 
@@ -913,7 +928,10 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
         <View style={styles.actions}>
           {isHost ? (
-            <PrimaryButton title="Back to Games" onPress={() => navigation.navigate('GameSelect')} />
+            <>
+              <PrimaryButton title="Play Again" onPress={() => startGame('dealOrSteal')} />
+              <SecondaryButton title="Choose New Game" onPress={() => navigation.navigate('GameSelect')} />
+            </>
           ) : (
             <Text style={styles.waitSub}>Waiting for host...</Text>
           )}
@@ -998,17 +1016,17 @@ export default function DealOrStealScreen({ navigation }: Props) {
             <Text style={styles.ruleSection}>🤝 Deal outcomes</Text>
             <Text style={styles.ruleText}>
               When you choose Deal(player), the result depends on what they do:{'\n\n'}
-              · They deal back → Mutual deal. Both gain +30% of your own round-start balance. Steals don't void this.{'\n'}
-              · They go Neutral → You gain +15% (half reward).{'\n'}
+              · They deal back → Mutual deal. Both gain +50% of your own round-start balance — BUT if someone steals from you this round, your deal bonus is voided and you only take the steal loss.{'\n'}
+              · They go Neutral → You gain +25%.{'\n'}
               · They steal or deal someone else → You get nothing, no penalty.{'\n\n'}
-              Note: Choosing Deal does NOT protect you from steals.
+              Note: Choosing Deal does NOT protect you from steals. Getting stolen voids your mutual deal gain.
             </Text>
 
             <Text style={styles.ruleSection}>🔪 Steal outcomes</Text>
             <Text style={styles.ruleText}>
               A steal SUCCEEDS if your target chose Deal or is stealing someone else (not you).{'\n'}
-              → Target loses 20% of their round-start balance. You gain that 20%. Split evenly if multiple stealers.{'\n\n'}
-              A steal FAILS and you lose -20% if:{'\n'}
+              → Target loses 30% of their round-start balance. You gain that 30%. Split evenly if multiple stealers.{'\n\n'}
+              A steal FAILS and you lose -30% if:{'\n'}
               · Target chose Neutral{'\n'}
               · Mutual steal (A steals B, B steals A — both fail){'\n'}
               · You are part of a closed steal loop (see below)
@@ -1016,7 +1034,7 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
             <Text style={styles.ruleSection}>🔄 Closed steal loop</Text>
             <Text style={styles.ruleText}>
-              If a group of players all steal each other in a pure cycle (A→B→C→A with no exit), every member of the loop fails — all lose -20%.{'\n\n'}
+              If a group of players all steal each other in a pure cycle (A→B→C→A with no exit), every member of the loop fails — all lose -30%.{'\n\n'}
               Players outside the loop who steal into it are not affected by the loop rule — their steal resolves normally.
             </Text>
 

@@ -13,19 +13,22 @@ export default function ScoreDisplay({ players, highlightId }: Props) {
 
   return (
     <View style={styles.container}>
-      {sorted.map((p, i) => (
-        <View
-          key={p.id}
-          style={[styles.row, p.id === highlightId && styles.highlighted]}
-        >
-          {p.id === highlightId && <View style={styles.accentBar} />}
-          <Text style={styles.rank}>#{i + 1}</Text>
-          <Text style={styles.name} numberOfLines={1}>{p.name}</Text>
-          <Text style={[styles.score, { color: i === 0 ? COLORS.accentHi : COLORS.text2 }]}>
-            {p.score} pts
-          </Text>
-        </View>
-      ))}
+      {sorted.map((p, i) => {
+        const isMe = p.id === highlightId;
+        return (
+          <View
+            key={p.id}
+            style={[styles.row, isMe && styles.highlighted]}
+          >
+            <Text style={[styles.rank, isMe && styles.rankMe]}>#{i + 1}</Text>
+            <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>{p.name}</Text>
+            {isMe && <Text style={styles.youBadge}>YOU</Text>}
+            <Text style={[styles.score, { color: i === 0 ? COLORS.accentHi : COLORS.text2 }, isMe && styles.scoreMe]}>
+              {p.score} pts
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -36,19 +39,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 4,
-    overflow: 'hidden',
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 2,
   },
   highlighted: {
-    backgroundColor: COLORS.accent + '12',
-  },
-  accentBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: COLORS.accent,
+    backgroundColor: '#2a2000',
+    borderWidth: 1.5,
+    borderColor: COLORS.warning,
   },
   rank: {
     color: COLORS.text3,
@@ -56,14 +54,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     width: 30,
   },
+  rankMe: {
+    color: COLORS.warning,
+  },
   name: {
     flex: 1,
     color: COLORS.text,
     fontSize: 15,
     fontWeight: '600',
   },
+  nameMe: {
+    color: COLORS.warning,
+    fontWeight: '700',
+  },
+  youBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.warning,
+    backgroundColor: COLORS.warning + '22',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    marginRight: 8,
+    letterSpacing: 0.5,
+  },
   score: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  scoreMe: {
+    color: COLORS.warning,
   },
 });

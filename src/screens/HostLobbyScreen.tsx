@@ -3,18 +3,28 @@ import {
   View, Text, TextInput, StyleSheet, SafeAreaView,
   TouchableOpacity, FlatList, ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useGame } from '../context/GameContext';
 import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import FriendsInviteModal from '../components/FriendsInviteModal';
 
 const CREATE_TIMEOUT_MS = 10_000;
 
 export default function HostLobbyScreen({ navigation }: any) {
-  const { createRoom, cancelRoom, room, currentUser, isConnected } = useGame();
+  const { createRoom, cancelRoom, room, currentUser, isConnected, setHostScreen } = useGame();
 
-  const [name, setName]         = useState(currentUser?.username ?? '');
-  const [started, setStarted]   = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-  const timeoutRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [name, setName]                 = useState(currentUser?.username ?? '');
+  const [started, setStarted]           = useState(false);
+  const [timedOut, setTimedOut]         = useState(false);
+  const [inviteVisible, setInviteVisible] = useState(false);
+  const timeoutRef                      = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When host returns to lobby from GameSelectScreen, restore lobby state for non-hosts
+  useFocusEffect(
+    React.useCallback(() => {
+      if (room) setHostScreen('lobby');
+    }, [room?.code])
+  );
 
   // Keep name in sync if user data loads after render
   useEffect(() => {
@@ -60,8 +70,20 @@ export default function HostLobbyScreen({ navigation }: any) {
 
   const handleCancel = () => {
     cancelRoom();
-    navigation.navigate('MainTabs');
+    // Navigation is handled by GameContext when 'roomCancelled' fires
   };
+
+  // Back button while lobby is active → cancel the room (GameContext handles navigation)
+  useEffect(() => {
+    if (!room) return;
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      // Allow programmatic resets (e.g. from roomCancelled → resetToMain)
+      if (e.data.action.type === 'RESET') return;
+      e.preventDefault();
+      cancelRoom();
+    });
+    return unsub;
+  }, [room]);
 
   // ── Form: not yet attempted ──────────────────────────────────────────────────
   if (!started) {
@@ -100,7 +122,7 @@ export default function HostLobbyScreen({ navigation }: any) {
         <TouchableOpacity style={styles.button} onPress={handleRetry}>
           <Text style={styles.buttonText}>Try Again</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.cancelLink} onPress={() => navigation.navigate('MainTabs')}>
+        <TouchableOpacity style={styles.cancelLink} onPress={() => navigation.goBack()}>
           <Text style={styles.cancelLinkText}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -116,7 +138,7 @@ export default function HostLobbyScreen({ navigation }: any) {
       <SafeAreaView style={styles.container}>
         <ActivityIndicator color={COLORS.accent} size="large" />
         <Text style={styles.subtitle}>{statusText}</Text>
-        <TouchableOpacity style={styles.cancelLink} onPress={() => navigation.navigate('MainTabs')}>
+        <TouchableOpacity style={styles.cancelLink} onPress={() => navigation.goBack()}>
           <Text style={styles.cancelLinkText}>Cancel</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -152,9 +174,22 @@ export default function HostLobbyScreen({ navigation }: any) {
         <Text style={styles.buttonText}>Start Game →</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.cancelLink} onPress={handleCancel}>
-        <Text style={styles.cancelLinkText}>Cancel Room</Text>
+      <TouchableOpacity
+        style={styles.inviteFriendsBtn}
+        onPress={() => setInviteVisible(true)}
+      >
+        <Text style={styles.inviteFriendsBtnText}>👥  Invite Friends</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.cancelRoomBtn} onPress={handleCancel}>
+        <Text style={styles.cancelRoomBtnText}>Cancel Room</Text>
+      </TouchableOpacity>
+
+      <FriendsInviteModal
+        visible={inviteVisible}
+        roomCode={room.code}
+        onClose={() => setInviteVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -223,6 +258,16 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  inviteFriendsBtn: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: COLORS.borderHi,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  inviteFriendsBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
   list: { width: '100%', marginBottom: SPACING.md },
   playerRow: {
     flexDirection: 'row',
@@ -237,4 +282,13 @@ const styles = StyleSheet.create({
   hostBadge:   { color: COLORS.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   cancelLink: { marginTop: SPACING.lg, padding: SPACING.sm },
   cancelLinkText: { color: COLORS.text2, fontSize: 14, textDecorationLine: 'underline' },
+  cancelRoomBtn: {
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+  },
+  cancelRoomBtnText: { color: COLORS.danger, fontSize: 14, fontWeight: '600' },
 });

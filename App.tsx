@@ -22,8 +22,12 @@ import DealOrStealScreen      from './src/screens/DealOrStealScreen';
 import ShadowProtocolScreen   from './src/screens/ShadowProtocolScreen';
 import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
+import InstructionsScreen  from './src/screens/InstructionsScreen';
 
 import { COLORS } from './src/constants/theme';
+import InviteModal from './src/components/InviteModal';
+import { useGame } from './src/context/GameContext';
+import { TouchableOpacity, Text, View } from 'react-native';
 
 export type RootStackParamList = {
   MainTabs:      undefined;
@@ -40,44 +44,114 @@ export type RootStackParamList = {
   PieCharts:     undefined;
   DealOrSteal:      undefined;
   ShadowProtocol:   undefined;
+  Instructions:  { game?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+function AppInner() {
+  const { currentUser, room } = useGame();
+
+  const ROUTE_TO_GAME: Record<string, string> = {
+    LieDetector: 'lieDetector',
+    TalentShow: 'talentShow',
+    StandOut: 'standOut',
+    NumberGuessor: 'numberGuessor',
+    PieCharts: 'pieCharts',
+    DealOrSteal: 'dealOrSteal',
+    ShadowProtocol: 'shadowProtocol',
+  };
+
+  // Rendered as headerRight on every screen — shows room code pill + ? button
+  function HeaderRight({ routeName, nav }: { routeName: string; nav: any }) {
+    const gameId = ROUTE_TO_GAME[routeName];
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {room?.code ? (
+          <View style={{
+            backgroundColor: '#1a1a1a',
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: COLORS.borderHi,
+            paddingHorizontal: 9,
+            paddingVertical: 4,
+          }}>
+            <Text style={{ color: COLORS.text2, fontSize: 12, fontWeight: '800', letterSpacing: 2 }}>
+              {room.code}
+            </Text>
+          </View>
+        ) : null}
+        {routeName !== 'Instructions' && (
+          <TouchableOpacity
+            onPress={() => nav.navigate('Instructions', gameId ? { game: gameId } : undefined)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 4 }}
+            style={{ paddingHorizontal: 4 }}
+          >
+            <Text style={{ color: COLORS.accentHi, fontSize: 20, fontWeight: '800' }}>?</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <NavigationContainer ref={navigationRef}>
+        <StatusBar style="light" />
+        <Stack.Navigator
+          initialRouteName="MainTabs"
+          screenOptions={({ navigation, route }) => ({
+            headerStyle:         { backgroundColor: COLORS.background },
+            headerTintColor:     COLORS.text,
+            headerTitleStyle:    { fontWeight: '800', fontSize: 18 },
+            headerShadowVisible: false,
+            contentStyle:        { backgroundColor: COLORS.background },
+            animation:           'slide_from_right',
+            // Room code pill + ? button — always visible (code only when in a room)
+            headerRight: () => <HeaderRight routeName={route.name} nav={navigation} />,
+          })}
+        >
+          <Stack.Screen name="MainTabs"      component={MainTabs}            options={{ headerShown: false }} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
+          <Stack.Screen name="UsernameSetup" component={UsernameSetupScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="PlayerSetup"   component={PlayerSetupScreen}   options={{ title: 'Players' }} />
+          <Stack.Screen name="HostLobby"     component={HostLobbyScreen}     options={{ title: 'Host Game' }} />
+          <Stack.Screen name="JoinRoom"      component={JoinRoomScreen}      options={{ title: 'Join Game' }} />
+          <Stack.Screen name="GameSelect"    component={GameSelectScreen}    options={{ title: 'Select Game', headerBackTitle: 'Players' }} />
+          <Stack.Screen name="LieDetector"   component={LieDetectorScreen}   options={{ title: 'Lie Detector',   headerBackTitle: 'Games' }} />
+          <Stack.Screen name="TalentShow"    component={TalentShowScreen}    options={{ title: 'Talent Show',    headerBackTitle: 'Games' }} />
+          <Stack.Screen name="StandOut"      component={StandOutScreen}      options={{ title: 'Stand Out',      headerBackTitle: 'Games' }} />
+          <Stack.Screen name="NumberGuessor" component={NumberGuessorScreen} options={{ title: 'Number Guessor', headerBackTitle: 'Games' }} />
+          <Stack.Screen name="PieCharts"     component={PieChartsScreen}     options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
+          <Stack.Screen name="DealOrSteal"      component={DealOrStealScreen}      options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
+          <Stack.Screen name="ShadowProtocol"   component={ShadowProtocolScreen}   options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
+          <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
+            title: (route.params as any)?.game
+              ? (() => {
+                  const names: Record<string, string> = {
+                    lieDetector: 'Lie Detector', talentShow: 'Talent Show',
+                    standOut: 'Stand Out', numberGuessor: 'Number Guessor',
+                    pieCharts: 'Pie Charts', dealOrSteal: 'Deal or Steal',
+                    shadowProtocol: 'Shadow Protocol',
+                  };
+                  return names[(route.params as any).game] ?? 'How to Play';
+                })()
+              : 'How to Play',
+            headerBackTitle: 'Back',
+          })} />
+        </Stack.Navigator>
+      </NavigationContainer>
+      <InviteModal userId={currentUser?.id ?? null} />
+    </>
+  );
+}
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <GameProvider>
         <NotificationsProvider>
-          <NavigationContainer ref={navigationRef}>
-          <StatusBar style="light" />
-          <Stack.Navigator
-            initialRouteName="MainTabs"
-            screenOptions={{
-              headerStyle:         { backgroundColor: COLORS.background },
-              headerTintColor:     COLORS.text,
-              headerTitleStyle:    { fontWeight: '800', fontSize: 18 },
-              headerShadowVisible: false,
-              contentStyle:        { backgroundColor: COLORS.background },
-              animation:           'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="MainTabs"      component={MainTabs}            options={{ headerShown: false }} />
-            <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
-            <Stack.Screen name="UsernameSetup" component={UsernameSetupScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="PlayerSetup"   component={PlayerSetupScreen}   options={{ title: 'Players' }} />
-            <Stack.Screen name="HostLobby"     component={HostLobbyScreen}     options={{ title: 'Host Game' }} />
-            <Stack.Screen name="JoinRoom"      component={JoinRoomScreen}      options={{ title: 'Join Game' }} />
-            <Stack.Screen name="GameSelect"    component={GameSelectScreen}    options={{ title: 'Select Game', headerBackTitle: 'Players' }} />
-            <Stack.Screen name="LieDetector"   component={LieDetectorScreen}   options={{ title: 'Lie Detector',   headerBackTitle: 'Games' }} />
-            <Stack.Screen name="TalentShow"    component={TalentShowScreen}    options={{ title: 'Talent Show',    headerBackTitle: 'Games' }} />
-            <Stack.Screen name="StandOut"      component={StandOutScreen}      options={{ title: 'Stand Out',      headerBackTitle: 'Games' }} />
-            <Stack.Screen name="NumberGuessor" component={NumberGuessorScreen} options={{ title: 'Number Guessor', headerBackTitle: 'Games' }} />
-            <Stack.Screen name="PieCharts"     component={PieChartsScreen}     options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
-            <Stack.Screen name="DealOrSteal"      component={DealOrStealScreen}      options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
-            <Stack.Screen name="ShadowProtocol"   component={ShadowProtocolScreen}   options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
-          </Stack.Navigator>
-          </NavigationContainer>
+          <AppInner />
         </NotificationsProvider>
       </GameProvider>
     </SafeAreaProvider>

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import ScoreDisplay from '../components/ScoreDisplay';
@@ -87,7 +88,28 @@ const GAMES: {
 ];
 
 export default function GameSelectScreen({ navigation }: Props) {
-  const { players, setSelectedGame, currentRound, startGame, room, isConnected } = useGame();
+  const { players: contextPlayers, setSelectedGame, currentRound, startGame, room, isConnected, setHostScreen } = useGame();
+
+  // When in a multiplayer room, use room.players as the authoritative source
+  // so the host is always counted and the count is never stale.
+  const players = room ? room.players : contextPlayers;
+
+  // Broadcast to non-hosts whenever this screen is focused (host is choosing a game)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (room) setHostScreen('selecting');
+    }, [room?.code])
+  );
+
+  // When host navigates back from this screen, restore lobby state for non-hosts
+  React.useEffect(() => {
+    if (!room) return;
+    const unsub = navigation.addListener('beforeRemove', (e: any) => {
+      if (e.data.action.type === 'RESET') return; // game started — don't override
+      setHostScreen('lobby');
+    });
+    return unsub;
+  }, [room?.code]);
 
   // Diagnostic: confirm this screen mounted and what state it sees
   React.useEffect(() => {
@@ -96,6 +118,26 @@ export default function GameSelectScreen({ navigation }: Props) {
 
   const selectGame = (game: (typeof GAMES)[0]) => {
     console.log('[GameSelect] selected:', game.id, '— room:', room?.code ?? 'none');
+    if (game.id === 'lieDetector' && players.length < 3) {
+      Alert.alert('Lie Detector', `This game needs at least 3 players. You currently have ${players.length}.`);
+      return;
+    }
+    if (game.id === 'talentShow' && players.length < 4) {
+      Alert.alert('Talent Show', `This game needs at least 4 players. You currently have ${players.length}.`);
+      return;
+    }
+    if (game.id === 'standOut' && players.length < 3) {
+      Alert.alert('Stand Out', `This game needs at least 3 players. You currently have ${players.length}.`);
+      return;
+    }
+    if (game.id === 'numberGuessor' && players.length < 2) {
+      Alert.alert('Number Guessor', `This game needs at least 2 players. You currently have ${players.length}.`);
+      return;
+    }
+    if (game.id === 'pieCharts' && players.length < 3) {
+      Alert.alert('Pie Charts', `This game needs at least 3 players. You currently have ${players.length}.`);
+      return;
+    }
     if (game.id === 'dealOrSteal' && (players.length < 4 || players.length > 6)) {
       Alert.alert(
         'Deal or Steal',
@@ -111,8 +153,10 @@ export default function GameSelectScreen({ navigation }: Props) {
       return;
     }
     setSelectedGame(game.id);
+    // Don't navigate immediately — GameContext's `gameStarted` handler navigates
+    // all players (host included) once the server confirms the game has started.
+    // This ensures `room` and `players` are fully populated before game screens mount.
     startGame(game.id);
-    navigation.navigate(game.screen as any);
   };
 
   const hasScores = players.some(p => p.score > 0);
@@ -129,18 +173,29 @@ export default function GameSelectScreen({ navigation }: Props) {
           <View style={styles.topDivider} />
           {GAMES.map((game, idx) => (
             <React.Fragment key={game.id}>
-              <TouchableOpacity
-                style={styles.gameRow}
-                onPress={() => selectGame(game)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.gameEmoji}>{game.emoji}</Text>
-                <View style={styles.gameInfo}>
-                  <Text style={styles.gameTitle}>{game.title}</Text>
-                  <Text style={styles.gameDesc}>{game.desc}</Text>
-                </View>
-                <Text style={styles.gameArrow}>→</Text>
-              </TouchableOpacity>
+              <View style={styles.gameRowWrapper}>
+                {/* Main tap → start game */}
+                <TouchableOpacity
+                  style={styles.gameRow}
+                  onPress={() => selectGame(game)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.gameEmoji}>{game.emoji}</Text>
+                  <View style={styles.gameInfo}>
+                    <Text style={styles.gameTitle}>{game.title}</Text>
+                    <Text style={styles.gameDesc}>{game.desc}</Text>
+                  </View>
+                  <Text style={styles.gameArrow}>→</Text>
+                </TouchableOpacity>
+                {/* ? → open instructions for this game */}
+                <TouchableOpacity
+                  style={styles.helpBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() => navigation.navigate('Instructions' as never, { game: game.id } as never)}
+                >
+                  <Text style={styles.helpBtnText}>?</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.divider} />
             </React.Fragment>
           ))}
@@ -174,17 +229,37 @@ const styles = StyleSheet.create({
   gameList: { marginBottom: 32 },
   topDivider: { height: 1, backgroundColor: COLORS.border },
   divider: { height: 1, backgroundColor: COLORS.border },
+  gameRowWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   gameRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 20,
-    paddingHorizontal: 0,
   },
   gameEmoji: { fontSize: 32 },
   gameInfo: { flex: 1, marginLeft: 14 },
   gameTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
   gameDesc: { fontSize: 13, color: COLORS.text2, marginTop: 2 },
-  gameArrow: { fontSize: 18, color: COLORS.text2 },
+  gameArrow: { fontSize: 18, color: COLORS.text2, marginRight: 10 },
+  helpBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  helpBtnText: {
+    color: COLORS.accentHi,
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
   scoreSection: { gap: 8 },
   scoreLabel: {
     fontSize: 12,

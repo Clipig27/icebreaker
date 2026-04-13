@@ -55,6 +55,18 @@ const GAMES = [
     emoji: '🥧',
     desc: "Vote on 'who's most likely' questions. See who gets crowned.",
   },
+  {
+    id: 'dealOrSteal',
+    title: 'Deal or Steal',
+    emoji: '🤝',
+    desc: 'Deal for mutual gains or steal from exposed Dealers. 4–6 players.',
+  },
+  {
+    id: 'shadowProtocol',
+    title: 'Shadow Protocol',
+    emoji: '🕵️',
+    desc: "Social deduction. Find the Shadows before it's too late. 6–10 players.",
+  },
 ];
 
 export default function GamesTabScreen({ navigation }: Props) {
@@ -67,18 +79,30 @@ export default function GamesTabScreen({ navigation }: Props) {
         <View style={s.topDivider} />
         {GAMES.map(game => (
           <React.Fragment key={game.id}>
-            <TouchableOpacity
-              style={s.row}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('PlayerSetup')}
-            >
-              <Text style={s.emoji}>{game.emoji}</Text>
-              <View style={s.info}>
-                <Text style={s.gameTitle}>{game.title}</Text>
-                <Text style={s.gameDesc}>{game.desc}</Text>
-              </View>
-              <Text style={s.arrow}>→</Text>
-            </TouchableOpacity>
+            <View style={s.rowWrapper}>
+              {/* Main tap area → go to PlayerSetup */}
+              <TouchableOpacity
+                style={s.rowMain}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('PlayerSetup')}
+              >
+                <Text style={s.emoji}>{game.emoji}</Text>
+                <View style={s.info}>
+                  <Text style={s.gameTitle}>{game.title}</Text>
+                  <Text style={s.gameDesc}>{game.desc}</Text>
+                </View>
+                <Text style={s.arrow}>→</Text>
+              </TouchableOpacity>
+
+              {/* ? button → open game instructions */}
+              <TouchableOpacity
+                style={s.helpBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => navigation.navigate('Instructions', { game: game.id })}
+              >
+                <Text style={s.helpBtnText}>?</Text>
+              </TouchableOpacity>
+            </View>
             <View style={s.divider} />
           </React.Fragment>
         ))}
@@ -94,7 +118,12 @@ const s = StyleSheet.create({
   subtitle:    { fontSize: 13, color: COLORS.text2, marginTop: 4, marginBottom: 28 },
   topDivider:  { height: 1, backgroundColor: COLORS.border },
   divider:     { height: 1, backgroundColor: COLORS.border },
-  row: {
+  rowWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rowMain: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 20,
@@ -103,5 +132,21 @@ const s = StyleSheet.create({
   info:      { flex: 1, marginLeft: 14 },
   gameTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
   gameDesc:  { fontSize: 13, color: COLORS.text2, marginTop: 2 },
-  arrow:     { fontSize: 18, color: COLORS.text2 },
+  arrow:     { fontSize: 18, color: COLORS.text2, marginRight: 10 },
+  helpBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface2,
+    borderWidth: 1,
+    borderColor: COLORS.borderHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  helpBtnText: {
+    color: COLORS.accentHi,
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
 });
