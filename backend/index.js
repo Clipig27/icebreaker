@@ -1060,6 +1060,70 @@ io.on('connection', (socket) => {
     io.to(code).emit('roomUpdated', room);
   });
 
+  // ── Kick player (host only) ──────────────────────────────────────────────────
+  socket.on('kickPlayer', ({ code, playerId }) => {
+    const room = rooms[code];
+    if (!room || room.hostId !== stableId(socket.id)) return;
+    if (playerId === room.hostId) return; // can't kick yourself
+
+    const targetSocketId = persistentToSocket[playerId];
+    room.players = room.players.filter(p => p.id !== playerId);
+
+    // Kick the target off the room channel and notify them
+    if (targetSocketId) {
+      const targetSocket = io.sockets.sockets.get(targetSocketId);
+      if (targetSocket) targetSocket.leave(code);
+      io.to(targetSocketId).emit('playerKicked', { code });
+    }
+
+    io.to(code).emit('roomUpdated', room);
+    console.log('[kickPlayer] player %s kicked from room %s', playerId, code);
+  });
+
+  // ── End game early → host returns to game select, others return to waiting ───
+  socket.on('endGame', ({ code }) => {
+    const room = rooms[code];
+    if (!room || room.hostId !== stableId(socket.id)) return;
+
+    room.phase      = 'lobby';
+    room.hostScreen = 'selecting';
+    room.gameState  = {};
+    // Clear game-specific server state
+    ldRoomData[code]  = null;
+    dosRoundData[code] = { actions: {} };
+    if (room.ngTimerTimeout) { clearTimeout(room.ngTimerTimeout); room.ngTimerTimeout = null; }
+    room.standOutAnswers     = [];
+    room.standOutRoundScored = false;
+
+    io.to(code).emit('gameEnded', room);
+    console.log('[endGame] host ended game in room %s', code);
+  });
+
+  // ── Restart current game from scratch ─────────────────────────────────────────
+  socket.on('restartGame', ({ code }) => {
+    const room = rooms[code];
+    if (!room || room.hostId !== stableId(socket.id)) return;
+
+    const game = room.gameState?.game;
+    if (!game) return;
+
+    // Reset game-specific server state the same way startGame does
+    ldRoomData[code]  = null;
+    dosRoundData[code] = { actions: {} };
+    if (room.ngTimerTimeout) { clearTimeout(room.ngTimerTimeout); room.ngTimerTimeout = null; }
+    room.standOutAnswers     = [];
+    room.standOutStreaks      = {};
+    room.standOutRoundScored  = false;
+
+    room.gameState  = buildInitialGameState(game);
+    room.players    = room.players.map(p => ({ ...p, score: 0 }));
+    room.phase      = 'playing';
+    room.hostScreen = 'playing';
+
+    io.to(code).emit('gameStarted', room);
+    console.log('[restartGame] room %s restarted game %s', code, game);
+  });
+
   // ── Update game state (host only) ────────────────────────────────────────────
   socket.on('updateGameState', ({ code, gameState }) => {
     console.log('[updateGameState] socket=%s code=%s phase=%s', socket.id, code, gameState?.phase ?? gameState?.currentPhase ?? '?');

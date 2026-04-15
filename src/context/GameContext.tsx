@@ -64,6 +64,7 @@ type GameContextType = {
   room: Room | null;
   isHost: boolean;
   isConnected: boolean;
+  hostMessage: string | null;
 
   // Multiplayer actions
   createRoom: (playerName: string) => void;
@@ -75,6 +76,9 @@ type GameContextType = {
   sendPlayerAction: (action: string, data: any) => void;
   updateRoomScores: (players: Player[]) => void;
   setHostScreen: (screen: string) => void;
+  kickPlayer: (playerId: string) => void;
+  endGame: () => void;
+  restartGame: () => void;
 };
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -97,11 +101,27 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [room, setRoom]           = useState<Room | null>(null);
   const [isHost, setIsHost]       = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [hostMessage, setHostMessage] = useState<string | null>(null);
+  const hostMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep refs so socket callbacks always see the latest values without re-creating them
-  const currentUserRef   = useRef<LocalUser | null>(null);
-  const isHostRef        = useRef(false);
+  const currentUserRef    = useRef<LocalUser | null>(null);
+  const isHostRef         = useRef(false);
   const prevHostScreenRef = useRef<string | undefined>(undefined);
+
+  const HOST_SCREEN_MESSAGES: Record<string, string> = {
+    selecting:   'Host is picking a game...',
+    playing:     'Host started a game!',
+    lobby:       'Host is in the lobby',
+    restarting:  'Host is restarting...',
+    ended:       'Host ended the game',
+  };
+
+  function showHostMessage(msg: string) {
+    if (hostMessageTimerRef.current) clearTimeout(hostMessageTimerRef.current);
+    setHostMessage(msg);
+    hostMessageTimerRef.current = setTimeout(() => setHostMessage(null), 3500);
+  }
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
@@ -185,6 +205,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       const iAmHost = r.hostId === myStableId;
       setIsHost(iAmHost);
 
+      // Show host status messages to non-hosts when hostScreen changes
+      if (!iAmHost && r.hostScreen && r.hostScreen !== prevHostScreen) {
+        const msg = HOST_SCREEN_MESSAGES[r.hostScreen];
+        if (msg) showHostMessage(msg);
+      }
+
       // If host navigated away from a live game, send non-hosts back one screen (to JoinRoom)
       if (!iAmHost && prevHostScreen === 'playing' && r.hostScreen !== 'playing') {
         goBack();
@@ -258,6 +284,30 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       resetToMain();
     });
 
+    // We were kicked by the host
+    socket.on('playerKicked', (_data: { code: string }) => {
+      setRoom(null);
+      setIsHost(false);
+      setPlayers([]);
+      resetToMain();
+    });
+
+    // Host ended the current game — host goes to GameSelect, non-hosts wait in JoinRoom
+    socket.on('gameEnded', (r: Room) => {
+      prevHostScreenRef.current = r.hostScreen;
+      setRoom(r);
+      setPlayers(r.players);
+      const myStableId = currentUserRef.current?.id ?? socket.id;
+      const iAmHost = r.hostId === myStableId;
+      setIsHost(iAmHost);
+      if (iAmHost) {
+        navigateTo('GameSelect');
+      } else {
+        showHostMessage('Host ended the game — waiting for next...');
+        goBack();
+      }
+    });
+
     socket.on('error', ({ message }: { message: string }) => {
       console.error('Socket error:', message);
     });
@@ -275,6 +325,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       socket.off('hostChanged');
       socket.off('roomCancelled');
       socket.off('leftRoom');
+      socket.off('playerKicked');
+      socket.off('gameEnded');
       socket.off('error');
     };
   }, []);
@@ -381,6 +433,21 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     socket.emit('setHostScreen', { code: room.code, screen });
   }, [room]);
 
+  const kickPlayer = useCallback((playerId: string) => {
+    if (!room || !isHost) return;
+    socket.emit('kickPlayer', { code: room.code, playerId });
+  }, [room, isHost]);
+
+  const endGame = useCallback(() => {
+    if (!room || !isHost) return;
+    socket.emit('endGame', { code: room.code });
+  }, [room, isHost]);
+
+  const restartGame = useCallback(() => {
+    if (!room || !isHost) return;
+    socket.emit('restartGame', { code: room.code });
+  }, [room, isHost]);
+
   // ── Single-device helpers ─────────────────────────────────────────────────
 
   const advancePlayer = () => {
@@ -428,6 +495,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       room,
       isHost,
       isConnected,
+      hostMessage,
 
       createRoom,
       joinRoom,
@@ -438,6 +506,9 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       sendPlayerAction,
       updateRoomScores,
       setHostScreen,
+      kickPlayer,
+      endGame,
+      restartGame,
     }}>
       {children}
     </GameContext.Provider>

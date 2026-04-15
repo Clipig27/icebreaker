@@ -26,6 +26,8 @@ import InstructionsScreen  from './src/screens/InstructionsScreen';
 
 import { COLORS } from './src/constants/theme';
 import InviteModal from './src/components/InviteModal';
+import HostOptionsMenu from './src/components/HostOptionsMenu';
+import HostStatusBanner from './src/components/HostStatusBanner';
 import { useGame } from './src/context/GameContext';
 import { TouchableOpacity, Text, View } from 'react-native';
 
@@ -49,8 +51,14 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// Game screen names where back navigation should be blocked for the host during play
+const GAME_SCREENS = new Set([
+  'LieDetector', 'TalentShow', 'StandOut', 'NumberGuessor',
+  'PieCharts', 'DealOrSteal', 'ShadowProtocol',
+]);
+
 function AppInner() {
-  const { currentUser, room } = useGame();
+  const { currentUser, room, isHost } = useGame();
 
   const ROUTE_TO_GAME: Record<string, string> = {
     LieDetector: 'lieDetector',
@@ -62,12 +70,18 @@ function AppInner() {
     ShadowProtocol: 'shadowProtocol',
   };
 
-  // Rendered as headerRight on every screen — shows room code pill + ? button
+  // True when the host is mid-game and should not be able to back-navigate
+  const hostInActiveGame = isHost && room?.phase === 'playing';
+
+  // Rendered as headerRight on every screen
   function HeaderRight({ routeName, nav }: { routeName: string; nav: any }) {
     const gameId = ROUTE_TO_GAME[routeName];
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        {room?.code ? (
+        {/* Host: show Host Options menu. Non-host: show room code pill */}
+        {isHost && room?.code ? (
+          <HostOptionsMenu />
+        ) : room?.code ? (
           <View style={{
             backgroundColor: '#1a1a1a',
             borderRadius: 8,
@@ -100,16 +114,22 @@ function AppInner() {
         <StatusBar style="light" />
         <Stack.Navigator
           initialRouteName="MainTabs"
-          screenOptions={({ navigation, route }) => ({
-            headerStyle:         { backgroundColor: COLORS.background },
-            headerTintColor:     COLORS.text,
-            headerTitleStyle:    { fontWeight: '800', fontSize: 18 },
-            headerShadowVisible: false,
-            contentStyle:        { backgroundColor: COLORS.background },
-            animation:           'slide_from_right',
-            // Room code pill + ? button — always visible (code only when in a room)
-            headerRight: () => <HeaderRight routeName={route.name} nav={navigation} />,
-          })}
+          screenOptions={({ navigation, route }) => {
+            // Block the host from pressing back on game screens during an active game
+            const blockHostBack = hostInActiveGame && GAME_SCREENS.has(route.name);
+            return {
+              headerStyle:         { backgroundColor: COLORS.background },
+              headerTintColor:     COLORS.text,
+              headerTitleStyle:    { fontWeight: '800', fontSize: 18 },
+              headerShadowVisible: false,
+              contentStyle:        { backgroundColor: COLORS.background },
+              animation:           'slide_from_right',
+              gestureEnabled:      !blockHostBack,
+              headerLeft:          blockHostBack ? () => null : undefined,
+              // Room code pill + ? button — always visible (code only when in a room)
+              headerRight: () => <HeaderRight routeName={route.name} nav={navigation} />,
+            };
+          }}
         >
           <Stack.Screen name="MainTabs"      component={MainTabs}            options={{ headerShown: false }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
@@ -142,6 +162,7 @@ function AppInner() {
         </Stack.Navigator>
       </NavigationContainer>
       <InviteModal userId={currentUser?.id ?? null} />
+      <HostStatusBanner />
     </>
   );
 }

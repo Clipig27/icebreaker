@@ -467,7 +467,7 @@ export default function GameSelectScreen({ navigation }: Props) {
                   game={game}
                   onPress={() => selectGame(game)}
                   onHelp={() =>
-                    navigation.navigate('Instructions' as never, { game: game.id } as never)
+                    (navigation as any).navigate('Instructions', { game: game.id })
                   }
                   delay={(rowIdx * 2 + colIdx) * 60}
                   disabled={isDisabled(game)}
