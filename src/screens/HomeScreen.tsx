@@ -6,9 +6,10 @@ import {
   StyleSheet,
   Pressable,
   Animated,
-  Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -24,605 +25,379 @@ type Props = {
   >;
 };
 
-const { width, height } = Dimensions.get('window');
-
-// ─── Radial purple glow ────────────────────────────────────────────────────────
-function RadialGlow() {
-  const pulse = useRef(new Animated.Value(0)).current;
+// ─── Atmospheric background bloom orbs ───────────────────────────────────────
+function BackgroundAtmosphere() {
+  const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 3000, useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 0, duration: 3000, useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 1.18, duration: 5500, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.88, duration: 5500, useNativeDriver: true }),
       ])
     ).start();
-  }, []);
-
-  const op1 = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.85] });
-  const op2 = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.2, 0.45] });
-  const op3 = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.07, 0.18] });
-  const sc1 = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.93, 1.07] });
-
-  return (
-    <View style={glow.wrap} pointerEvents="none">
-      <Animated.View style={[glow.outer, { opacity: op3 }]} />
-      <Animated.View style={[glow.mid, { opacity: op2 }]} />
-      <Animated.View style={[glow.inner, { opacity: op1, transform: [{ scale: sc1 }] }]} />
-    </View>
-  );
-}
-
-const glow = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    width: 360,
-    height: 360,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outer: {
-    position: 'absolute',
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    backgroundColor: 'transparent',
-    shadowColor: '#6D28D9',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 100,
-    shadowOpacity: 1,
-  },
-  mid: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: 'transparent',
-    shadowColor: '#7C5CF6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 70,
-    shadowOpacity: 1,
-  },
-  inner: {
-    position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'transparent',
-    shadowColor: '#A78BFA',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 50,
-    shadowOpacity: 1,
-  },
-});
-
-// ─── Crystal / lightning hero ──────────────────────────────────────────────────
-function CrystalHero() {
-  const pulse = useRef(new Animated.Value(0)).current;
-  const rotate = useRef(new Animated.Value(0)).current;
-  const innerPulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 2200, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 2200, useNativeDriver: true }),
-      ])
-    ).start();
-    Animated.loop(
-      Animated.timing(rotate, { toValue: 1, duration: 10000, useNativeDriver: true })
-    ).start();
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(innerPulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
-        Animated.timing(innerPulse, { toValue: 0, duration: 1200, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
-  const outerGlowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.65] });
-  const outerGlowScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.08] });
-  const spin = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const innerOpacity = innerPulse.interpolate({ inputRange: [0, 1], outputRange: [0.75, 1] });
-  const innerScale = innerPulse.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1.05] });
-
-  return (
-    <View style={crystal.container}>
-      <Animated.View
-        style={[crystal.glowRing, { opacity: outerGlowOpacity, transform: [{ scale: outerGlowScale }] }]}
-      />
-      <Animated.View style={[crystal.midRing, { opacity: outerGlowOpacity }]} />
-
-      {/* Outer shard ring */}
-      <Animated.View style={[crystal.shardRing, { transform: [{ rotate: spin }] }]}>
-        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => (
-          <View
-            key={i}
-            style={[
-              crystal.shard,
-              {
-                transform: [{ rotate: `${deg}deg` }, { translateY: -78 }],
-                opacity: i % 2 === 0 ? 0.95 : 0.55,
-                height: i % 2 === 0 ? 30 : 20,
-              },
-            ]}
-          />
-        ))}
-      </Animated.View>
-
-      {/* Counter-rotating inner shards */}
-      <Animated.View
-        style={[crystal.shardRing, { transform: [{ rotate: spin }, { scaleX: -1 }], opacity: 0.65 }]}
-      >
-        {[22, 67, 112, 157, 202, 247, 292, 337].map((deg, i) => (
-          <View
-            key={i}
-            style={[
-              crystal.shardInner,
-              { transform: [{ rotate: `${deg}deg` }, { translateY: -52 }] },
-            ]}
-          />
-        ))}
-      </Animated.View>
-
-      {/* Core gem */}
-      <Animated.View style={[crystal.core, { opacity: innerOpacity, transform: [{ scale: innerScale }] }]}>
-        <View style={crystal.facetTop} />
-        <View style={crystal.facetLeft} />
-        <View style={crystal.facetRight} />
-        <View style={crystal.facetBottomLeft} />
-        <View style={crystal.facetBottomRight} />
-        <View style={crystal.sparkle} />
-      </Animated.View>
-
-      {/* Lightning bolt */}
-      <View style={crystal.boltContainer} pointerEvents="none">
-        <View style={crystal.boltTop} />
-        <View style={crystal.boltBottom} />
-      </View>
-    </View>
-  );
-}
-
-const crystal = StyleSheet.create({
-  container: { width: 230, height: 230, alignItems: 'center', justifyContent: 'center' },
-  glowRing: {
-    position: 'absolute', width: 230, height: 230, borderRadius: 115,
-    backgroundColor: 'transparent', borderWidth: 1, borderColor: '#7C5CF6',
-    shadowColor: '#7C5CF6', shadowOffset: { width: 0, height: 0 }, shadowRadius: 44, shadowOpacity: 1,
-  },
-  midRing: {
-    position: 'absolute', width: 168, height: 168, borderRadius: 84,
-    backgroundColor: 'transparent', borderWidth: 1, borderColor: '#A78BFA',
-    shadowColor: '#A78BFA', shadowOffset: { width: 0, height: 0 }, shadowRadius: 22, shadowOpacity: 1,
-  },
-  shardRing: { position: 'absolute', width: 156, height: 156, alignItems: 'center', justifyContent: 'center' },
-  shard: {
-    position: 'absolute', width: 6, height: 28, borderRadius: 3, backgroundColor: '#9D80FF',
-    shadowColor: '#9D80FF', shadowOffset: { width: 0, height: 0 }, shadowRadius: 10, shadowOpacity: 1,
-  },
-  shardInner: {
-    position: 'absolute', width: 4, height: 16, borderRadius: 2, backgroundColor: '#C4AAFF',
-    shadowColor: '#C4AAFF', shadowOffset: { width: 0, height: 0 }, shadowRadius: 6, shadowOpacity: 0.9,
-  },
-  core: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center' },
-  facetTop: {
-    position: 'absolute', top: 0,
-    width: 0, height: 0,
-    borderLeftWidth: 19, borderRightWidth: 19, borderBottomWidth: 30,
-    borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: '#C4AAFF',
-    shadowColor: '#A78BFA', shadowOffset: { width: 0, height: 0 }, shadowRadius: 14, shadowOpacity: 1,
-  },
-  facetLeft: {
-    position: 'absolute', left: 0, top: 20,
-    width: 0, height: 0,
-    borderTopWidth: 15, borderBottomWidth: 21, borderRightWidth: 38,
-    borderTopColor: 'transparent', borderBottomColor: 'transparent', borderRightColor: '#7C5CF6',
-  },
-  facetRight: {
-    position: 'absolute', right: 0, top: 20,
-    width: 0, height: 0,
-    borderTopWidth: 15, borderBottomWidth: 21, borderLeftWidth: 38,
-    borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#5B3EC8',
-  },
-  facetBottomLeft: {
-    position: 'absolute', bottom: 0, left: 10,
-    width: 0, height: 0,
-    borderTopWidth: 28, borderRightWidth: 17, borderLeftWidth: 7,
-    borderTopColor: '#9D80FF', borderRightColor: 'transparent', borderLeftColor: 'transparent',
-  },
-  facetBottomRight: {
-    position: 'absolute', bottom: 0, right: 10,
-    width: 0, height: 0,
-    borderTopWidth: 28, borderLeftWidth: 17, borderRightWidth: 7,
-    borderTopColor: '#8A6EE8', borderLeftColor: 'transparent', borderRightColor: 'transparent',
-  },
-  sparkle: {
-    position: 'absolute', top: 17, left: 23,
-    width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#F0EAFF',
-    shadowColor: '#FFFFFF', shadowOffset: { width: 0, height: 0 }, shadowRadius: 8, shadowOpacity: 1,
-  },
-  boltContainer: {
-    position: 'absolute', width: 32, height: 56,
-    top: '50%', left: '50%', marginLeft: -16, marginTop: -28,
-  },
-  boltTop: {
-    position: 'absolute', top: 0, right: 2,
-    width: 0, height: 0,
-    borderBottomWidth: 32, borderRightWidth: 19, borderLeftWidth: 11,
-    borderBottomColor: 'rgba(255,255,255,0.22)',
-    borderRightColor: 'transparent', borderLeftColor: 'transparent',
-  },
-  boltBottom: {
-    position: 'absolute', bottom: 0, left: 2,
-    width: 0, height: 0,
-    borderTopWidth: 32, borderLeftWidth: 19, borderRightWidth: 11,
-    borderTopColor: 'rgba(255,255,255,0.14)',
-    borderLeftColor: 'transparent', borderRightColor: 'transparent',
-  },
-});
-
-// ─── Floating particles ────────────────────────────────────────────────────────
-function Particles() {
-  const count = 28;
-  const refs = Array.from({ length: count }, () => useRef(new Animated.Value(Math.random())).current);
-
-  const meta = refs.map((_, i) => ({
-    x: Math.random() * width,
-    y: Math.random() * height,
-    size: Math.random() * 3.5 + 0.8,
-    color: i % 5 === 0 ? '#C4AAFF' : i % 3 === 0 ? '#5B3EC8' : '#9D80FF',
-    delay: Math.random() * 4000,
-  }));
-
-  useEffect(() => {
-    refs.forEach((ref, i) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(meta[i].delay),
-          Animated.timing(ref, { toValue: Math.random() * 0.75 + 0.1, duration: 2000 + Math.random() * 2000, useNativeDriver: true }),
-          Animated.timing(ref, { toValue: 0.04, duration: 2000 + Math.random() * 2000, useNativeDriver: true }),
-        ])
-      ).start();
-    });
   }, []);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {refs.map((ref, i) => (
-        <Animated.View
-          key={i}
-          style={{
-            position: 'absolute',
-            left: meta[i].x,
-            top: meta[i].y,
-            width: meta[i].size,
-            height: meta[i].size,
-            borderRadius: meta[i].size / 2,
-            backgroundColor: meta[i].color,
-            opacity: ref,
-            shadowColor: meta[i].color,
-            shadowOffset: { width: 0, height: 0 },
-            shadowRadius: 5,
-            shadowOpacity: 1,
-          }}
-        />
-      ))}
+      <Animated.View style={[atm.centerBloom, { transform: [{ scale: pulse }] }]} />
+      <View style={atm.topRightBloom} />
+      <View style={atm.bottomLeftBloom} />
     </View>
   );
 }
 
-// ─── Gradient multi button ────────────────────────────────────────────────────
-function MultiButton({
-  label, icon, colors, glowColor, onPress,
-}: {
-  label: string;
-  icon: string;
-  colors: [string, string];
-  glowColor: string;
-  onPress: () => void;
-}) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const glow  = useRef(new Animated.Value(0)).current;
+const atm = StyleSheet.create({
+  centerBloom: {
+    position: 'absolute',
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+    top: '18%',
+    alignSelf: 'center',
+    backgroundColor: '#16083E',
+    shadowColor: '#5B21B6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 110,
+    shadowOpacity: 0.8,
+    opacity: 0.38,
+  },
+  topRightBloom: {
+    position: 'absolute',
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    top: -50,
+    right: -50,
+    backgroundColor: '#100630',
+    shadowColor: '#4C1D95',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 70,
+    shadowOpacity: 0.7,
+    opacity: 0.22,
+  },
+  bottomLeftBloom: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    bottom: 80,
+    left: -60,
+    backgroundColor: '#200850',
+    shadowColor: '#6D28D9',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 60,
+    shadowOpacity: 0.6,
+    opacity: 0.18,
+  },
+});
+
+// ─── Lightning bolt hero ──────────────────────────────────────────────────────
+function LightningHero() {
+  const breathe = useRef(new Animated.Value(1)).current;
+  const surge   = useRef(new Animated.Value(0)).current;
+  const flicker = useRef(new Animated.Value(1)).current;
+  const ring1   = useRef(new Animated.Value(0.5)).current;
+  const ring2   = useRef(new Animated.Value(0.25)).current;
+  const ring3   = useRef(new Animated.Value(0.12)).current;
 
   useEffect(() => {
+    // Gentle breathe
     Animated.loop(
       Animated.sequence([
-        Animated.timing(glow, { toValue: 1, duration: 2000, useNativeDriver: true }),
-        Animated.timing(glow, { toValue: 0, duration: 2000, useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 1.07, duration: 3200, useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0.97, duration: 3200, useNativeDriver: true }),
       ])
     ).start();
+
+    // Surge every ~5s
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(4800),
+        Animated.timing(surge, { toValue: 1, duration: 190, useNativeDriver: false }),
+        Animated.timing(surge, { toValue: 0, duration: 1100, useNativeDriver: false }),
+      ])
+    ).start();
+
+    // White core flicker
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(2400),
+        Animated.timing(flicker, { toValue: 0.3, duration: 55,  useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 1.0, duration: 75,  useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 0.5, duration: 45,  useNativeDriver: true }),
+        Animated.timing(flicker, { toValue: 1.0, duration: 95,  useNativeDriver: true }),
+        Animated.delay(3200),
+      ])
+    ).start();
+
+    // Concentric ring pulses — staggered
+    const ringPulse = (val: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(val, { toValue: 0.72, duration: 2600, useNativeDriver: true }),
+          Animated.timing(val, { toValue: 0.08, duration: 2600, useNativeDriver: true }),
+        ])
+      );
+
+    ringPulse(ring1, 0).start();
+    ringPulse(ring2, 860).start();
+    ringPulse(ring3, 1720).start();
   }, []);
 
-  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.75] });
+  const glowOp = surge.interpolate({ inputRange: [0, 1], outputRange: [0.07, 0.30] });
+
+  const BOLT = 'M 155,15 L 50,130 L 110,130 L 50,245 L 155,130 L 95,130 Z';
+
+  return (
+    <Animated.View style={[lh.container, { transform: [{ scale: breathe }] }]}>
+      {/* Concentric pulsing rings */}
+      <Animated.View style={[lh.ring, { width: 320, height: 320, borderRadius: 160, opacity: ring3, borderColor: '#3B0764' }]} />
+      <Animated.View style={[lh.ring, { width: 235, height: 235, borderRadius: 118, opacity: ring2, borderColor: '#5B21B6' }]} />
+      <Animated.View style={[lh.ring, { width: 168, height: 168, borderRadius: 84,  opacity: ring1, borderColor: '#7C3AED', borderWidth: 1 }]} />
+
+      {/* Ambient glow bloom */}
+      <Animated.View style={[lh.glowBloom, { opacity: glowOp }]} />
+
+      {/* Bolt layers — wide glow to tight edge */}
+      <Svg width={200} height={260} viewBox="0 0 200 260">
+        <Path d={BOLT} fill="none" stroke="#6D28D9" strokeWidth={44} strokeOpacity={0.05} strokeLinejoin="miter" />
+        <Path d={BOLT} fill="none" stroke="#7C3AED" strokeWidth={30} strokeOpacity={0.10} strokeLinejoin="miter" />
+        <Path d={BOLT} fill="none" stroke="#8B5CF6" strokeWidth={17} strokeOpacity={0.22} strokeLinejoin="miter" />
+        <Path d={BOLT} fill="none" stroke="#A78BFA" strokeWidth={7}  strokeOpacity={0.58} strokeLinejoin="miter" />
+        <Path d={BOLT} fill="none" stroke="#DDD6FE" strokeWidth={2.5} strokeOpacity={0.88} strokeLinejoin="miter" />
+        <Path d={BOLT} fill="#8B5CF6" fillOpacity={0.05} />
+      </Svg>
+
+      {/* White core — flickers independently */}
+      <Animated.View style={[lh.coreOverlay, { opacity: flicker }]}>
+        <Svg width={200} height={260} viewBox="0 0 200 260">
+          <Path d={BOLT} fill="none" stroke="#FFFFFF" strokeWidth={1.1} strokeOpacity={0.95} strokeLinejoin="miter" />
+        </Svg>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+const lh = StyleSheet.create({
+  container: { alignItems: 'center', justifyContent: 'center' },
+  ring: {
+    position: 'absolute',
+    borderWidth: 0.75,
+  },
+  glowBloom: {
+    position: 'absolute',
+    width: 270,
+    height: 270,
+    borderRadius: 135,
+    backgroundColor: 'transparent',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 85,
+    shadowOpacity: 1,
+  },
+  coreOverlay: { position: 'absolute' },
+});
+
+// ─── Host button (primary CTA) ────────────────────────────────────────────────
+function HostButton({ onPress }: { onPress: () => void }) {
+  const scale = useRef(new Animated.Value(1)).current;
 
   return (
     <Pressable
-      style={{ flex: 1 }}
-      onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 40 }).start()}
-      onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 28 }).start()}
+      onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 60, bounciness: 0 }).start()}
+      onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 20, bounciness: 12 }).start()}
       onPress={onPress}
+      style={{ width: '100%' }}
     >
-      <Animated.View style={[mb.outer, { transform: [{ scale }] }]}>
-        {/* Glow ring */}
-        <Animated.View style={[mb.glow, { shadowColor: glowColor, opacity: glowOpacity }]} />
-        <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[mb.face, { borderColor: glowColor + '55' }]}>
-          <Text style={mb.icon}>{icon}</Text>
-          <Text style={mb.label}>{label}</Text>
+      <Animated.View style={[hb.shadow, { transform: [{ scale }] }]}>
+        <LinearGradient
+          colors={['#4F1D96', '#7C3AED', '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={hb.face}
+        >
+          <Ionicons name="game-controller" size={20} color="rgba(255,255,255,0.9)" />
+          <Text style={hb.label}>Host a Game</Text>
+          <Ionicons name="arrow-forward" size={15} color="rgba(255,255,255,0.55)" />
         </LinearGradient>
       </Animated.View>
     </Pressable>
   );
 }
 
-const mb = StyleSheet.create({
-  outer: { width: '100%' },
-  glow: {
-    position: 'absolute', inset: 0,
-    borderRadius: 14,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 14,
-    shadowOpacity: 1,
-    backgroundColor: 'transparent',
+const hb = StyleSheet.create({
+  shadow: {
+    width: '100%',
+    borderRadius: 18,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 22,
+    shadowOpacity: 0.55,
+    elevation: 10,
   },
   face: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    borderRadius: 18,
+    gap: 10,
   },
-  icon:  { fontSize: 20 },
-  label: { color: '#E8E8FF', fontSize: 12, fontWeight: '700', letterSpacing: 0.4, textAlign: 'center' },
+  label: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
 });
 
-// ─── Animated shimmer button ───────────────────────────────────────────────────
-function StartButton({ onPress }: { onPress: () => void }) {
-  const btnScale = useRef(new Animated.Value(1)).current;
-  const shimmer = useRef(new Animated.Value(-1)).current;
-  const btnGlow = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    // Looping shimmer sweep
-    Animated.loop(
-      Animated.sequence([
-        Animated.delay(1800),
-        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: -1, duration: 0, useNativeDriver: true }),
-      ])
-    ).start();
-
-    // Button glow pulse
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(btnGlow, { toValue: 1, duration: 1600, useNativeDriver: true }),
-        Animated.timing(btnGlow, { toValue: 0, duration: 1600, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
-  const shimmerX = shimmer.interpolate({
-    inputRange: [-1, 1],
-    outputRange: [-width * 0.8, width * 0.8],
-  });
-  const glowOpacity = btnGlow.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0.95] });
-
-  function onIn() {
-    Animated.spring(btnScale, { toValue: 0.97, useNativeDriver: true, speed: 30 }).start();
-  }
-  function onOut() {
-    Animated.spring(btnScale, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
-  }
+// ─── Join button (glass outline) ──────────────────────────────────────────────
+function JoinButton({ onPress }: { onPress: () => void }) {
+  const scale = useRef(new Animated.Value(1)).current;
 
   return (
-    <Pressable onPress={onPress} onPressIn={onIn} onPressOut={onOut}>
-      <Animated.View style={[btn.outer, { transform: [{ scale: btnScale }] }]}>
-        {/* Pulsing shadow ring underneath */}
-        <Animated.View style={[btn.glowRing, { opacity: glowOpacity }]} />
-        {/* Button face */}
-        <View style={btn.face}>
-          {/* Top sheen */}
-          <View style={btn.sheen} />
-          {/* Shimmer sweep */}
-          <Animated.View style={[btn.shimmer, { transform: [{ translateX: shimmerX }] }]} />
-          <Text style={btn.label}>START GAME</Text>
+    <Pressable
+      onPressIn={() => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 60, bounciness: 0 }).start()}
+      onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 20, bounciness: 12 }).start()}
+      onPress={onPress}
+      style={{ width: '100%' }}
+    >
+      <Animated.View style={[jb.outer, { transform: [{ scale }] }]}>
+        <View style={jb.face}>
+          <Ionicons name="enter" size={20} color="rgba(167,139,250,0.85)" />
+          <Text style={jb.label}>Join a Game</Text>
+          <Ionicons name="arrow-forward" size={15} color="rgba(167,139,250,0.38)" />
         </View>
       </Animated.View>
     </Pressable>
   );
 }
 
-const btn = StyleSheet.create({
+const jb = StyleSheet.create({
   outer: {
     width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glowRing: {
-    position: 'absolute',
-    width: '104%',
-    height: 72,
     borderRadius: 18,
-    backgroundColor: 'transparent',
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 28,
-    shadowOpacity: 1,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 92, 246, 0.28)',
+    backgroundColor: 'rgba(124, 92, 246, 0.06)',
   },
   face: {
-    width: '100%',
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: '#7C5CF6',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#A78BFA',
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    gap: 10,
   },
-  sheen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '45%',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  shimmer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 60,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    transform: [{ skewX: '-20deg' }],
-  },
-  label: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 5,
-  },
+  label: { color: '#A78BFA', fontSize: 16, fontWeight: '600', flex: 1, textAlign: 'center' },
 });
 
-// ─── Main screen ───────────────────────────────────────────────────────────────
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen({ navigation }: Props) {
   const { userLoaded, currentUser, authError } = useGame();
 
-  // ── All hooks must come before any conditional returns ────────────────────
   const titleFade   = useRef(new Animated.Value(0)).current;
-  const titleSlide  = useRef(new Animated.Value(-20)).current;
+  const titleSlide  = useRef(new Animated.Value(-22)).current;
   const heroFade    = useRef(new Animated.Value(0)).current;
-  const heroScale   = useRef(new Animated.Value(0.88)).current;
+  const heroScale   = useRef(new Animated.Value(0.86)).current;
   const bottomFade  = useRef(new Animated.Value(0)).current;
-  const bottomSlide = useRef(new Animated.Value(24)).current;
-  const titleGlow   = useRef(new Animated.Value(0)).current;
+  const bottomSlide = useRef(new Animated.Value(26)).current;
+  const glowPulse   = useRef(new Animated.Value(0)).current;
 
-  // Redirect to onboarding if loaded but no profile / no username
   useEffect(() => {
     if (userLoaded && !authError && !currentUser) {
       navigation.replace('UsernameSetup');
     }
   }, [userLoaded, currentUser, authError]);
 
-  // Start entrance animations only once we know the user has a profile
   useEffect(() => {
     if (!currentUser) return;
 
-    Animated.stagger(120, [
+    Animated.stagger(130, [
       Animated.parallel([
-        Animated.timing(titleFade,  { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(titleSlide, { toValue: 0, duration: 550, useNativeDriver: true }),
+        Animated.timing(titleFade,  { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(titleSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
       ]),
       Animated.parallel([
-        Animated.timing(heroFade,  { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.spring(heroScale, { toValue: 1, useNativeDriver: true, friction: 7, tension: 60 }),
+        Animated.timing(heroFade,  { toValue: 1, duration: 750, useNativeDriver: true }),
+        Animated.spring(heroScale, { toValue: 1, useNativeDriver: true, friction: 7, tension: 55 }),
       ]),
       Animated.parallel([
-        Animated.timing(bottomFade,  { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(bottomSlide, { toValue: 0, duration: 550, useNativeDriver: true }),
+        Animated.timing(bottomFade,  { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(bottomSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
       ]),
     ]).start();
 
     Animated.loop(
       Animated.sequence([
-        Animated.timing(titleGlow, { toValue: 1, duration: 2800, useNativeDriver: false }),
-        Animated.timing(titleGlow, { toValue: 0, duration: 2800, useNativeDriver: false }),
+        Animated.timing(glowPulse, { toValue: 1, duration: 3000, useNativeDriver: false }),
+        Animated.timing(glowPulse, { toValue: 0, duration: 3000, useNativeDriver: false }),
       ])
     ).start();
   }, [currentUser]);
 
-  const titleShadowR = titleGlow.interpolate({ inputRange: [0, 1], outputRange: [14, 36] });
+  const wordmarkGlow = glowPulse.interpolate({ inputRange: [0, 1], outputRange: [6, 18] });
 
-  // ── Conditional renders (after all hooks) ─────────────────────────────────
-
-  // Auth / profile still loading
   if (!userLoaded) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#7C5CF6" />
+      <View style={{ flex: 1, backgroundColor: '#050408', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#7C3AED" />
       </View>
     );
   }
 
-  // Auth or network failure
   if (authError) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#0F0F13', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#050408', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
         <Text style={{ color: '#F43F5E', fontSize: 16, textAlign: 'center', fontWeight: '600' }}>
           Could not connect
         </Text>
-        <Text style={{ color: '#8585A0', fontSize: 13, textAlign: 'center', marginTop: 8 }}>
+        <Text style={{ color: '#6B6B8A', fontSize: 13, textAlign: 'center', marginTop: 8 }}>
           {authError}{'\n'}Check your connection and restart the app.
         </Text>
       </SafeAreaView>
     );
   }
 
-  // No profile — navigation.replace('UsernameSetup') is in flight
   if (!currentUser) return null;
 
   return (
     <SafeAreaView style={s.safe}>
-      {/* Scan lines */}
-      <View style={s.scanLines} pointerEvents="none">
-        {Array.from({ length: 50 }).map((_, i) => <View key={i} style={s.scanLine} />)}
-      </View>
-
-      {/* Floating particles */}
-      <Particles />
+      <BackgroundAtmosphere />
 
       <View style={s.container}>
-        {/* ── Title ── */}
-        <Animated.View
-          style={[s.titleWrap, { opacity: titleFade, transform: [{ translateY: titleSlide }] }]}
-        >
-          <Animated.Text
-            style={[s.wordmark, { textShadowRadius: titleShadowR } as any]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            ICEBREAKER
-          </Animated.Text>
-          <View style={s.titleUnderline} />
+
+        {/* ── Title block ── */}
+        <Animated.View style={[s.titleBlock, { opacity: titleFade, transform: [{ translateY: titleSlide }] }]}>
+          <Text style={s.greeting}>Hey, {currentUser.username}</Text>
+
+          <View style={s.wordmarkRow}>
+            <View style={s.ruleLine} />
+            <Animated.Text
+              style={[s.wordmark, { textShadowRadius: wordmarkGlow } as any]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              ICEBREAKER
+            </Animated.Text>
+            <View style={s.ruleLine} />
+          </View>
+
+          <View style={s.tagPill}>
+            <Text style={s.tagText}>7 GAMES</Text>
+          </View>
         </Animated.View>
 
         {/* ── Hero ── */}
-        <Animated.View
-          style={[s.heroWrap, { opacity: heroFade, transform: [{ scale: heroScale }] }]}
-        >
-          <RadialGlow />
-          <CrystalHero />
+        <Animated.View style={[s.heroWrap, { opacity: heroFade, transform: [{ scale: heroScale }] }]}>
+          <LightningHero />
         </Animated.View>
 
-        {/* ── Bottom block ── */}
-        <Animated.View
-          style={[s.bottom, { opacity: bottomFade, transform: [{ translateY: bottomSlide }] }]}
-        >
-          <Text style={s.fixTheVibe}>FIX THE VIBE</Text>
-          <Text style={s.subtitle}>Pass the phone. Play the game. Break the ice.</Text>
-          <View style={s.btnWrap}>
-            <StartButton onPress={() => navigation.navigate('PlayerSetup')} />
-          </View>
-          <View style={s.multiWrap}>
-            <MultiButton
-              label="Host a Game"
-              icon="🎮"
-              colors={['#2A1F4E', '#1A1230']}
-              glowColor="#7C5CF6"
-              onPress={() => navigation.navigate('HostLobby')}
-            />
-            <MultiButton
-              label="Join a Game"
-              icon="🔗"
-              colors={['#0A2D35', '#061A20']}
-              glowColor="#06B6D4"
-              onPress={() => navigation.navigate('JoinRoom')}
-            />
+        {/* ── Bottom CTA block ── */}
+        <Animated.View style={[s.bottom, { opacity: bottomFade, transform: [{ translateY: bottomSlide }] }]}>
+          <Text style={s.subtitle}>Play the game. Break the ice.</Text>
+          <View style={s.buttonStack}>
+            <HostButton onPress={() => navigation.navigate('HostLobby')} />
+            <JoinButton onPress={() => navigation.navigate('JoinRoom')} />
           </View>
         </Animated.View>
+
       </View>
     </SafeAreaView>
   );
@@ -631,98 +406,86 @@ export default function HomeScreen({ navigation }: Props) {
 const s = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#000000',
-  },
-  scanLines: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    opacity: 0.03,
-  },
-  scanLine: {
-    flex: 1,
-    borderBottomWidth: 1,
-    borderBottomColor: '#9D80FF',
+    backgroundColor: '#050408',
   },
   container: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 32,
-    paddingBottom: 48,
-    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 36,
+    paddingHorizontal: 24,
   },
 
-  // Title
-  titleWrap: {
+  // Title block
+  titleBlock: {
     width: '100%',
     alignItems: 'center',
+    gap: 10,
+  },
+  greeting: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#5A5A7A',
+    letterSpacing: 0.4,
+  },
+  wordmarkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+  },
+  ruleLine: {
+    flex: 1,
+    height: 0.75,
+    backgroundColor: 'rgba(124, 92, 246, 0.22)',
   },
   wordmark: {
-    fontSize: 54,
+    fontSize: 36,
     fontWeight: '900',
-    letterSpacing: 5,
+    letterSpacing: 9,
     color: '#EDE9FE',
     textShadowColor: '#8B5CF6',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 22,
-    width: '100%',
+    textShadowRadius: 8,
     textAlign: 'center',
   },
-  titleUnderline: {
-    marginTop: 10,
-    width: 48,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#7C5CF6',
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 8,
-    shadowOpacity: 1,
-    opacity: 0.7,
+  tagPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(109, 40, 217, 0.25)',
+    backgroundColor: 'rgba(109, 40, 217, 0.07)',
+  },
+  tagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#5B21B6',
+    letterSpacing: 2.5,
   },
 
   // Hero
   heroWrap: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 4,
   },
 
   // Bottom block
   bottom: {
     width: '100%',
     alignItems: 'center',
-    gap: 10,
-  },
-  fixTheVibe: {
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: 7,
-    color: '#A78BFA',
-    textShadowColor: '#7C5CF6',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 14,
-    textAlign: 'center',
+    gap: 14,
   },
   subtitle: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#4A4A6A',
-    letterSpacing: 0.3,
+    color: '#55556A',
+    letterSpacing: 0.4,
     textAlign: 'center',
-    marginBottom: 4,
   },
-  btnWrap: {
+  buttonStack: {
     width: '100%',
-    marginTop: 8,
-  },
-  multiWrap: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-    marginTop: 4,
+    gap: 10,
   },
 });
