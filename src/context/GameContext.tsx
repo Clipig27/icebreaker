@@ -9,7 +9,7 @@ import React, {
 } from 'react';
 import socket, { ensureSocketConnected } from '../socket';
 import { LocalUser, getProfileById } from '../storage/userStorage';
-import { navigateTo, resetToMain, goBack } from '../navigation/navigationRef';
+import { navigateTo, resetToMain, goBack, replaceWith, getCurrentRouteName } from '../navigation/navigationRef';
 import { supabase } from '../lib/supabase';
 import { usePresence } from '../hooks/usePresence';
 
@@ -225,30 +225,25 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       setIsHost(r.hostId === myStableId);
       setSelectedGame(r.gameState.game);
 
-      switch (r.gameState.game) {
-        case 'lieDetector':
-          navigateTo('LieDetector');
-          break;
-        case 'talentShow':
-          navigateTo('TalentShow');
-          break;
-        case 'standOut':
-          navigateTo('StandOut');
-          break;
-        case 'numberGuessor':
-          navigateTo('NumberGuessor');
-          break;
-        case 'pieCharts':
-          navigateTo('PieCharts');
-          break;
-        case 'dealOrSteal':
-          navigateTo('DealOrSteal');
-          break;
-        case 'shadowProtocol':
-          navigateTo('ShadowProtocol');
-          break;
-        default:
-          break;
+      const GAME_ROUTE: Record<string, string> = {
+        lieDetector:    'LieDetector',
+        talentShow:     'TalentShow',
+        standOut:       'StandOut',
+        numberGuessor:  'NumberGuessor',
+        pieCharts:      'PieCharts',
+        dealOrSteal:    'DealOrSteal',
+        shadowProtocol: 'ShadowProtocol',
+      };
+
+      const target = GAME_ROUTE[r.gameState.game];
+      if (!target) return;
+
+      // If already on this game screen (restart scenario), force a full remount
+      // so local component state resets. Otherwise just navigate to it.
+      if (getCurrentRouteName() === target) {
+        replaceWith(target);
+      } else {
+        navigateTo(target);
       }
     });
 

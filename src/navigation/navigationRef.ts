@@ -1,4 +1,4 @@
-import { createNavigationContainerRef } from '@react-navigation/native';
+import { createNavigationContainerRef, StackActions } from '@react-navigation/native';
 
 // Untyped to avoid circular import with App.tsx (which defines RootStackParamList).
 // Only used for imperative navigation from outside the component tree (e.g. GameContext).
@@ -23,4 +23,16 @@ export function goBack() {
   if (navigationRef.isReady() && navigationRef.canGoBack()) {
     navigationRef.goBack();
   }
+}
+
+/** Replaces the current screen with a fresh instance — forces remount on game restart. */
+export function replaceWith(screen: string) {
+  if (navigationRef.isReady()) {
+    navigationRef.dispatch(StackActions.replace(screen));
+  }
+}
+
+/** Returns the name of the currently focused screen. */
+export function getCurrentRouteName(): string | undefined {
+  return navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
 }
