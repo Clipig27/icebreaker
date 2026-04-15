@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   View,
   Text,
@@ -311,6 +312,71 @@ function Particles() {
   );
 }
 
+// ─── Gradient multi button ────────────────────────────────────────────────────
+function MultiButton({
+  label, icon, colors, glowColor, onPress,
+}: {
+  label: string;
+  icon: string;
+  colors: [string, string];
+  glowColor: string;
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const glow  = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 2000, useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 2000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.75] });
+
+  return (
+    <Pressable
+      style={{ flex: 1 }}
+      onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 40 }).start()}
+      onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 28 }).start()}
+      onPress={onPress}
+    >
+      <Animated.View style={[mb.outer, { transform: [{ scale }] }]}>
+        {/* Glow ring */}
+        <Animated.View style={[mb.glow, { shadowColor: glowColor, opacity: glowOpacity }]} />
+        <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[mb.face, { borderColor: glowColor + '55' }]}>
+          <Text style={mb.icon}>{icon}</Text>
+          <Text style={mb.label}>{label}</Text>
+        </LinearGradient>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+const mb = StyleSheet.create({
+  outer: { width: '100%' },
+  glow: {
+    position: 'absolute', inset: 0,
+    borderRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 14,
+    shadowOpacity: 1,
+    backgroundColor: 'transparent',
+  },
+  face: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    gap: 4,
+  },
+  icon:  { fontSize: 20 },
+  label: { color: '#E8E8FF', fontSize: 12, fontWeight: '700', letterSpacing: 0.4, textAlign: 'center' },
+});
+
 // ─── Animated shimmer button ───────────────────────────────────────────────────
 function StartButton({ onPress }: { onPress: () => void }) {
   const btnScale = useRef(new Animated.Value(1)).current;
@@ -541,12 +607,20 @@ export default function HomeScreen({ navigation }: Props) {
             <StartButton onPress={() => navigation.navigate('PlayerSetup')} />
           </View>
           <View style={s.multiWrap}>
-            <Pressable style={s.multiBtn} onPress={() => navigation.navigate('HostLobby')}>
-              <Text style={s.multiBtnText}>🎮 Host a Game</Text>
-            </Pressable>
-            <Pressable style={s.multiBtn} onPress={() => navigation.navigate('JoinRoom')}>
-              <Text style={s.multiBtnText}>🔗 Join a Game</Text>
-            </Pressable>
+            <MultiButton
+              label="Host a Game"
+              icon="🎮"
+              colors={['#2A1F4E', '#1A1230']}
+              glowColor="#7C5CF6"
+              onPress={() => navigation.navigate('HostLobby')}
+            />
+            <MultiButton
+              label="Join a Game"
+              icon="🔗"
+              colors={['#0A2D35', '#061A20']}
+              glowColor="#06B6D4"
+              onPress={() => navigation.navigate('JoinRoom')}
+            />
           </View>
         </Animated.View>
       </View>
@@ -650,20 +724,5 @@ const s = StyleSheet.create({
     gap: 12,
     width: '100%',
     marginTop: 4,
-  },
-  multiBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#32324A',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: '#16161C',
-  },
-  multiBtnText: {
-    color: '#A78BFA',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
 });
