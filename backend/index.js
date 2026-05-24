@@ -10,6 +10,7 @@ const {
   STAND_OUT_PROMPTS,
   NUMBER_GUESSOR_PROMPTS,
   PIE_CHARTS_PROMPTS,
+  POTLUCK_QUESTIONS,
 } = require('./prompts');
 
 const app = express();
@@ -45,11 +46,12 @@ function normalizeAnswer(text) {
 
 /**
  * Compute per-player score deltas for one Stand Out round.
+ * Simple rule: unique answer = +10 pts, duplicate = 0 pts (no penalty).
+ * Scores accumulate across rounds.
  * @param {Array<{playerId,playerName,text}>} answers
- * @param {Record<string,number>} streaks   per-player consecutive-unique count
- * @param {Array<{id,name,score}>} players  current room players
+ * @param {Array<{id,name,score}>} players  current room players with accumulated scores
  */
-function scoreStandOutRound(answers, streaks, players) {
+function scoreStandOutRound(answers, players) {
   console.log('[standOut] raw answers   :', JSON.stringify(answers));
 
   // Normalize and group
@@ -64,35 +66,24 @@ function scoreStandOutRound(answers, streaks, players) {
   console.log('[standOut] grouped results:', [...groups.entries()].map(([k, v]) => `"${k}" ×${v.length}`).join(', '));
 
   const deltas = [];
-  const newStreaks = { ...streaks };
-  
 
   for (const group of groups.values()) {
     if (group.length === 1) {
-      // Unique — streak bonus
+      // Unique — flat 10 points
       const player = group[0];
-      const streak = (newStreaks[player.playerId] ?? 0) + 1;
-      newStreaks[player.playerId] = streak;
-      const pts = streak >= 4 ? 25 : streak === 3 ? 20 : streak === 2 ? 15 : 10;
-      deltas.push({ playerId: player.playerId, playerName: player.playerName, delta: pts, streakCount: streak });
-    } else {
-      // Duplicate — penalise all in group
-      const penalty = group.length >= 4 ? -12 : group.length === 3 ? -8 : -5;
-      for (const player of group) {
-        newStreaks[player.playerId] = 0;
-        deltas.push({ playerId: player.playerId, playerName: player.playerName, delta: penalty, streakCount: 0 });
-      }
+      deltas.push({ playerId: player.playerId, playerName: player.playerName, delta: 10, streakCount: 0 });
     }
+    // Duplicate — no points, no penalty
   }
 
   const updatedPlayers = players.map(p => {
     const d = deltas.find(d => d.playerId === p.id);
-    return d ? { ...p, score: Math.max(0, p.score + d.delta) } : p;
+    return d ? { ...p, score: p.score + d.delta } : p;
   });
 
   console.log('[standOut] final scores   :', updatedPlayers.map(p => `${p.name}:${p.score}`).join(', '));
 
-  return { deltas, newStreaks, updatedPlayers };
+  return { deltas, updatedPlayers };
 }
 // Future: replace with Supabase. For now: session-level username registry.
 // lowercase_username → socketId  (freed on disconnect or explicit leave)
@@ -105,6 +96,10 @@ const dosRoundData = {};
 // Lie Detector — server-side secret store (truth statement + votes, never broadcast until results)
 // ldRoomData[code] = { truthStatement: 1|2, votes: [] }
 const ldRoomData = {};
+
+// Pot Luck — server-side secret store (correct answer index, active timers)
+// potLuckRoomData[code] = { correctIndex, turnTimer, rollTimer }
+const potLuckRoomData = {};
 
 // ── Disconnect grace period ───────────────────────────────────────────────────
 const disconnectTimers   = {};  // socketId     → timeout handle
@@ -634,10 +629,9 @@ function checkGameProgressAfterLeave(code, leaverId) {
     if (room.players.length > 0 && room.players.every(p => uniqueSubmitters.has(p.id))) {
       console.log('[leave] SO player left — all remaining submitted, scoring');
       room.standOutRoundScored = true;
-      const { deltas, newStreaks, updatedPlayers } = scoreStandOutRound(
-        room.standOutAnswers, room.standOutStreaks, room.players,
+      const { deltas, updatedPlayers } = scoreStandOutRound(
+        room.standOutAnswers, room.players,
       );
-      room.standOutStreaks = newStreaks;
       room.players = updatedPlayers;
       const top = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
       const isGameOver = top && top.score >= STAND_OUT_WIN_SCORE;
@@ -721,6 +715,170 @@ function removeSocketFromAllRooms(socketId) {
   return affected;
 }
 
+// ── Pot Luck helpers ──────────────────────────────────────────────────────────
+
+function cleanupPotLuck(code) {
+  const d = potLuckRoomData[code];
+  if (!d) return;
+  if (d.turnTimer) clearTimeout(d.turnTimer);
+  if (d.rollTimer) clearTimeout(d.rollTimer);
+  potLuckRoomData[code] = null;
+}
+
+/**
+ * Start (or restart) the 30-second turn timer for the current PotLuck actor.
+ * If the timer fires, the actor is auto-skipped.
+ */
+function startPotLuckTurnTimer(code) {
+  const d = potLuckRoomData[code];
+  if (!d) return;
+  if (d.turnTimer) { clearTimeout(d.turnTimer); d.turnTimer = null; }
+  d.turnTimer = setTimeout(() => {
+    const room = rooms[code];
+    if (!room || room.gameState?.game !== 'potLuck' || room.gameState.phase !== 'live') return;
+    const gs = room.gameState;
+    const actorId = gs.order[gs.seatPtr];
+    const actor = room.players.find(p => p.id === actorId);
+    console.log('[potLuck] turn timer expired for %s in room %s — auto-skip', actorId, code);
+    _potLuckApplySkip(code, gs, actorId, actor?.score ?? 0);
+  }, 15000);
+}
+
+/**
+ * Apply a skip action for actorId in the given gameState and emit updates.
+ * Shared by both pl-skip handler and the auto-skip timer.
+ */
+function _potLuckApplySkip(code, gs, actorId, actorScore) {
+  const room = rooms[code];
+  const d = potLuckRoomData[code];
+  if (!room || !d) return;
+  if (d.turnTimer) { clearTimeout(d.turnTimer); d.turnTimer = null; }
+
+  const lastResult = { playerId: actorId, kind: 'skip', delta: 0, total: actorScore, potAt: gs.pot };
+  const newConsecutiveSkips = gs.consecutiveSkips + 1;
+
+  if (newConsecutiveSkips >= gs.order.length) {
+    // Full loop of skips — void the pot
+    const revealAnswer = gs.currentQuestion.choices[d.correctIndex];
+    const revealInfo = { answer: revealAnswer, scored: false, by: null };
+    const nextGs = { ...gs, phase: 'reveal', lastResult, revealInfo, consecutiveSkips: newConsecutiveSkips };
+    room.gameState = nextGs;
+    io.to(code).emit('gameStateUpdated', nextGs);
+  } else {
+    const newPot = Math.min(gs.pot + 1, gs.effectivePotCap ?? gs.potCap);
+    const newSeatPtr = (gs.seatPtr + 1) % gs.order.length;
+    const nextGs = { ...gs, pot: newPot, seatPtr: newSeatPtr, consecutiveSkips: newConsecutiveSkips, lastResult, turnStartedAt: Date.now() };
+    room.gameState = nextGs;
+    io.to(code).emit('gameStateUpdated', nextGs);
+    startPotLuckTurnTimer(code);
+  }
+}
+
+/**
+ * Initialize (or re-initialize) a PotLuck game for the given room.
+ * Sets up potLuckRoomData, picks the first question, shuffles turn order,
+ * overwrites room.gameState with the full initial state, and schedules
+ * the rolling → live transition.
+ * Must be called AFTER room.players is set to the starting lineup (score: 0).
+ */
+function initPotLuckGame(code) {
+  const room = rooms[code];
+  if (!room) return;
+  cleanupPotLuck(code);
+
+  const qIdx = Math.floor(Math.random() * POTLUCK_QUESTIONS.length);
+  const q = POTLUCK_QUESTIONS[qIdx];
+  potLuckRoomData[code] = { correctIndex: q.correctIndex, turnTimer: null, rollTimer: null };
+
+  const shuffled = [...room.players.map(p => p.id)].sort(() => Math.random() - 0.5);
+  const potCap = Math.min(10, Math.max(5, room.potLuckPotCap ?? 7));
+  const startingPot = q.startingPot ?? 1;
+  const effectivePotCap = potCap;
+  const target = room.players.length * potCap;
+
+  room.gameState = {
+    game: 'potLuck',
+    phase: 'rolling',
+    pot: startingPot,
+    potCap,
+    effectivePotCap,
+    target,
+    order: shuffled,
+    seatPtr: 0,
+    consecutiveSkips: 0,
+    usedQuestionIds: [qIdx],
+    currentQuestion: { text: q.text, choices: q.choices, difficulty: q.difficulty ?? 'easy', startingPot },
+    lastResult: null,
+    revealInfo: null,
+    winnerId: null,
+    turnStartedAt: null,
+  };
+
+  // Auto-advance rolling → live after 2.5s
+  const rollTimer = setTimeout(() => {
+    const r = rooms[code];
+    if (!r || r.gameState?.game !== 'potLuck' || r.gameState.phase !== 'rolling') return;
+    r.gameState = { ...r.gameState, phase: 'live', turnStartedAt: Date.now() };
+    io.to(code).emit('gameStateUpdated', r.gameState);
+    startPotLuckTurnTimer(code);
+  }, 2500);
+  potLuckRoomData[code].rollTimer = rollTimer;
+}
+
+/**
+ * Advance to the next PotLuck question. Called by pl-next-question (host action).
+ */
+function startNextPotLuckQuestion(code) {
+  const room = rooms[code];
+  if (!room || room.gameState?.game !== 'potLuck') return;
+  const gs = room.gameState;
+  const d = potLuckRoomData[code];
+  if (!d) return;
+
+  if (d.turnTimer) { clearTimeout(d.turnTimer); d.turnTimer = null; }
+  if (d.rollTimer) { clearTimeout(d.rollTimer); d.rollTimer = null; }
+
+  const used = gs.usedQuestionIds ?? [];
+  const available = POTLUCK_QUESTIONS.map((_, i) => i).filter(i => !used.includes(i));
+  const pool = available.length ? available : POTLUCK_QUESTIONS.map((_, i) => i);
+  const qIdx = pool[Math.floor(Math.random() * pool.length)];
+  const q = POTLUCK_QUESTIONS[qIdx];
+
+  d.correctIndex = q.correctIndex;
+
+  const shuffled = [...room.players.map(p => p.id)].sort(() => Math.random() - 0.5);
+  const nextUsed = available.length ? [...used, qIdx] : [qIdx];
+  const startingPot = q.startingPot ?? 1;
+  const potCap = gs.potCap ?? 7;
+  const effectivePotCap = potCap;
+
+  const nextGs = {
+    ...gs,
+    phase: 'rolling',
+    order: shuffled,
+    seatPtr: 0,
+    pot: startingPot,
+    effectivePotCap,
+    consecutiveSkips: 0,
+    usedQuestionIds: nextUsed,
+    currentQuestion: { text: q.text, choices: q.choices, difficulty: q.difficulty ?? 'easy', startingPot },
+    lastResult: null,
+    revealInfo: null,
+    turnStartedAt: null,
+  };
+  room.gameState = nextGs;
+  io.to(code).emit('gameStateUpdated', nextGs);
+
+  const rollTimer = setTimeout(() => {
+    const r = rooms[code];
+    if (!r || r.gameState?.game !== 'potLuck' || r.gameState.phase !== 'rolling') return;
+    r.gameState = { ...r.gameState, phase: 'live', turnStartedAt: Date.now() };
+    io.to(code).emit('gameStateUpdated', r.gameState);
+    startPotLuckTurnTimer(code);
+  }, 2500);
+  d.rollTimer = rollTimer;
+}
+
 // ── Game state bootstrap ──────────────────────────────────────────────────────
 // Builds a usable initial gameState so clients receive a real state in
 // `gameStarted` and never need to wait on a second `gameStateUpdated` emit
@@ -769,6 +927,9 @@ function buildInitialGameState(game) {
       return { game, phase: 'setup', questions: [], questionIdx: 0, submittedVoterIds: [], allVotes: [] };
     case 'dealOrSteal':
       return { game, phase: 'setup', round: 1, balances: {} };
+    case 'potLuck':
+      // initPotLuckGame() will overwrite this with the real state before gameStarted is emitted
+      return { game, phase: 'rolling', pot: 1, potCap: 5, winMultiplier: 5, target: 0, order: [], seatPtr: 0, consecutiveSkips: 0, usedQuestionIds: [], currentQuestion: null, lastResult: null, revealInfo: null, winnerId: null };
     default:
       return { game, phase: 'start' };
   }
@@ -1017,7 +1178,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Start game ───────────────────────────────────────────────────────────────
-  socket.on('startGame', ({ code, game, persistentId }, ack) => {
+  socket.on('startGame', ({ code, game, persistentId, potCap }, ack) => {
     // Re-register persistentId mapping in case of reconnect before registerPersistentId arrived
     if (persistentId) {
       const old = persistentToSocket[persistentId];
@@ -1056,8 +1217,12 @@ io.on('connection', (socket) => {
     // Reset Stand Out per-round accumulators
     if (game === 'standOut') {
       room.standOutAnswers     = [];
-      room.standOutStreaks     = {};
       room.standOutRoundScored = false;
+    }
+    // Initialize Pot Luck (overwrites room.gameState with full state + schedules roll timer)
+    if (game === 'potLuck') {
+      if (typeof potCap === 'number') room.potLuckPotCap = Math.min(10, Math.max(5, potCap));
+      initPotLuckGame(code);
     }
     console.log('[startGame] broadcasting gameStarted to room %s (%d players)', code, room.players.length);
     io.to(code).emit('gameStarted', room);
@@ -1107,6 +1272,7 @@ io.on('connection', (socket) => {
     if (room.ngTimerTimeout) { clearTimeout(room.ngTimerTimeout); room.ngTimerTimeout = null; }
     room.standOutAnswers     = [];
     room.standOutRoundScored = false;
+    cleanupPotLuck(code);
 
     io.to(code).emit('gameEnded', room);
     console.log('[endGame] host ended game in room %s', code);
@@ -1125,13 +1291,18 @@ io.on('connection', (socket) => {
     dosRoundData[code] = { actions: {} };
     if (room.ngTimerTimeout) { clearTimeout(room.ngTimerTimeout); room.ngTimerTimeout = null; }
     room.standOutAnswers     = [];
-    room.standOutStreaks      = {};
     room.standOutRoundScored  = false;
+    cleanupPotLuck(code);
 
     room.gameState  = buildInitialGameState(game);
     room.players    = room.players.map(p => ({ ...p, score: 0 }));
     room.phase      = 'playing';
     room.hostScreen = 'playing';
+
+    // Initialize Pot Luck (overwrites room.gameState with full state + schedules roll timer)
+    if (game === 'potLuck') {
+      initPotLuckGame(code);
+    }
 
     io.to(code).emit('gameStarted', room);
     console.log('[restartGame] room %s restarted game %s', code, game);
@@ -1216,7 +1387,6 @@ io.on('connection', (socket) => {
 
       // Ensure accumulators exist
       if (!Array.isArray(room.standOutAnswers)) room.standOutAnswers = [];
-      if (!room.standOutStreaks) room.standOutStreaks = {};
 
       room.standOutAnswers.push({ playerId: soPlayerId, playerName: player.name, text: data.text });
       const newSubmitted = [...(gs.submittedPlayerIds ?? []), soPlayerId];
@@ -1240,13 +1410,11 @@ io.on('connection', (socket) => {
           room.standOutAnswers.length, room.players.length);
         room.standOutRoundScored = true;
 
-        const { deltas, newStreaks, updatedPlayers } = scoreStandOutRound(
+        const { deltas, updatedPlayers } = scoreStandOutRound(
           room.standOutAnswers,
-          room.standOutStreaks,
           room.players,
         );
-        room.standOutStreaks = newStreaks;
-        room.players         = updatedPlayers;
+        room.players = updatedPlayers;
 
         const top        = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
         const isGameOver = top && top.score >= STAND_OUT_WIN_SCORE;
@@ -1287,7 +1455,6 @@ io.on('connection', (socket) => {
       if (room.standOutRoundScored) return;
 
       if (!Array.isArray(room.standOutAnswers)) room.standOutAnswers = [];
-      if (!room.standOutStreaks) room.standOutStreaks = {};
 
       const gs = room.gameState;
       const answeredIds = new Set(room.standOutAnswers.map(a => a.playerId));
@@ -1299,7 +1466,6 @@ io.on('connection', (socket) => {
         if (!answeredIds.has(player.id)) {
           room.standOutAnswers.push({ playerId: player.id, playerName: player.name, text: '(no answer)', timedOut: true });
           newSubmitted.push(player.id);
-          room.standOutStreaks[player.id] = 0;
           timedOutDeltas.push({ playerId: player.id, playerName: player.name, delta: -10, streakCount: 0, timedOut: true });
         }
       }
@@ -1308,10 +1474,9 @@ io.on('connection', (socket) => {
 
       // Score only players who actually answered (exclude timed-out placeholders)
       const answeredAnswers = room.standOutAnswers.filter(a => !a.timedOut);
-      const { deltas: answeredDeltas, newStreaks, updatedPlayers: intermediate } = scoreStandOutRound(
-        answeredAnswers, room.standOutStreaks, room.players,
+      const { deltas: answeredDeltas, updatedPlayers: intermediate } = scoreStandOutRound(
+        answeredAnswers, room.players,
       );
-      room.standOutStreaks = newStreaks;
 
       // Apply timeout penalties on top of the scored intermediate state
       const updatedPlayers = intermediate.map(p => {
@@ -1597,6 +1762,78 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // ── Pot Luck: player submits an answer ───────────────────────────────────
+    if (room.gameState?.game === 'potLuck' && action === 'pl-answer') {
+      const gs = room.gameState;
+      if (gs.phase !== 'live') return;
+
+      const actorId = stableId(socket.id);
+      if (gs.order[gs.seatPtr] !== actorId) return; // not your turn
+
+      const plData = potLuckRoomData[code];
+      if (!plData) return;
+
+      // Cancel turn timer
+      if (plData.turnTimer) { clearTimeout(plData.turnTimer); plData.turnTimer = null; }
+
+      const choiceIdx = data?.choiceIdx;
+      if (typeof choiceIdx !== 'number' || choiceIdx < 0 || choiceIdx > 3) return;
+
+      const isCorrect = choiceIdx === plData.correctIndex;
+      const actor = room.players.find(p => p.id === actorId);
+
+      if (isCorrect) {
+        const newScore = Math.max(0, (actor?.score ?? 0) + gs.pot);
+        room.players = room.players.map(p => p.id === actorId ? { ...p, score: newScore } : p);
+        const lastResult = { playerId: actorId, kind: 'correct', delta: gs.pot, total: newScore, potAt: gs.pot };
+        const isWin = newScore >= gs.target;
+        const revealInfo = { answer: gs.currentQuestion.choices[plData.correctIndex], scored: true, by: actor?.name ?? '' };
+        const nextGs = { ...gs, phase: isWin ? 'gameover' : 'reveal', lastResult, revealInfo, winnerId: isWin ? actorId : null };
+        room.gameState = nextGs;
+        io.to(code).emit('gameStateUpdated', nextGs);
+        io.to(code).emit('scoresUpdated', room.players);
+        console.log('[potLuck] %s answered CORRECT in room %s (pot=%d, score=%d, win=%s)', actorId, code, gs.pot, newScore, isWin);
+      } else {
+        const newScore = Math.max(0, (actor?.score ?? 0) - gs.pot);
+        room.players = room.players.map(p => p.id === actorId ? { ...p, score: newScore } : p);
+        const lastResult = { playerId: actorId, kind: 'wrong', delta: -(gs.pot), total: newScore, potAt: gs.pot };
+        const newPot = Math.min(gs.pot + 1, gs.effectivePotCap ?? gs.potCap);
+        const newSeatPtr = (gs.seatPtr + 1) % gs.order.length;
+        const nextGs = { ...gs, pot: newPot, seatPtr: newSeatPtr, consecutiveSkips: 0, lastResult, turnStartedAt: Date.now() };
+        room.gameState = nextGs;
+        io.to(code).emit('gameStateUpdated', nextGs);
+        io.to(code).emit('scoresUpdated', room.players);
+        startPotLuckTurnTimer(code);
+        console.log('[potLuck] %s answered WRONG in room %s (pot=%d, score=%d)', actorId, code, gs.pot, newScore);
+      }
+      return;
+    }
+
+    // ── Pot Luck: player skips their turn ────────────────────────────────────
+    if (room.gameState?.game === 'potLuck' && action === 'pl-skip') {
+      const gs = room.gameState;
+      if (gs.phase !== 'live') return;
+
+      const actorId = stableId(socket.id);
+      if (gs.order[gs.seatPtr] !== actorId) return;
+
+      const plData = potLuckRoomData[code];
+      if (!plData) return;
+
+      const actor = room.players.find(p => p.id === actorId);
+      _potLuckApplySkip(code, gs, actorId, actor?.score ?? 0);
+      console.log('[potLuck] %s SKIPPED in room %s (pot=%d)', actorId, code, gs.pot);
+      return;
+    }
+
+    // ── Pot Luck: host advances to next question ──────────────────────────────
+    if (room.gameState?.game === 'potLuck' && action === 'pl-next-question') {
+      if (room.hostId !== stableId(socket.id)) return;
+      if (room.gameState.phase !== 'reveal') return;
+      startNextPotLuckQuestion(code);
+      return;
+    }
+
     // ── All other games: relay as before ─────────────────────────────────────
     io.to(code).emit('playerActionReceived', { playerId: stableId(socket.id), action, data });
   });
@@ -1634,6 +1871,7 @@ io.on('connection', (socket) => {
   });
 });
 
-httpServer.listen(3001, () => {
-  console.log('Icebreaker backend running on port 3001');
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+  console.log(`Icebreaker backend running on port ${PORT}`);
 });
