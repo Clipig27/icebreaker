@@ -216,6 +216,7 @@ export default function FriendsScreen({ navigation }: Props) {
                 autoCorrect={false}
                 returnKeyType="send"
                 onSubmitEditing={handleSend}
+                keyboardAppearance="dark"
               />
               <TouchableOpacity
                 style={[s.sendBtn, (!username.trim() || actionLoading === 'send') && s.btnDisabled]}

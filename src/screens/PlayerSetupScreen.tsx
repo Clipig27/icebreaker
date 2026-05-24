@@ -84,6 +84,7 @@ export default function PlayerSetupScreen({ navigation }: Props) {
               maxLength={20}
               autoCorrect={false}
               autoCapitalize="words"
+              keyboardAppearance="dark"
             />
             <TouchableOpacity
               style={[styles.addBtn, !input.trim() && styles.addBtnDim]}

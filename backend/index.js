@@ -530,23 +530,31 @@ function resolveLieDetectorRound(code) {
   const speakerId = order[gs.speakerIndex ?? 0];
   const speaker = room.players.find(p => p.id === speakerId);
   const nonSpeakers = room.players.filter(p => p.id !== speakerId);
-  const correctLie = ld.truthStatement === 1 ? 2 : 1;
-  const fooled = (ld.votes ?? []).filter(v => v.lieVote !== correctLie).length;
   const pointsAwarded = [];
-  if (speaker) {
-    pointsAwarded.push({ playerId: speakerId, playerName: speaker.name, points: fooled });
-    speaker.score = (speaker.score ?? 0) + fooled;
-  }
+  let speakerTotal = 0;
   for (const p of nonSpeakers) {
     const vote = (ld.votes ?? []).find(v => v.playerId === p.id);
-    const correct = vote?.lieVote === correctLie;
-    pointsAwarded.push({ playerId: p.id, playerName: p.name, points: correct ? 1 : 0 });
-    if (correct) p.score = (p.score ?? 0) + 1;
+    let listenerPts = 0;
+    if (vote) {
+      const s1ok = (vote.stmt1Vote === 'lie') === ld.stmt1IsLie;
+      const s2ok = (vote.stmt2Vote === 'lie') === ld.stmt2IsLie;
+      listenerPts = (s1ok ? 1 : 0) + (s2ok ? 1 : 0);
+    }
+    const wrong = vote ? 2 - listenerPts : 0;
+    speakerTotal += wrong;
+    pointsAwarded.push({ playerId: p.id, playerName: p.name, points: listenerPts });
+    if (listenerPts > 0) p.score = (p.score ?? 0) + listenerPts;
+  }
+  if (speaker) {
+    pointsAwarded.push({ playerId: speakerId, playerName: speaker.name, points: speakerTotal });
+    speaker.score = (speaker.score ?? 0) + speakerTotal;
   }
   const next = {
     ...gs, phase: 'results',
     votedPlayerIds: (ld.votes ?? []).map(v => v.playerId),
-    truthStatement: ld.truthStatement,
+    statementType: ld.statementType,
+    stmt1IsLie: ld.stmt1IsLie,
+    stmt2IsLie: ld.stmt2IsLie,
     votes: ld.votes,
     pointsAwarded,
   };
@@ -855,8 +863,13 @@ io.on('connection', (socket) => {
       if (room.players.find(p => p.id === persistentId || p.persistentId === persistentId)) {
         socket.join(code);
         console.log('[registerPersistentId] pid=%s rejoined channel %s', persistentId, code);
-        // Send fresh room state to the reconnecting player so their UI is up to date
-        socket.emit('roomUpdated', room);
+        // Send fresh room state to the reconnecting player so their UI is up to date.
+        // If a game is in progress, send gameStarted so the client navigates to the correct game screen.
+        if (room.phase === 'playing') {
+          socket.emit('gameStarted', room);
+        } else {
+          socket.emit('roomUpdated', room);
+        }
         break;
       }
     }
@@ -1507,8 +1520,20 @@ io.on('connection', (socket) => {
       const speakerId = order[gs.speakerIndex ?? 0];
       if (submitterId !== speakerId) return;
       const expectedVoterCount = room.players.filter(p => p.id !== speakerId).length;
-      ldRoomData[code] = { truthStatement: data.truthStatement, votes: [] };
-      const next = { ...gs, phase: 'voting', statement1: data.statement1, statement2: data.statement2, votedPlayerIds: [], expectedVoterCount };
+      ldRoomData[code] = {
+        statementType: data.statementType,
+        stmt1IsLie: data.stmt1IsLie,
+        stmt2IsLie: data.stmt2IsLie,
+        votes: [],
+      };
+      const next = {
+        ...gs,
+        phase: 'voting',
+        statement1: data.statement1,
+        statement2: data.statement2,
+        votedPlayerIds: [],
+        expectedVoterCount,
+      };
       room.gameState = next;
       io.to(code).emit('gameStateUpdated', next);
       return;
@@ -1527,25 +1552,40 @@ io.on('connection', (socket) => {
       if (!voter) return;
       const ld = ldRoomData[code];
       if (!ld) return;
-      ld.votes.push({ playerId: voterId, playerName: voter.name, lieVote: data.lieVote });
+      ld.votes.push({ playerId: voterId, playerName: voter.name, stmt1Vote: data.stmt1Vote, stmt2Vote: data.stmt2Vote });
       const newVotedIds = [...(gs.votedPlayerIds ?? []), voterId];
       const speaker = room.players.find(p => p.id === speakerId);
       const nonSpeakers = room.players.filter(p => p.id !== speakerId);
       if (newVotedIds.length >= (gs.expectedVoterCount ?? nonSpeakers.length)) {
-        const correctLie = ld.truthStatement === 1 ? 2 : 1;
-        const fooled = ld.votes.filter(v => v.lieVote !== correctLie).length;
         const pointsAwarded = [];
-        if (speaker) {
-          pointsAwarded.push({ playerId: speakerId, playerName: speaker.name, points: fooled });
-          speaker.score = (speaker.score ?? 0) + fooled;
-        }
+        let speakerTotal = 0;
         for (const p of nonSpeakers) {
           const vote = ld.votes.find(v => v.playerId === p.id);
-          const correct = vote?.lieVote === correctLie;
-          pointsAwarded.push({ playerId: p.id, playerName: p.name, points: correct ? 1 : 0 });
-          if (correct) p.score = (p.score ?? 0) + 1;
+          let listenerPts = 0;
+          if (vote) {
+            const s1ok = (vote.stmt1Vote === 'lie') === ld.stmt1IsLie;
+            const s2ok = (vote.stmt2Vote === 'lie') === ld.stmt2IsLie;
+            listenerPts = (s1ok ? 1 : 0) + (s2ok ? 1 : 0);
+          }
+          const wrong = vote ? 2 - listenerPts : 0;
+          speakerTotal += wrong;
+          pointsAwarded.push({ playerId: p.id, playerName: p.name, points: listenerPts });
+          if (listenerPts > 0) p.score = (p.score ?? 0) + listenerPts;
         }
-        const next = { ...gs, phase: 'results', votedPlayerIds: newVotedIds, truthStatement: ld.truthStatement, votes: ld.votes, pointsAwarded };
+        if (speaker) {
+          pointsAwarded.push({ playerId: speakerId, playerName: speaker.name, points: speakerTotal });
+          speaker.score = (speaker.score ?? 0) + speakerTotal;
+        }
+        const next = {
+          ...gs,
+          phase: 'results',
+          votedPlayerIds: newVotedIds,
+          statementType: ld.statementType,
+          stmt1IsLie: ld.stmt1IsLie,
+          stmt2IsLie: ld.stmt2IsLie,
+          votes: ld.votes,
+          pointsAwarded,
+        };
         room.gameState = next;
         io.to(code).emit('gameStateUpdated', next);
         io.to(code).emit('scoresUpdated', room.players);
@@ -1569,10 +1609,10 @@ io.on('connection', (socket) => {
     io.to(code).emit('scoresUpdated', players);
   });
 
-  // ── Disconnect — immediately transfer host, then 15-second grace period ──────
+  // ── Disconnect — immediately transfer host, then 630-second grace period ──────
   socket.on('disconnect', (reason) => {
-    console.log('[disconnect] id=%s reason=%s — starting 15s grace period', socket.id, reason);
-    // Do NOT immediately transfer host — the reconnect window is 15 s.
+    console.log('[disconnect] id=%s reason=%s — starting 630s grace period', socket.id, reason);
+    // Do NOT immediately transfer host — the reconnect window is 630 s.
     // If the host doesn't reconnect in time, removeSocketFromAllRooms() handles the transfer.
     disconnectTimers[socket.id] = setTimeout(() => {
       console.log('[grace] expired for socket=%s — removing from rooms', socket.id);
@@ -1590,7 +1630,7 @@ io.on('connection', (socket) => {
           break;
         }
       }
-    }, 15_000);
+    }, 630_000);
   });
 });
 

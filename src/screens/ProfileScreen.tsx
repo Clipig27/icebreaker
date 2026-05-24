@@ -131,6 +131,7 @@ export default function ProfileScreen({ navigation }: Props) {
                 onSubmitEditing={handleSaveUsername}
                 placeholder="new username"
                 placeholderTextColor={COLORS.text3}
+                keyboardAppearance="dark"
               />
               {!!usernameError && <Text style={s.errorText}>{usernameError}</Text>}
               <View style={s.editActions}>

@@ -330,15 +330,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   // Silently exits any current room before creating/joining a new one.
   const exitCurrentRoom = useCallback(() => {
     if (!room) return;
-    if (isHost) {
-      socket.emit('cancelRoom', { code: room.code });
-    } else {
-      socket.emit('leaveRoom', { code: room.code });
-    }
+    // Always use leaveRoom so the host role transfers instead of cancelling the room
+    socket.emit('leaveRoom', { code: room.code });
     setRoom(null);
     setIsHost(false);
     setPlayers([]);
-  }, [room, isHost]);
+  }, [room]);
 
   // ── Multiplayer actions ────────────────────────────────────────────────────
 

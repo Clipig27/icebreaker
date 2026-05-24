@@ -103,6 +103,7 @@ export default function UsernameSetupScreen({ navigation }: Props) {
             maxLength={20}
             returnKeyType="done"
             onSubmitEditing={handleSave}
+            keyboardAppearance="dark"
           />
           {!!error && <Text style={styles.errorText}>{error}</Text>}
 

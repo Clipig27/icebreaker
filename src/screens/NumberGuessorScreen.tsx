@@ -20,6 +20,7 @@ import SecondaryButton from '../components/SecondaryButton';
 import { COLORS, RADIUS } from '../constants/theme';
 import { pickNumberPrompt, GuessResult } from '../utils/promptUtils';
 import { NumberPrompt } from '../constants/gamePrompts';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'NumberGuessor'>;
@@ -424,12 +425,14 @@ export default function NumberGuessorScreen({ navigation }: Props) {
               autoFocus
               maxLength={3}
               returnKeyType="done"
+              inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
               onSubmitEditing={() => {
                 if (!guessValid) return;
                 sendPlayerAction('ng-guess', { value: parsedGuess });
                 setInputText('');
               }}
             />
+            <KeyboardDoneBar />
 
             <Text style={styles.rangeTip}>1 to 100</Text>
 
