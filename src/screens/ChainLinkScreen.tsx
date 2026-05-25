@@ -190,91 +190,106 @@ function OpponentCard({
   return card;
 }
 
-// ── Draggable hand card ──────────────────────────────────────────────────────
-function DraggableHandCard({
+// ── Hand card (tap to select) ────────────────────────────────────────────────
+function HandCard({
   word,
   selected,
-  onSelect,
-  onPlay,
-  canDrag,
+  onPress,
 }: {
   word: string;
   selected: boolean;
-  onSelect: () => void;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.handCard, selected && styles.handCardSelected]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
+      <Text
+        style={styles.handCardWord}
+        adjustsFontSizeToFit
+        numberOfLines={word.includes(' ') ? 2 : 1}
+      >
+        {word}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// ── Floating draggable card (overlay when card is selected) ──────────────────
+function DragOverlay({
+  word,
+  onPlay,
+  onCancel,
+}: {
+  word: string;
   onPlay: () => void;
-  canDrag: boolean;
+  onCancel: () => void;
 }) {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const liftScale = useRef(new Animated.Value(1)).current;
-  const canDragRef = useRef(canDrag);
-  canDragRef.current = canDrag;
+  const scaleAnim = useRef(new Animated.Value(0)).current;
   const onPlayRef = useRef(onPlay);
   onPlayRef.current = onPlay;
-  const isDragging = useRef(false);
+  const [inDropZone, setInDropZone] = useState(false);
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: false, speed: 15, bounciness: 8 }).start();
+  }, [scaleAnim]);
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) => {
-        return canDragRef.current && gs.dy < -8 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5;
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gs) => {
+        pan.setValue({ x: gs.dx, y: gs.dy });
+        setInDropZone(gs.dy < -120);
       },
-      onPanResponderGrant: () => {
-        isDragging.current = true;
-        Animated.spring(liftScale, { toValue: 1.15, useNativeDriver: false, speed: 20 }).start();
-      },
-      onPanResponderMove: Animated.event(
-        [null, { dx: pan.x, dy: pan.y }],
-        { useNativeDriver: false },
-      ),
       onPanResponderRelease: (_, gs) => {
-        isDragging.current = false;
-        if (gs.dy < -80) {
-          // Dragged up enough — play the card
+        if (gs.dy < -120) {
+          // In drop zone — play the card
           Animated.timing(pan, {
-            toValue: { x: 0, y: -400 },
-            duration: 200,
+            toValue: { x: 0, y: -500 },
+            duration: 150,
             useNativeDriver: false,
           }).start(() => {
-            pan.setValue({ x: 0, y: 0 });
-            liftScale.setValue(1);
             onPlayRef.current();
           });
         } else {
-          // Snap back
-          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, speed: 20 }).start();
-          Animated.spring(liftScale, { toValue: 1, useNativeDriver: false, speed: 20 }).start();
+          // Snap back and cancel
+          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, speed: 20 }).start(() => {
+            onCancel();
+          });
         }
-      },
-      onPanResponderTerminate: () => {
-        isDragging.current = false;
-        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
-        Animated.spring(liftScale, { toValue: 1, useNativeDriver: false }).start();
       },
     }),
   ).current;
 
   return (
-    <Animated.View
-      style={{
-        transform: [...pan.getTranslateTransform(), { scale: liftScale }],
-        zIndex: selected ? 100 : 1,
-      }}
-      {...panResponder.panHandlers}
-    >
-      <TouchableOpacity
-        style={[styles.handCard, selected && styles.handCardSelected]}
-        onPress={onSelect}
-        activeOpacity={0.75}
-      >
-        <Text
-          style={styles.handCardWord}
-          adjustsFontSizeToFit
-          numberOfLines={word.includes(' ') ? 2 : 1}
-        >
-          {word}
+    <View style={styles.dragOverlayContainer} pointerEvents="box-none">
+      {/* Drop zone target */}
+      <View style={[styles.dropZoneTarget, inDropZone && styles.dropZoneTargetActive]}>
+        <Text style={[styles.dropZoneTargetText, inDropZone && styles.dropZoneTargetTextActive]}>
+          {inDropZone ? 'Release to play!' : 'Drop card here'}
         </Text>
-      </TouchableOpacity>
-    </Animated.View>
+      </View>
+
+      {/* The draggable card */}
+      <Animated.View
+        style={[
+          styles.dragCard,
+          {
+            transform: [...pan.getTranslateTransform(), { scale: scaleAnim }],
+          },
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <View style={styles.dragCardInner}>
+          <Text style={styles.dragCardWord}>{word}</Text>
+          <Text style={styles.dragCardHint}>Drag up to play</Text>
+        </View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -696,12 +711,6 @@ export default function ChainLinkScreen({ navigation }: Props) {
               </Text>
             )}
 
-            {/* Drop zone hint when dragging */}
-            {canDrag && selectedCard && (
-              <View style={styles.dropZoneHint}>
-                <Text style={styles.dropZoneText}>Drag card here to play</Text>
-              </View>
-            )}
           </View>
 
           {/* ── 3. Referee panel ───────────────────────────────────── */}
@@ -733,38 +742,57 @@ export default function ChainLinkScreen({ navigation }: Props) {
             <EventLog entries={gs.log} />
           )}
 
-          {/* ── 5. Your hand — scrollable with drag-to-play ────────── */}
+          {/* ── 5. Your hand — fan spread with drag-to-play ─────── */}
           {showHand && (
             <View style={styles.handArea}>
               <View style={styles.handHeader}>
                 <Text style={styles.handLabel}>YOUR HAND</Text>
                 <View style={[styles.myCardCountBadge, { backgroundColor: myCardColor + '22', borderColor: myCardColor }]}>
-                  <Text style={[styles.myCardCountText, { color: myCardColor }]}>{myHand.length} card{myHand.length !== 1 ? 's' : ''}</Text>
+                  <Text style={[styles.myCardCountText, { color: myCardColor }]}>{myHand.length}</Text>
                 </View>
               </View>
               {canDrag && (
-                <Text style={styles.dragHint}>Swipe a card up to play it</Text>
+                <Text style={styles.dragHint}>Tap a card, then drag it up to play</Text>
               )}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.handScroll}
-              >
-                {myHand.map((word) => (
-                  <DraggableHandCard
-                    key={word}
-                    word={word}
-                    selected={selectedCard === word}
-                    onSelect={() => setSelectedCard(selectedCard === word ? null : word)}
-                    onPlay={() => handlePlay(word)}
-                    canDrag={canDrag}
-                  />
-                ))}
+              <View style={styles.handFan}>
+                {myHand.map((word, i) => {
+                  const total = myHand.length;
+                  const mid = (total - 1) / 2;
+                  const maxAngle = Math.min(25, total * 3);
+                  const angle = total <= 1 ? 0 : ((i - mid) / (mid || 1)) * maxAngle;
+                  const arcY = Math.abs(i - mid) * (total > 6 ? 3 : 5);
+                  const overlap = total > 6 ? -18 : total > 4 ? -10 : 0;
+                  return (
+                    <View
+                      key={word}
+                      style={{
+                        transform: [{ rotate: `${angle}deg` }, { translateY: arcY }],
+                        zIndex: selectedCard === word ? 100 : i,
+                        marginLeft: i === 0 ? 0 : overlap,
+                      }}
+                    >
+                      <HandCard
+                        word={word}
+                        selected={selectedCard === word}
+                        onPress={() => setSelectedCard(selectedCard === word ? null : word)}
+                      />
+                    </View>
+                  );
+                })}
                 {myHand.length === 0 && (
                   <Text style={styles.emptyHand}>No cards — waiting for result...</Text>
                 )}
-              </ScrollView>
+              </View>
             </View>
+          )}
+
+          {/* ── Drag overlay (appears when card selected + it's your turn) ── */}
+          {selectedCard && canDrag && (
+            <DragOverlay
+              word={selectedCard}
+              onPlay={() => handlePlay(selectedCard)}
+              onCancel={() => setSelectedCard(null)}
+            />
           )}
 
           {/* ── 6. Your turn controls ──────────────────────────────── */}
@@ -1027,24 +1055,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
   },
-  dropZoneHint: {
-    position: 'absolute',
-    bottom: 30,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(200,100,47,0.15)',
-    borderWidth: 1,
-    borderColor: '#C8642F',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-  },
-  dropZoneText: {
-    fontSize: 11,
-    color: '#C8642F',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
+  // (drop zone moved to drag overlay)
 
   // ── Section padding wrapper ─────────────────────────────────────────────
   sectionPad: {
@@ -1226,7 +1237,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   myCardCountText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
@@ -1234,16 +1245,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#C8642F',
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
     fontWeight: '600',
     letterSpacing: 0.3,
   },
-  handScroll: {
-    paddingHorizontal: 14,
-    gap: 10,
-    alignItems: 'center',
-    paddingBottom: 8,
-    paddingTop: 4,
+  handFan: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    paddingTop: 8,
+    minHeight: 130,
   },
   handCard: {
     width: 72,
@@ -1446,5 +1459,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: COLORS.text,
+  },
+
+  // ── Drag overlay ──────────────────────────────────────────────────────
+  dragOverlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 900,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  dropZoneTarget: {
+    position: 'absolute',
+    top: '25%' as any,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(200,100,47,0.12)',
+    borderWidth: 2,
+    borderColor: 'rgba(200,100,47,0.4)',
+    borderStyle: 'dashed',
+    borderRadius: 20,
+    paddingVertical: 24,
+    paddingHorizontal: 40,
+  },
+  dropZoneTargetActive: {
+    backgroundColor: 'rgba(34,197,94,0.2)',
+    borderColor: '#22C55E',
+    borderStyle: 'solid',
+  },
+  dropZoneTargetText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#C8642F',
+    letterSpacing: 0.5,
+  },
+  dropZoneTargetTextActive: {
+    color: '#22C55E',
+  },
+  dragCard: {
+    position: 'absolute',
+    bottom: '20%' as any,
+  },
+  dragCardInner: {
+    width: 90,
+    height: 120,
+    backgroundColor: '#F5F0E8',
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: '#C8642F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    shadowColor: '#C8642F',
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
+  },
+  dragCardWord: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#2C2418',
+    textAlign: 'center',
+  },
+  dragCardHint: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#C8642F',
+    marginTop: 6,
+    letterSpacing: 0.3,
   },
 });
