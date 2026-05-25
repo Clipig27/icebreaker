@@ -23,6 +23,7 @@ import { COLORS, RADIUS } from '../constants/theme';
 import { buildPieChartSession, PIE_CHARTS_DEFAULT_COUNT } from '../utils/promptUtils';
 import { PieChartPrompt } from '../constants/gamePrompts';
 import { Player } from '../types';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PieCharts'>;
@@ -522,6 +523,8 @@ export default function PieChartsScreen({ navigation }: Props) {
                   setCustomPrompts(prev => [...prev, { id: `custom_${Date.now()}`, text, isCustom: true }]);
                   setCustomInput('');
                 }}
+                keyboardAppearance="dark"
+                inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
               />
               <TouchableOpacity
                 style={[styles.addBtn, !customInput.trim() && styles.addBtnDisabled]}
@@ -564,6 +567,7 @@ export default function PieChartsScreen({ navigation }: Props) {
             <SecondaryButton title="Back to Games" onPress={() => navigation.navigate('GameSelect')} />
           </ScrollView>
         </KeyboardAvoidingView>
+        <KeyboardDoneBar />
       </SafeAreaView>
     );
   }

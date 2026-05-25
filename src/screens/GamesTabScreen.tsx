@@ -127,6 +127,41 @@ const GAMES: Game[] = [
       'Regular players win by eliminating all Shadows.',
     ],
   },
+  {
+    id: 'potLuck',
+    title: 'Smarty Pot',
+    iconName: 'cash',
+    accentColor: '#FBBF24',
+    desc: 'Risk the growing pot or pass it on. Harder questions pay more.',
+    players: '3–15 players',
+    instructions: [
+      'A trivia question appears — Easy, Medium, or Hard difficulty.',
+      'Hard questions start the pot higher and can pay out more.',
+      'On your turn (15 seconds!): answer correctly to win the pot, skip to pass it on.',
+      'Wrong answer: you lose points equal to the pot. Skip: pot grows by 1.',
+      'If everyone skips, the pot is voided. Scores never go below 0.',
+      'Host sets the max pot cap (5–10) before the game.',
+      'First to the target score wins!',
+    ],
+  },
+  {
+    id: 'chainLink',
+    title: 'ChainLink',
+    iconName: 'link',
+    accentColor: '#C8642F',
+    desc: 'Link words and explain the connection. Challenge bad links — AI referee decides.',
+    players: '2–8 players',
+    instructions: [
+      'Each player gets 10 word cards. An anchor word starts the chain.',
+      'On your turn: play a card and say how it links to the last word in the chain.',
+      'Other players have 5 seconds to CHALLENGE your link.',
+      'If challenged, an AI referee rules VALID or INVALID.',
+      'VALID: your card is discarded. INVALID: you keep it and draw a penalty card.',
+      'If you challenge a link and the AI rules it VALID, you draw a penalty card.',
+      'Skip your turn at any time at no cost.',
+      'First player to empty their hand wins.',
+    ],
+  },
 ];
 
 function GameRow({ game, index, onPress }: { game: Game; index: number; onPress: () => void }) {

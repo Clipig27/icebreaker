@@ -30,7 +30,9 @@ export type GameType =
   | 'numberGuessor'
   | 'pieCharts'
   | 'dealOrSteal'
-  | 'shadowProtocol';
+  | 'shadowProtocol'
+  | 'potLuck'
+  | 'chainLink';
 
 type Room = {
   code: string;
@@ -71,7 +73,7 @@ type GameContextType = {
   joinRoom: (code: string, playerName: string) => void;
   leaveRoom: () => void;
   cancelRoom: () => void;
-  startGame: (game: GameType) => void;
+  startGame: (game: GameType, options?: { potCap?: number }) => void;
   sendGameState: (gameState: any) => void;
   sendPlayerAction: (action: string, data: any) => void;
   updateRoomScores: (players: Player[]) => void;
@@ -233,6 +235,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         pieCharts:      'PieCharts',
         dealOrSteal:    'DealOrSteal',
         shadowProtocol: 'ShadowProtocol',
+        potLuck:        'PotLuck',
+        chainLink:      'ChainLink',
       };
 
       const target = GAME_ROUTE[r.gameState.game];
@@ -253,6 +257,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     socket.on('scoresUpdated', (updatedPlayers: Player[]) => {
       setPlayers(updatedPlayers);
+      setRoom(prev => prev ? { ...prev, players: updatedPlayers } : prev);
     });
 
     // Host was reassigned (previous host left or disconnected)
@@ -381,7 +386,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     resetToMain();
   }, [room, isHost]);
 
-  const startGame = useCallback((game: GameType) => {
+  const startGame = useCallback((game: GameType, options?: { potCap?: number }) => {
     if (!room) {
       console.warn('[startGame] no room in context — emit skipped');
       return;
@@ -389,7 +394,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     const persistentId = currentUserRef.current?.id ?? socket.id;
     console.log('[startGame] emit — code:', room.code, 'game:', game, 'persistentId:', persistentId, 'connected:', socket.connected);
     ensureSocketConnected()
-      .then(() => socket.emit('startGame', { code: room.code, game, persistentId }, (ack: { ok: boolean; message?: string }) => {
+      .then(() => socket.emit('startGame', { code: room.code, game, persistentId, potCap: options?.potCap }, (ack: { ok: boolean; message?: string }) => {
         if (!ack.ok) console.error('[startGame] server rejected:', ack.message);
       }))
       .catch((err) => console.error('[startGame] could not connect:', err.message));

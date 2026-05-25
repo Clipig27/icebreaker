@@ -16,6 +16,7 @@ import { COLORS, RADIUS, SPACING } from '../constants/theme';
 import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -425,12 +426,15 @@ export default function ShadowProtocolScreen({ navigation }: any) {
               onSubmitEditing={sendChat}
               returnKeyType="send"
               maxLength={200}
+              keyboardAppearance="dark"
+              inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
             />
             <TouchableOpacity style={styles.chatSend} onPress={sendChat} activeOpacity={0.7}>
               <Text style={styles.chatSendText}>→</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+        <KeyboardDoneBar />
       </SafeAreaView>
     );
   }

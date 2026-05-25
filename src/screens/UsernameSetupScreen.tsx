@@ -15,6 +15,9 @@ import { checkUsernameAvailable, upsertProfile } from '../storage/userStorage';
 import { useGame } from '../context/GameContext';
 import { COLORS, SPACING, RADIUS } from '../constants/theme';
 import { supabase } from '../lib/supabase';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { parseError } from '../utils/errorUtils';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'UsernameSetup'>;
@@ -50,14 +53,14 @@ export default function UsernameSetupScreen({ navigation }: Props) {
       // 1. Require an active session (created on app startup)
       const { data: { user }, error: authErr } = await supabase.auth.getUser();
       if (authErr || !user) {
-        setError('No active session. Please restart the app.');
+        setError(parseError('No active session. Please restart the app.'));
         return;
       }
 
       // 2. Enforce case-insensitive uniqueness
       const available = await checkUsernameAvailable(trimmed);
       if (!available) {
-        setError('That username is already taken. Try another.');
+        setError(parseError('already taken'));
         return;
       }
 
@@ -71,7 +74,7 @@ export default function UsernameSetupScreen({ navigation }: Props) {
       navigation.replace('MainTabs');
     } catch (err) {
       console.error('SAVE USER ERROR:', err);
-      setError('Something went wrong. Please try again.');
+      setError(parseError(err));
     } finally {
       setSaving(false);
     }
@@ -104,8 +107,11 @@ export default function UsernameSetupScreen({ navigation }: Props) {
             returnKeyType="done"
             onSubmitEditing={handleSave}
             keyboardAppearance="dark"
+            inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
           />
-          {!!error && <Text style={styles.errorText}>{error}</Text>}
+          {!!error && (
+            <ErrorBanner message={error} onDismiss={() => setError('')} />
+          )}
 
           <TouchableOpacity
             style={[styles.btn, (!username.trim() || saving) && styles.btnDisabled]}
@@ -116,6 +122,7 @@ export default function UsernameSetupScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      <KeyboardDoneBar />
     </SafeAreaView>
   );
 }
@@ -158,7 +165,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   inputError: { borderColor: COLORS.danger },
-  errorText: { fontSize: 13, color: COLORS.danger, textAlign: 'center' },
   btn: {
     width: '100%',
     backgroundColor: COLORS.accent,

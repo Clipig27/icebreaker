@@ -13,6 +13,7 @@ import {
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { parseError } from '../utils/errorUtils';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -570,12 +571,34 @@ export default function HomeScreen({ navigation }: Props) {
   if (authError) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#050408', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: '#F43F5E', fontSize: 16, textAlign: 'center', fontWeight: '600' }}>
-          Could not connect
-        </Text>
-        <Text style={{ color: '#6B6B8A', fontSize: 13, textAlign: 'center', marginTop: 8 }}>
-          {authError}{'\n'}Check your connection and restart the app.
-        </Text>
+        <View style={{
+          width: '100%',
+          backgroundColor: 'rgba(244, 63, 94, 0.10)',
+          borderWidth: 1,
+          borderColor: 'rgba(244, 63, 94, 0.28)',
+          borderRadius: 18,
+          padding: 28,
+          alignItems: 'center',
+          gap: 12,
+        }}>
+          <View style={{
+            width: 52, height: 52, borderRadius: 26,
+            backgroundColor: 'rgba(244, 63, 94, 0.15)',
+            borderWidth: 1, borderColor: 'rgba(244, 63, 94, 0.30)',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Ionicons name="wifi-outline" size={26} color="#F43F5E" />
+          </View>
+          <Text style={{ color: '#F2F2F7', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>
+            Connection Failed
+          </Text>
+          <Text style={{ color: '#8585A0', fontSize: 13, textAlign: 'center', lineHeight: 19 }}>
+            {parseError(authError)}
+          </Text>
+          <Text style={{ color: '#3A3A50', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+            Close and reopen the app to try again.
+          </Text>
+        </View>
       </SafeAreaView>
     );
   }

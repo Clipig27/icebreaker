@@ -91,12 +91,14 @@ export default function MainTabs() {
           backgroundColor: COLORS.surface,
           borderTopColor:  COLORS.border,
           borderTopWidth:  1,
-          paddingBottom:   4,
-          height:          60,
+          paddingBottom:   8,
+          paddingTop:      6,
+          height:          70,
         },
         tabBarLabelStyle: {
           fontSize:   11,
           fontWeight: '600',
+          marginBottom: 2,
         },
 
         headerShown:         true,
@@ -113,7 +115,7 @@ export default function MainTabs() {
         headerRight: () => <NotificationsBell />,
       })}
     >
-      <Tab.Screen name="Play"    component={HomeScreen} />
+      <Tab.Screen name="Play"    component={HomeScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Games"   component={GamesTabScreen} />
       <Tab.Screen name="Social"  component={FriendsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />

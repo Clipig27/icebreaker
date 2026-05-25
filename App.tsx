@@ -20,6 +20,8 @@ import NumberGuessorScreen from './src/screens/NumberGuessorScreen';
 import PieChartsScreen     from './src/screens/PieChartsScreen';
 import DealOrStealScreen      from './src/screens/DealOrStealScreen';
 import ShadowProtocolScreen   from './src/screens/ShadowProtocolScreen';
+import PotLuckScreen          from './src/screens/PotLuckScreen';
+import ChainLinkScreen        from './src/screens/ChainLinkScreen';
 import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
 import InstructionsScreen  from './src/screens/InstructionsScreen';
@@ -46,6 +48,8 @@ export type RootStackParamList = {
   PieCharts:     undefined;
   DealOrSteal:      undefined;
   ShadowProtocol:   undefined;
+  PotLuck:          undefined;
+  ChainLink:        undefined;
   Instructions:  { game?: string } | undefined;
 };
 
@@ -54,7 +58,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 // Game screen names where back navigation should be blocked for the host during play
 const GAME_SCREENS = new Set([
   'LieDetector', 'TalentShow', 'StandOut', 'NumberGuessor',
-  'PieCharts', 'DealOrSteal', 'ShadowProtocol',
+  'PieCharts', 'DealOrSteal', 'ShadowProtocol', 'PotLuck', 'ChainLink',
 ]);
 
 function AppInner() {
@@ -68,6 +72,8 @@ function AppInner() {
     PieCharts: 'pieCharts',
     DealOrSteal: 'dealOrSteal',
     ShadowProtocol: 'shadowProtocol',
+    PotLuck: 'potLuck',
+    ChainLink: 'chainLink',
   };
 
   // True when the host is mid-game and should not be able to back-navigate
@@ -145,6 +151,8 @@ function AppInner() {
           <Stack.Screen name="PieCharts"     component={PieChartsScreen}     options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
           <Stack.Screen name="DealOrSteal"      component={DealOrStealScreen}      options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
           <Stack.Screen name="ShadowProtocol"   component={ShadowProtocolScreen}   options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
+          <Stack.Screen name="PotLuck"          component={PotLuckScreen}          options={{ title: 'Pot Luck',          headerBackTitle: 'Games' }} />
+          <Stack.Screen name="ChainLink"        component={ChainLinkScreen}        options={{ title: 'ChainLink',         headerBackTitle: 'Games' }} />
           <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
             title: (route.params as any)?.game
               ? (() => {
@@ -152,7 +160,8 @@ function AppInner() {
                     lieDetector: 'Lie Detector', talentShow: 'Talent Show',
                     standOut: 'Stand Out', numberGuessor: 'Number Guessor',
                     pieCharts: 'Pie Charts', dealOrSteal: 'Deal or Steal',
-                    shadowProtocol: 'Shadow Protocol',
+                    shadowProtocol: 'Shadow Protocol', potLuck: 'Pot Luck',
+                    chainLink: 'ChainLink',
                   };
                   return names[(route.params as any).game] ?? 'How to Play';
                 })()

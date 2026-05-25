@@ -27,6 +27,7 @@ import {
   ScoreDelta,
 } from '../utils/promptUtils';
 import { StandOutPrompt } from '../constants/gamePrompts';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'StandOut'>;
@@ -232,7 +233,7 @@ export default function StandOutScreen({ navigation }: Props) {
         const succeeded = approveCount > rejectCount;
 
         if (succeeded) {
-          const nextPlayers = allPlayers.map(p =>
+          const nextPlayers = playersRef.current.map(p =>
             p.id === targetPlayerId
               ? { ...p, score: Math.max(0, p.score + CHALLENGE_PENALTY) }
               : p
@@ -424,6 +425,8 @@ export default function StandOutScreen({ navigation }: Props) {
                 setHasSubmittedLocally(true);
               }}
               maxLength={60}
+              keyboardAppearance="dark"
+              inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
             />
             <PrimaryButton
               title="Submit Answer →"
@@ -441,6 +444,7 @@ export default function StandOutScreen({ navigation }: Props) {
             <Text style={styles.playerProgress}>{answered} / {total} answered</Text>
           </View>
         </KeyboardAvoidingView>
+        <KeyboardDoneBar />
       </SafeAreaView>
     );
   }
@@ -507,7 +511,6 @@ export default function StandOutScreen({ navigation }: Props) {
                         <Text style={[styles.deltaNum, { color: delta.delta >= 0 ? COLORS.success : COLORS.danger }]}>
                           {delta.delta >= 0 ? '+' : ''}{delta.delta}
                         </Text>
-                        {delta.streakCount >= 2 && <Text style={styles.streakTag}>🔥 ×{delta.streakCount}</Text>}
                         {dup && <Text style={styles.dupTag}>duplicate</Text>}
                       </>
                     )}
@@ -766,7 +769,6 @@ const styles = StyleSheet.create({
   strikethrough: { textDecorationLine: 'line-through' },
   deltaCol: { alignItems: 'flex-end', gap: 2 },
   deltaNum: { fontSize: 20, fontWeight: '900' },
-  streakTag: { fontSize: 12, color: COLORS.warning },
   dupTag: { fontSize: 10, color: COLORS.danger, fontWeight: '600' },
   invalidatedTag: { fontSize: 11, color: COLORS.text3, fontWeight: '600' },
   // Challenge UI

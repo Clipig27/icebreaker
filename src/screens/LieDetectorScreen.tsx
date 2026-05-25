@@ -20,6 +20,7 @@ import ScoreDisplay from '../components/ScoreDisplay';
 import { COLORS } from '../constants/theme';
 import { LIE_DETECTOR_PROMPTS } from '../constants/prompts';
 import { Player } from '../types';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'LieDetector'>;
@@ -695,6 +696,7 @@ function SpeakerEntering({
             maxLength={100}
             multiline
             keyboardAppearance="dark"
+            inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
           />
 
           <Text style={styles.inputLabel}>Statement 2</Text>
@@ -707,6 +709,7 @@ function SpeakerEntering({
             maxLength={100}
             multiline
             keyboardAppearance="dark"
+            inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
           />
 
           <Text style={[styles.instruction, { marginTop: 4, fontWeight: '700', color: COLORS.text2 }]}>
@@ -761,6 +764,7 @@ function SpeakerEntering({
           />
         </ScrollView>
       </KeyboardAvoidingView>
+      <KeyboardDoneBar />
     </SafeAreaView>
   );
 }

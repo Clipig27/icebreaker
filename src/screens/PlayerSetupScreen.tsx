@@ -18,6 +18,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import PlayerTag from '../components/PlayerTag';
 import { COLORS } from '../constants/theme';
 import { Player } from '../types';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PlayerSetup'>;
@@ -85,6 +86,7 @@ export default function PlayerSetupScreen({ navigation }: Props) {
               autoCorrect={false}
               autoCapitalize="words"
               keyboardAppearance="dark"
+              inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
             />
             <TouchableOpacity
               style={[styles.addBtn, !input.trim() && styles.addBtnDim]}
@@ -126,6 +128,7 @@ export default function PlayerSetupScreen({ navigation }: Props) {
           />
         </View>
       </KeyboardAvoidingView>
+      <KeyboardDoneBar />
     </SafeAreaView>
   );
 }

@@ -22,6 +22,17 @@
     },
     "plugins": [
       "expo-asset"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5d396f3a-8828-43ae-bff1-0b90a2516352"
+      }
+    },
+    "owner": "clipig27",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/5d396f3a-8828-43ae-bff1-0b90a2516352"
+    },
+    "privacy": "public"
   }
 }

@@ -150,6 +150,31 @@ const INSTRUCTIONS: GameInfo[] = [
     ],
     tip: 'Shadows should blend in and cast suspicion elsewhere early.',
   },
+  {
+    id: 'potLuck',
+    title: 'Smarty Pot',
+    emoji: '🧠',
+    players: '3+ players',
+    goal: 'Answer trivia correctly to claim the pot. First to the target score wins.',
+    rules: [
+      '── DIFFICULTY & POT ──',
+      'Each question has a difficulty: Easy (🟢), Medium (🟡), or Hard (🔴).',
+      'Easy questions start the pot at 1. Medium at 2. Hard at 3 — so Hard pays out more by default.',
+      'The pot grows by 1 each time a player skips or answers wrong, up to the max cap.',
+      'The host sets a max pot cap (5–10) before the game — no question can ever exceed this.',
+      '── TAKING TURNS ──',
+      'Players answer in a randomly shuffled order.',
+      'On your turn you have 15 seconds — answer one of the 4 choices or SKIP.',
+      'Answer correctly: you win the full pot and the question ends.',
+      'Answer wrong: you lose points equal to the pot, and it passes to the next player.',
+      'Skip: the pot grows by 1 and passes to the next player.',
+      '── WINNING ──',
+      'If every player skips the entire round, the pot is voided and no one scores.',
+      'Scores floor at 0 — you can never go negative.',
+      'First player to reach the target score (players × max pot) wins!',
+    ],
+    tip: 'Hard questions are riskier but pay out big when the pot is stacked. Plan your strategy while others are deciding.',
+  },
 ];
 
 export default function InstructionsScreen({ navigation, route }: Props) {

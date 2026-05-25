@@ -879,6 +879,173 @@ function startNextPotLuckQuestion(code) {
   d.rollTimer = rollTimer;
 }
 
+// ── Chain Link ────────────────────────────────────────────────────────────────
+
+const CHAINLINK_NOUNS = [
+  'car','road','ocean','guitar','mountain','coffee','library','rocket',
+  'umbrella','river','castle','phone','garden','volcano','compass','piano',
+  'jungle','telescope','anchor','lighthouse','lantern','clock','mirror',
+  'bridge','letter','map','crown','candle','ship','arrow',
+  'feather','drum','wheel','torch','sword','hammer','kite','ladder',
+  'net','lock','key','bell','flag','coin','mask','ring',
+  'cloud','wave','storm','star','moon','fire','snow','wind',
+  'forest','desert','island','cave','tower','village','market','harbor',
+  'tunnel','canyon','meadow','glacier','cliff','valley',
+  'train','bicycle','balloon','submarine','helicopter','raft',
+  'window','door','staircase','roof','chimney','basement','attic',
+  'newspaper','envelope','stamp','photograph','painting',
+  'violin','trumpet','flute','harp','accordion',
+  'apple','lemon','pepper','mushroom','bread','honey','salt',
+  'scissors','needle','thread','button','glove','boot','hat',
+  'rope','pulley','spark','fog','thunder','rainbow','tide','eclipse',
+  'cathedral','palace','monument','fountain','statue','arch',
+  'lantern','telescope','magnet','prism','lever','gear',
+  'coral','fossil','amber','crystal','quartz','flint',
+  'notebook','crayon','chalk','eraser','ruler','pencil',
+  'bucket','barrel','crate','basket','bowl','jug',
+  'saddle','bridle','stirrup','horseshoe','wagon','plow',
+];
+
+// De-duplicate
+const CL_NOUNS = [...new Set(CHAINLINK_NOUNS)];
+
+// chainLinkRoomData[code] = { challengeTimer: TimeoutHandle | null }
+const chainLinkRoomData = {};
+
+function initChainLinkGame(code) {
+  const room = rooms[code];
+  if (!room) return;
+
+  // Cancel any existing challenge timer
+  if (chainLinkRoomData[code]?.challengeTimer) {
+    clearTimeout(chainLinkRoomData[code].challengeTimer);
+  }
+  chainLinkRoomData[code] = { challengeTimer: null };
+
+  const HAND_SIZE = 10;
+  const pool = [...CL_NOUNS];
+  // Fisher-Yates shuffle
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  const hands = {};
+  for (const player of room.players) {
+    hands[player.id] = pool.splice(0, HAND_SIZE);
+  }
+  const anchor = pool.splice(0, 1)[0];
+
+  // Randomize turn order
+  const turnOrder = [...room.players.map(p => p.id)];
+  for (let i = turnOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [turnOrder[i], turnOrder[j]] = [turnOrder[j], turnOrder[i]];
+  }
+
+  room.gameState = {
+    game: 'chainLink',
+    phase: 'playing',
+    hands,
+    chain: [{ word: anchor, by: null, reason: 'anchor' }],
+    turnOrder,
+    turnIdx: 0,
+    pending: null,
+    challengeStartedAt: null,
+    winner: null,
+    log: [{ text: `Anchor: "${anchor}"`, type: 'system' }],
+    drawPile: pool,
+    referee: null,
+  };
+}
+
+async function callChainLinkReferee(prevWord, playedWord, reason) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.warn('[chainLink] ANTHROPIC_API_KEY not set — auto-accepting');
+    return { verdict: 'VALID', why: 'Referee unavailable — link allowed.' };
+  }
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: `You are the referee in a word-chain party game. A player must link a new word to the previous word with a SPECIFIC, real connection (functional, physical, categorical, or strongly associative). Vague links like "both exist" or "both can be big" are REACHES and should be rejected. Reasonable everyday associations should be accepted.\n\nPrevious word: "${prevWord}"\nNew word: "${playedWord}"\nPlayer's stated reason: "${reason}"\n\nRespond with ONLY a JSON object, no markdown, no preamble:\n{"verdict": "VALID" or "INVALID", "why": "one short sentence (max 15 words) explaining the ruling"}`,
+        }],
+      }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined,
+    });
+    const json = await res.json();
+    const text = (json.content?.[0]?.text ?? '').replace(/```json?/g, '').replace(/```/g, '').trim();
+    try {
+      const parsed = JSON.parse(text);
+      const verdict = parsed.verdict === 'VALID' ? 'VALID' : 'INVALID';
+      return { verdict, why: parsed.why ?? '' };
+    } catch {
+      const verdict = /INVALID/.test(text) ? 'INVALID' : 'VALID';
+      return { verdict, why: text.slice(0, 80) };
+    }
+  } catch (e) {
+    console.error('[chainLink] referee error:', e?.message);
+    return { verdict: 'VALID', why: 'Referee unavailable — link allowed.' };
+  }
+}
+
+function clAcceptLink(code) {
+  const room = rooms[code];
+  if (!room) return;
+  const gs = room.gameState;
+  if (!gs || gs.game !== 'chainLink' || !gs.pending) return;
+  const d = chainLinkRoomData[code];
+  if (d?.challengeTimer) { clearTimeout(d.challengeTimer); d.challengeTimer = null; }
+
+  const { card, reason, by } = gs.pending;
+  const actor = room.players.find(p => p.id === by);
+  const newHand = (gs.hands[by] ?? []).filter(c => c !== card);
+
+  // Draw pile: give one card from drawPile if needed (not needed on valid accept)
+  const newHands = { ...gs.hands, [by]: newHand };
+  const newChain = [...gs.chain, { word: card, by, reason }];
+  const newLog = [...gs.log, { text: `${actor?.name ?? by} played "${card}" — accepted`, type: 'valid', playerId: by }];
+
+  // Check win
+  const isWin = newHand.length === 0;
+
+  const nextGs = {
+    ...gs,
+    phase: isWin ? 'win' : 'playing',
+    hands: newHands,
+    chain: newChain,
+    pending: null,
+    challengeStartedAt: null,
+    referee: null,
+    winner: isWin ? by : null,
+    turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
+    log: newLog,
+  };
+  room.gameState = nextGs;
+  io.to(code).emit('gameStateUpdated', nextGs);
+  console.log('[chainLink] link accepted: "%s" in room %s | win=%s', card, code, isWin);
+}
+
+function clDrawCard(gs, playerId) {
+  // Draw one card for a player (penalty). Returns updated hands + drawPile.
+  if (gs.drawPile.length === 0) return { hands: gs.hands, drawPile: [] };
+  const card = gs.drawPile[0];
+  return {
+    hands: { ...gs.hands, [playerId]: [...(gs.hands[playerId] ?? []), card] },
+    drawPile: gs.drawPile.slice(1),
+  };
+}
+
 // ── Game state bootstrap ──────────────────────────────────────────────────────
 // Builds a usable initial gameState so clients receive a real state in
 // `gameStarted` and never need to wait on a second `gameStateUpdated` emit
@@ -930,6 +1097,9 @@ function buildInitialGameState(game) {
     case 'potLuck':
       // initPotLuckGame() will overwrite this with the real state before gameStarted is emitted
       return { game, phase: 'rolling', pot: 1, potCap: 5, winMultiplier: 5, target: 0, order: [], seatPtr: 0, consecutiveSkips: 0, usedQuestionIds: [], currentQuestion: null, lastResult: null, revealInfo: null, winnerId: null };
+    case 'chainLink':
+      // initChainLinkGame() overwrites this immediately
+      return { game, phase: 'playing', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, winner: null, log: [], drawPile: [], referee: null };
     default:
       return { game, phase: 'start' };
   }
@@ -1224,6 +1394,10 @@ io.on('connection', (socket) => {
       if (typeof potCap === 'number') room.potLuckPotCap = Math.min(10, Math.max(5, potCap));
       initPotLuckGame(code);
     }
+    // Initialize Chain Link
+    if (game === 'chainLink') {
+      initChainLinkGame(code);
+    }
     console.log('[startGame] broadcasting gameStarted to room %s (%d players)', code, room.players.length);
     io.to(code).emit('gameStarted', room);
     if (ack) ack({ ok: true });
@@ -1302,6 +1476,10 @@ io.on('connection', (socket) => {
     // Initialize Pot Luck (overwrites room.gameState with full state + schedules roll timer)
     if (game === 'potLuck') {
       initPotLuckGame(code);
+    }
+    // Initialize Chain Link
+    if (game === 'chainLink') {
+      initChainLinkGame(code);
     }
 
     io.to(code).emit('gameStarted', room);
@@ -1831,6 +2009,149 @@ io.on('connection', (socket) => {
       if (room.hostId !== stableId(socket.id)) return;
       if (room.gameState.phase !== 'reveal') return;
       startNextPotLuckQuestion(code);
+      return;
+    }
+
+    // ── Chain Link: play a card ───────────────────────────────────────────────
+    if (room.gameState?.game === 'chainLink' && action === 'cl-play') {
+      const gs = room.gameState;
+      if (gs.phase !== 'playing' || gs.pending) return;
+      const actorId = stableId(socket.id);
+      if (gs.turnOrder[gs.turnIdx] !== actorId) return; // not your turn
+      const { card, reason } = data;
+      if (!card || typeof reason !== 'string') return;
+      const hand = gs.hands[actorId] ?? [];
+      if (!hand.includes(card)) return; // don't own that card
+
+      const actor = room.players.find(p => p.id === actorId);
+      const challengeStartedAt = Date.now();
+      const nextGs = {
+        ...gs,
+        pending: { card, reason, by: actorId },
+        challengeStartedAt,
+        referee: null,
+        log: [...gs.log, { text: `${actor?.name ?? actorId} played "${card}": "${reason}"`, type: 'play', playerId: actorId }],
+      };
+      room.gameState = nextGs;
+      io.to(code).emit('gameStateUpdated', nextGs);
+
+      // 5-second auto-accept timer
+      const d = chainLinkRoomData[code] ?? {};
+      if (d.challengeTimer) clearTimeout(d.challengeTimer);
+      d.challengeTimer = setTimeout(() => {
+        clAcceptLink(code);
+      }, 5000);
+      chainLinkRoomData[code] = d;
+      console.log('[chainLink] %s played "%s" in room %s — challenge window open', actorId, card, code);
+      return;
+    }
+
+    // ── Chain Link: challenge ─────────────────────────────────────────────────
+    if (room.gameState?.game === 'chainLink' && action === 'cl-challenge') {
+      const gs = room.gameState;
+      if (gs.phase !== 'playing' || !gs.pending) return;
+      const challengerId = stableId(socket.id);
+      if (gs.pending.by === challengerId) return; // can't challenge own play
+
+      const d = chainLinkRoomData[code] ?? {};
+      if (d.challengeTimer) { clearTimeout(d.challengeTimer); d.challengeTimer = null; }
+      chainLinkRoomData[code] = d;
+
+      const challenger = room.players.find(p => p.id === challengerId);
+      // Set referee to thinking state immediately
+      const thinkingGs = {
+        ...gs,
+        challengeStartedAt: null,
+        referee: { state: 'thinking', verdict: null, why: '', card: gs.pending.card, who: gs.pending.by, challenger: challengerId },
+        log: [...gs.log, { text: `${challenger?.name ?? challengerId} challenged!`, type: 'challenge', playerId: challengerId }],
+      };
+      room.gameState = thinkingGs;
+      io.to(code).emit('gameStateUpdated', thinkingGs);
+
+      // Call referee async
+      const prevWord = gs.chain.length > 0 ? gs.chain[gs.chain.length - 1].word : '';
+      const { card, reason, by } = gs.pending;
+      callChainLinkReferee(prevWord, card, reason).then(({ verdict, why }) => {
+        const r = rooms[code];
+        if (!r || r.gameState?.game !== 'chainLink') return;
+        const currentGs = r.gameState;
+
+        const actor = r.players.find(p => p.id === by);
+
+        if (verdict === 'VALID') {
+          // Link is valid — accept it; challenger gets penalized (draws a card)
+          const newHand = (currentGs.hands[by] ?? []).filter(c => c !== card);
+          const newChain = [...currentGs.chain, { word: card, by, reason }];
+          const isWin = newHand.length === 0;
+
+          // Challenger draws a card
+          const { hands: handsAfterDraw, drawPile: newDrawPile } = clDrawCard({ ...currentGs, hands: { ...currentGs.hands, [by]: newHand } }, challengerId);
+
+          const logEntry = `"${card}" ruled VALID — ${actor?.name ?? by}'s link stands. ${challenger?.name ?? challengerId} draws a card.`;
+          const nextGs = {
+            ...currentGs,
+            phase: isWin ? 'win' : 'playing',
+            hands: handsAfterDraw,
+            chain: newChain,
+            drawPile: newDrawPile,
+            pending: null,
+            challengeStartedAt: null,
+            winner: isWin ? by : null,
+            turnIdx: (currentGs.turnIdx + 1) % currentGs.turnOrder.length,
+            referee: { state: 'done', verdict: 'VALID', why, card, who: by, challenger: challengerId },
+            log: [...currentGs.log, { text: logEntry, type: 'valid', playerId: by }],
+          };
+          r.gameState = nextGs;
+          io.to(code).emit('gameStateUpdated', nextGs);
+          console.log('[chainLink] VALID ruling for "%s" in room %s — challenger %s draws', card, code, challengerId);
+        } else {
+          // Link is invalid — player keeps card + draws one
+          const { hands: handsAfterDraw, drawPile: newDrawPile } = clDrawCard(currentGs, by);
+          const logEntry = `"${card}" ruled INVALID — ${actor?.name ?? by} keeps it and draws a card.`;
+          const nextGs = {
+            ...currentGs,
+            hands: handsAfterDraw,
+            drawPile: newDrawPile,
+            pending: null,
+            challengeStartedAt: null,
+            turnIdx: (currentGs.turnIdx + 1) % currentGs.turnOrder.length,
+            referee: { state: 'done', verdict: 'INVALID', why, card, who: by, challenger: challengerId },
+            log: [...currentGs.log, { text: logEntry, type: 'invalid', playerId: by }],
+          };
+          r.gameState = nextGs;
+          io.to(code).emit('gameStateUpdated', nextGs);
+          console.log('[chainLink] INVALID ruling for "%s" in room %s', card, code);
+        }
+      });
+      return;
+    }
+
+    // ── Chain Link: skip ──────────────────────────────────────────────────────
+    if (room.gameState?.game === 'chainLink' && action === 'cl-skip') {
+      const gs = room.gameState;
+      if (gs.phase !== 'playing' || gs.pending) return;
+      const actorId = stableId(socket.id);
+      if (gs.turnOrder[gs.turnIdx] !== actorId) return;
+
+      const actor = room.players.find(p => p.id === actorId);
+      const nextGs = {
+        ...gs,
+        turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
+        log: [...gs.log, { text: `${actor?.name ?? actorId} skipped`, type: 'skip', playerId: actorId }],
+      };
+      room.gameState = nextGs;
+      io.to(code).emit('gameStateUpdated', nextGs);
+      console.log('[chainLink] %s skipped in room %s', actorId, code);
+      return;
+    }
+
+    // ── Chain Link: dismiss referee (after viewing result) ────────────────────
+    if (room.gameState?.game === 'chainLink' && action === 'cl-dismiss-referee') {
+      const gs = room.gameState;
+      if (!gs.referee || gs.referee.state !== 'done') return;
+      const nextGs = { ...gs, referee: null };
+      room.gameState = nextGs;
+      io.to(code).emit('gameStateUpdated', nextGs);
       return;
     }
 

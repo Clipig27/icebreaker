@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -119,6 +120,28 @@ const GAMES: {
     glowColor: '#F43F5E',
     screen: 'ShadowProtocol',
     tag: '6–10 players',
+  },
+  {
+    id: 'potLuck',
+    title: 'Smarty Pot',
+    emoji: '🧠',
+    desc: 'Risk the growing pot or pass it on. Harder questions pay more.',
+    minPlayers: 3,
+    accentColor: '#FBBF24',
+    gradientColors: ['#3D2E08', '#221B04', '#0F0F13'],
+    glowColor: '#FBBF24',
+    screen: 'PotLuck',
+  },
+  {
+    id: 'chainLink',
+    title: 'ChainLink',
+    emoji: '🔗',
+    desc: 'Link words, explain the connection. Challenge bad links — AI referee decides.',
+    minPlayers: 2,
+    accentColor: '#C8642F',
+    gradientColors: ['#3D1A08', '#220E04', '#0F0F13'],
+    glowColor: '#C8642F',
+    screen: 'ChainLink',
   },
 ];
 
@@ -388,6 +411,8 @@ export default function GameSelectScreen({ navigation }: Props) {
     );
   }, []);
 
+  const [smartyPotConfig, setSmartyPotConfig] = useState<{ visible: boolean; potCap: number }>({ visible: false, potCap: 7 });
+
   const selectGame = (game: (typeof GAMES)[0]) => {
     console.log('[GameSelect] selected:', game.id, '— room:', room?.code ?? 'none');
     if (game.id === 'lieDetector' && players.length < 3) {
@@ -418,6 +443,18 @@ export default function GameSelectScreen({ navigation }: Props) {
       Alert.alert('Shadow Protocol', `Requires 6–10 players. You have ${players.length}.`);
       return;
     }
+    if (game.id === 'potLuck' && players.length < 3) {
+      Alert.alert('Smarty Pot', `Needs at least 3 players. You have ${players.length}.`);
+      return;
+    }
+    if (game.id === 'chainLink' && players.length < 2) {
+      Alert.alert('ChainLink', `Needs at least 2 players. You have ${players.length}.`);
+      return;
+    }
+    if (game.id === 'potLuck') {
+      setSmartyPotConfig(prev => ({ ...prev, visible: true }));
+      return;
+    }
     setSelectedGame(game.id);
     startGame(game.id);
   };
@@ -430,6 +467,8 @@ export default function GameSelectScreen({ navigation }: Props) {
     if (game.id === 'pieCharts' && players.length < 3) return true;
     if (game.id === 'dealOrSteal' && (players.length < 4 || players.length > 6)) return true;
     if (game.id === 'shadowProtocol' && (players.length < 6 || players.length > 10)) return true;
+    if (game.id === 'potLuck' && players.length < 3) return true;
+    if (game.id === 'chainLink' && players.length < 2) return true;
     return false;
   }
 
@@ -486,9 +525,92 @@ export default function GameSelectScreen({ navigation }: Props) {
           </View>
         )}
       </ScrollView>
+
+      {/* Smarty Pot config modal */}
+      <Modal
+        visible={smartyPotConfig.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSmartyPotConfig(prev => ({ ...prev, visible: false }))}
+      >
+        <View style={cfg.overlay}>
+          <View style={cfg.sheet}>
+            <Text style={cfg.emoji}>🧠</Text>
+            <Text style={cfg.title}>Smarty Pot</Text>
+            <Text style={cfg.subtitle}>Set the max pot size</Text>
+
+            <View style={cfg.row}>
+              <Text style={cfg.label}>MAX POT</Text>
+              <View style={cfg.stepper}>
+                <TouchableOpacity
+                  style={[cfg.stepBtn, smartyPotConfig.potCap <= 5 && cfg.stepBtnDisabled]}
+                  onPress={() => setSmartyPotConfig(prev => ({ ...prev, potCap: Math.max(5, prev.potCap - 1) }))}
+                  activeOpacity={0.7}
+                >
+                  <Text style={cfg.stepBtnText}>−</Text>
+                </TouchableOpacity>
+                <View style={cfg.stepVal}>
+                  <Text style={cfg.stepValText}>{smartyPotConfig.potCap}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[cfg.stepBtn, smartyPotConfig.potCap >= 10 && cfg.stepBtnDisabled]}
+                  onPress={() => setSmartyPotConfig(prev => ({ ...prev, potCap: Math.min(10, prev.potCap + 1) }))}
+                  activeOpacity={0.7}
+                >
+                  <Text style={cfg.stepBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <Text style={cfg.hint}>
+              Max payout: {smartyPotConfig.potCap} pts · Hard questions start the pot higher
+            </Text>
+
+            <TouchableOpacity
+              style={cfg.startBtn}
+              onPress={() => {
+                setSmartyPotConfig(prev => ({ ...prev, visible: false }));
+                setSelectedGame('potLuck');
+                startGame('potLuck', { potCap: smartyPotConfig.potCap });
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={cfg.startBtnText}>START GAME</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setSmartyPotConfig(prev => ({ ...prev, visible: false }))}
+              style={cfg.cancelBtn}
+            >
+              <Text style={cfg.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const cfg = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  sheet: { width: '100%', backgroundColor: '#1A1A24', borderRadius: 20, padding: 24, alignItems: 'center', gap: 12, borderWidth: 1, borderColor: '#FBBF2440' },
+  emoji: { fontSize: 40 },
+  title: { fontSize: 22, fontWeight: '900', color: '#FBBF24', letterSpacing: -0.4 },
+  subtitle: { fontSize: 13, color: '#8585A0' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', backgroundColor: '#12121A', borderRadius: 12, padding: 14, marginTop: 4 },
+  label: { fontWeight: '700', fontSize: 13, color: '#E0E0F0', letterSpacing: 0.5 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stepBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FBBF2433', borderWidth: 1, borderColor: '#FBBF2466', alignItems: 'center', justifyContent: 'center' },
+  stepBtnDisabled: { opacity: 0.3 },
+  stepBtnText: { fontSize: 20, fontWeight: '700', color: '#FBBF24', lineHeight: 24 },
+  stepVal: { width: 48, alignItems: 'center' },
+  stepValText: { fontSize: 28, fontWeight: '900', color: '#FBBF24' },
+  hint: { fontSize: 11, color: '#5A5A7A', textAlign: 'center' },
+  startBtn: { backgroundColor: '#FBBF24', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 32, width: '100%', alignItems: 'center', marginTop: 4 },
+  startBtnText: { fontWeight: '900', fontSize: 15, color: '#1A1300', letterSpacing: 1 },
+  cancelBtn: { paddingVertical: 8 },
+  cancelBtnText: { fontSize: 13, color: '#5A5A7A' },
+});
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },

@@ -19,6 +19,9 @@ import { useGame } from '../context/GameContext';
 import { getFriends } from '../storage/friendStorage';
 import { checkUsernameAvailable, patchUser } from '../storage/userStorage';
 import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { parseError } from '../utils/errorUtils';
 
 type Props = {
   navigation: CompositeNavigationProp<
@@ -74,14 +77,14 @@ export default function ProfileScreen({ navigation }: Props) {
     try {
       const available = await checkUsernameAvailable(trimmed, currentUser?.id);
       if (!available) {
-        setUsernameError('That username is already taken. Try another.');
+        setUsernameError(parseError('already taken'));
         return;
       }
       const updated = await patchUser({ username: trimmed });
       if (updated) setCurrentUser(updated);
       setEditingUsername(false);
-    } catch {
-      setUsernameError('Something went wrong. Please try again.');
+    } catch (e) {
+      setUsernameError(parseError(e));
     } finally {
       setSavingUsername(false);
     }
@@ -132,8 +135,11 @@ export default function ProfileScreen({ navigation }: Props) {
                 placeholder="new username"
                 placeholderTextColor={COLORS.text3}
                 keyboardAppearance="dark"
+                inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
               />
-              {!!usernameError && <Text style={s.errorText}>{usernameError}</Text>}
+              {!!usernameError && (
+                <ErrorBanner message={usernameError} onDismiss={() => setUsernameError('')} />
+              )}
               <View style={s.editActions}>
                 <TouchableOpacity
                   style={[s.saveBtn, (savingUsername || !newUsername.trim()) && s.btnDisabled]}
@@ -198,6 +204,7 @@ export default function ProfileScreen({ navigation }: Props) {
           </View>
         </View>
       </KeyboardAvoidingView>
+      <KeyboardDoneBar />
     </SafeAreaView>
   );
 }
@@ -284,7 +291,6 @@ const s = StyleSheet.create({
     letterSpacing:   0.3,
   },
   inputError: { borderColor: COLORS.danger },
-  errorText:  { fontSize: 13, color: COLORS.danger },
   editActions: {
     flexDirection: 'row',
     gap: SPACING.sm,

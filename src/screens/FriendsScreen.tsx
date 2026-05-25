@@ -9,6 +9,7 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -35,6 +36,9 @@ import {
   type GameInvite,
 } from '../storage/inviteStorage';
 import { useGame } from '../context/GameContext';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { parseError } from '../utils/errorUtils';
 
 type Props = {
   navigation: CompositeNavigationProp<
@@ -92,7 +96,7 @@ export default function FriendsScreen({ navigation }: Props) {
       setSendStatus(`Request sent to ${trimmed}`);
       setUsername('');
     } catch (e: any) {
-      setSendError(e.message ?? 'Failed to send request');
+      setSendError(parseError(e));
     } finally {
       setActionLoading(null);
     }
@@ -217,6 +221,7 @@ export default function FriendsScreen({ navigation }: Props) {
                 returnKeyType="send"
                 onSubmitEditing={handleSend}
                 keyboardAppearance="dark"
+                inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
               />
               <TouchableOpacity
                 style={[s.sendBtn, (!username.trim() || actionLoading === 'send') && s.btnDisabled]}
@@ -229,7 +234,13 @@ export default function FriendsScreen({ navigation }: Props) {
                 }
               </TouchableOpacity>
             </View>
-            {sendError && <Text style={s.statusError}>{sendError}</Text>}
+            {sendError && (
+              <ErrorBanner
+                message={sendError}
+                onDismiss={() => setSendError(null)}
+                autoDismiss
+              />
+            )}
 
             {/* ── Incoming Requests ── */}
             {requests.length > 0 && (
@@ -365,6 +376,7 @@ export default function FriendsScreen({ navigation }: Props) {
           </View>
         )}
       />
+      <KeyboardDoneBar />
     </SafeAreaView>
   );
 }
@@ -425,12 +437,6 @@ const s = StyleSheet.create({
   statusSuccess: {
     marginTop: SPACING.sm,
     color: COLORS.success,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  statusError: {
-    marginTop: SPACING.sm,
-    color: COLORS.danger,
     fontSize: 13,
     fontWeight: '600',
   },
