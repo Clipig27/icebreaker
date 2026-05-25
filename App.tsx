@@ -30,6 +30,7 @@ import { COLORS } from './src/constants/theme';
 import InviteModal from './src/components/InviteModal';
 import HostOptionsMenu from './src/components/HostOptionsMenu';
 import HostStatusBanner from './src/components/HostStatusBanner';
+import GameErrorBoundary from './src/components/GameErrorBoundary';
 import { useGame } from './src/context/GameContext';
 import { TouchableOpacity, Text, View } from 'react-native';
 

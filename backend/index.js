@@ -832,8 +832,12 @@ function startNextPotLuckQuestion(code) {
   const room = rooms[code];
   if (!room || room.gameState?.game !== 'potLuck') return;
   const gs = room.gameState;
-  const d = potLuckRoomData[code];
-  if (!d) return;
+  let d = potLuckRoomData[code];
+  if (!d) {
+    console.warn('[potLuck] no potLuckRoomData for %s — creating', code);
+    d = { turnTimer: null, rollTimer: null, correctIndex: 0 };
+    potLuckRoomData[code] = d;
+  }
 
   if (d.turnTimer) { clearTimeout(d.turnTimer); d.turnTimer = null; }
   if (d.rollTimer) { clearTimeout(d.rollTimer); d.rollTimer = null; }
@@ -2060,8 +2064,15 @@ io.on('connection', (socket) => {
 
     // ── Pot Luck: host advances to next question ──────────────────────────────
     if (room.gameState?.game === 'potLuck' && action === 'pl-next-question') {
-      if (room.hostId !== stableId(socket.id)) return;
-      if (room.gameState.phase !== 'reveal') return;
+      console.log('[potLuck] pl-next-question from socket=%s stableId=%s hostId=%s phase=%s', socket.id, stableId(socket.id), room.hostId, room.gameState.phase);
+      if (room.hostId !== stableId(socket.id)) {
+        console.warn('[potLuck] pl-next-question rejected: not host');
+        return;
+      }
+      if (room.gameState.phase !== 'reveal') {
+        console.warn('[potLuck] pl-next-question rejected: phase=%s (expected reveal)', room.gameState.phase);
+        return;
+      }
       startNextPotLuckQuestion(code);
       return;
     }
