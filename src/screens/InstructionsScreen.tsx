@@ -183,7 +183,7 @@ const INSTRUCTIONS: GameInfo[] = [
     goal: 'Be the first to empty your hand by linking words together.',
     rules: [
       'Each player gets 7 word cards. An anchor word starts the chain.',
-      'On your turn you have 20 seconds to play a card or skip.',
+      'On your turn you have 15 seconds to play a card or skip.',
       'Play a card by selecting it and optionally explaining how it links to the last word in the chain.',
       'After you play, other players have 3 seconds to CHALLENGE your link.',
       'If challenged, an AI referee rules VALID or INVALID.',

@@ -51,7 +51,7 @@ type CLGameState = {
 };
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const TURN_TIMER_MS = 20000;
+const TURN_TIMER_MS = 15000;
 const CHALLENGE_WINDOW_MS = 3000;
 
 // ── Color helpers ────────────────────────────────────────────────────────────
@@ -229,14 +229,22 @@ function DraggableHandCard({
       },
       onPanResponderRelease: (_, gs) => {
         if (gs.dy < -80) {
-          Animated.timing(pan, {
-            toValue: { x: 0, y: -500 },
-            duration: 150,
+          // Gentle settle into the chain area
+          Animated.spring(pan, {
+            toValue: { x: 0, y: gs.dy - 20 },
             useNativeDriver: false,
+            speed: 30,
+            bounciness: 4,
           }).start(() => {
-            pan.setValue({ x: 0, y: 0 });
-            onDragEndRef.current();
-            onPlayRef.current();
+            Animated.timing(pan, {
+              toValue: { x: 0, y: gs.dy - 20 },
+              duration: 0,
+              useNativeDriver: false,
+            }).start(() => {
+              pan.setValue({ x: 0, y: 0 });
+              onDragEndRef.current();
+              onPlayRef.current();
+            });
           });
         } else {
           Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, speed: 20 }).start();
@@ -725,9 +733,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
             <View style={styles.handArea}>
               <View style={styles.handHeader}>
                 <Text style={styles.handLabel}>YOUR HAND</Text>
-                <View style={[styles.myCardCountBadge, { backgroundColor: myCardColor + '22', borderColor: myCardColor }]}>
-                  <Text style={[styles.myCardCountText, { color: myCardColor }]}>{myHand.length}</Text>
-                </View>
+                <Text style={styles.myCardCountText}>{myHand.length} card{myHand.length !== 1 ? 's' : ''} left</Text>
               </View>
               <View style={styles.handFan}>
                 {myHand.map((word, i) => {
@@ -1190,16 +1196,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
-  myCardCountBadge: {
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-  },
   myCardCountText: {
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text2,
   },
   dragHint: {
     fontSize: 10,

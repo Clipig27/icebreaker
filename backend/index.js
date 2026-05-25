@@ -741,7 +741,7 @@ function startPotLuckTurnTimer(code) {
     const actor = room.players.find(p => p.id === actorId);
     console.log('[potLuck] turn timer expired for %s in room %s — auto-skip', actorId, code);
     _potLuckApplySkip(code, gs, actorId, actor?.score ?? 0);
-  }, 20000);
+  }, 15000);
 }
 
 /**
@@ -988,7 +988,7 @@ function clStartTurnTimer(code) {
     io.to(code).emit('gameStateUpdated', nextGs);
     console.log('[chainLink] %s auto-skipped (timer) in room %s', actorId, code);
     clStartTurnTimer(code);
-  }, 20000);
+  }, 15000);
   chainLinkRoomData[code] = d;
 }
 
