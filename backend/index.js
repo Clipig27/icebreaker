@@ -916,11 +916,11 @@ function initChainLinkGame(code) {
   const room = rooms[code];
   if (!room) return;
 
-  // Cancel any existing challenge timer
-  if (chainLinkRoomData[code]?.challengeTimer) {
-    clearTimeout(chainLinkRoomData[code].challengeTimer);
-  }
-  chainLinkRoomData[code] = { challengeTimer: null };
+  // Cancel any existing timers
+  const existing = chainLinkRoomData[code];
+  if (existing?.challengeTimer) clearTimeout(existing.challengeTimer);
+  if (existing?.turnTimer) clearTimeout(existing.turnTimer);
+  chainLinkRoomData[code] = { challengeTimer: null, turnTimer: null };
 
   const HAND_SIZE = 10;
   const pool = [...CL_NOUNS];
@@ -952,11 +952,40 @@ function initChainLinkGame(code) {
     turnIdx: 0,
     pending: null,
     challengeStartedAt: null,
+    turnStartedAt: Date.now(),
     winner: null,
     log: [{ text: `Anchor: "${anchor}"`, type: 'system' }],
     drawPile: pool,
     referee: null,
   };
+
+  // Start 15-second turn timer
+  clStartTurnTimer(code);
+}
+
+function clStartTurnTimer(code) {
+  const d = chainLinkRoomData[code] ?? {};
+  if (d.turnTimer) clearTimeout(d.turnTimer);
+  d.turnTimer = setTimeout(() => {
+    const room = rooms[code];
+    if (!room || room.gameState?.game !== 'chainLink') return;
+    const gs = room.gameState;
+    if (gs.phase !== 'playing' || gs.pending || gs.referee) return;
+    // Auto-skip current player
+    const actorId = gs.turnOrder[gs.turnIdx];
+    const actor = room.players.find(p => p.id === actorId);
+    const nextGs = {
+      ...gs,
+      turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
+      turnStartedAt: Date.now(),
+      log: [...gs.log, { text: `${actor?.name ?? actorId} ran out of time`, type: 'skip', playerId: actorId }],
+    };
+    room.gameState = nextGs;
+    io.to(code).emit('gameStateUpdated', nextGs);
+    console.log('[chainLink] %s auto-skipped (timer) in room %s', actorId, code);
+    clStartTurnTimer(code);
+  }, 15000);
+  chainLinkRoomData[code] = d;
 }
 
 async function callChainLinkReferee(prevWord, playedWord, reason) {
@@ -978,7 +1007,7 @@ async function callChainLinkReferee(prevWord, playedWord, reason) {
         max_tokens: 200,
         messages: [{
           role: 'user',
-          content: `You are the referee in a word-chain party game. A player must link a new word to the previous word with a SPECIFIC, real connection (functional, physical, categorical, or strongly associative). Vague links like "both exist" or "both can be big" are REACHES and should be rejected. Reasonable everyday associations should be accepted.\n\nPrevious word: "${prevWord}"\nNew word: "${playedWord}"\nPlayer's stated reason: "${reason}"\n\nRespond with ONLY a JSON object, no markdown, no preamble:\n{"verdict": "VALID" or "INVALID", "why": "one short sentence (max 15 words) explaining the ruling"}`,
+          content: `You are the referee in a word-chain party game. A player must link a new word to the previous word with a SPECIFIC, real connection (functional, physical, categorical, or strongly associative). Vague links like "both exist" or "both can be big" are REACHES and should be rejected. Reasonable everyday associations should be accepted.\n\nPrevious word: "${prevWord}"\nNew word: "${playedWord}"\nPlayer's stated reason: "${reason || '(no reason given — judge based on the words alone)'}"\n\nRespond with ONLY a JSON object, no markdown, no preamble:\n{"verdict": "VALID" or "INVALID", "why": "one short sentence (max 15 words) explaining the ruling"}`,
         }],
       }),
       signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined,
@@ -1026,6 +1055,7 @@ function clAcceptLink(code) {
     chain: newChain,
     pending: null,
     challengeStartedAt: null,
+    turnStartedAt: isWin ? null : Date.now(),
     referee: null,
     winner: isWin ? by : null,
     turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
@@ -1034,6 +1064,12 @@ function clAcceptLink(code) {
   room.gameState = nextGs;
   io.to(code).emit('gameStateUpdated', nextGs);
   console.log('[chainLink] link accepted: "%s" in room %s | win=%s', card, code, isWin);
+
+  // Start turn timer for next player (or stop if game ended)
+  const td = chainLinkRoomData[code] ?? {};
+  if (td.turnTimer) { clearTimeout(td.turnTimer); td.turnTimer = null; }
+  chainLinkRoomData[code] = td;
+  if (!isWin) clStartTurnTimer(code);
 }
 
 function clDrawCard(gs, playerId) {
@@ -1099,7 +1135,7 @@ function buildInitialGameState(game) {
       return { game, phase: 'rolling', pot: 1, potCap: 5, winMultiplier: 5, target: 0, order: [], seatPtr: 0, consecutiveSkips: 0, usedQuestionIds: [], currentQuestion: null, lastResult: null, revealInfo: null, winnerId: null };
     case 'chainLink':
       // initChainLinkGame() overwrites this immediately
-      return { game, phase: 'playing', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, winner: null, log: [], drawPile: [], referee: null };
+      return { game, phase: 'playing', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, turnStartedAt: null, winner: null, log: [], drawPile: [], referee: null };
     default:
       return { game, phase: 'start' };
   }
@@ -2018,19 +2054,27 @@ io.on('connection', (socket) => {
       if (gs.phase !== 'playing' || gs.pending) return;
       const actorId = stableId(socket.id);
       if (gs.turnOrder[gs.turnIdx] !== actorId) return; // not your turn
-      const { card, reason } = data;
-      if (!card || typeof reason !== 'string') return;
+      const card = data.card;
+      const reason = typeof data.reason === 'string' ? data.reason.trim() : '';
+      if (!card) return;
       const hand = gs.hands[actorId] ?? [];
       if (!hand.includes(card)) return; // don't own that card
 
+      // Stop turn timer
+      const td = chainLinkRoomData[code] ?? {};
+      if (td.turnTimer) { clearTimeout(td.turnTimer); td.turnTimer = null; }
+      chainLinkRoomData[code] = td;
+
       const actor = room.players.find(p => p.id === actorId);
       const challengeStartedAt = Date.now();
+      const logMsg = reason ? `${actor?.name ?? actorId} played "${card}": "${reason}"` : `${actor?.name ?? actorId} played "${card}"`;
       const nextGs = {
         ...gs,
         pending: { card, reason, by: actorId },
         challengeStartedAt,
+        turnStartedAt: null,
         referee: null,
-        log: [...gs.log, { text: `${actor?.name ?? actorId} played "${card}": "${reason}"`, type: 'play', playerId: actorId }],
+        log: [...gs.log, { text: logMsg, type: 'play', playerId: actorId }],
       };
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
@@ -2055,6 +2099,7 @@ io.on('connection', (socket) => {
 
       const d = chainLinkRoomData[code] ?? {};
       if (d.challengeTimer) { clearTimeout(d.challengeTimer); d.challengeTimer = null; }
+      if (d.turnTimer) { clearTimeout(d.turnTimer); d.turnTimer = null; }
       chainLinkRoomData[code] = d;
 
       const challenger = room.players.find(p => p.id === challengerId);
@@ -2062,6 +2107,7 @@ io.on('connection', (socket) => {
       const thinkingGs = {
         ...gs,
         challengeStartedAt: null,
+        turnStartedAt: null,
         referee: { state: 'thinking', verdict: null, why: '', card: gs.pending.card, who: gs.pending.by, challenger: challengerId },
         log: [...gs.log, { text: `${challenger?.name ?? challengerId} challenged!`, type: 'challenge', playerId: challengerId }],
       };
@@ -2096,6 +2142,7 @@ io.on('connection', (socket) => {
             drawPile: newDrawPile,
             pending: null,
             challengeStartedAt: null,
+            turnStartedAt: null, // timer resumes on dismiss
             winner: isWin ? by : null,
             turnIdx: (currentGs.turnIdx + 1) % currentGs.turnOrder.length,
             referee: { state: 'done', verdict: 'VALID', why, card, who: by, challenger: challengerId },
@@ -2114,6 +2161,7 @@ io.on('connection', (socket) => {
             drawPile: newDrawPile,
             pending: null,
             challengeStartedAt: null,
+            turnStartedAt: null, // timer resumes on dismiss
             turnIdx: (currentGs.turnIdx + 1) % currentGs.turnOrder.length,
             referee: { state: 'done', verdict: 'INVALID', why, card, who: by, challenger: challengerId },
             log: [...currentGs.log, { text: logEntry, type: 'invalid', playerId: by }],
@@ -2133,15 +2181,22 @@ io.on('connection', (socket) => {
       const actorId = stableId(socket.id);
       if (gs.turnOrder[gs.turnIdx] !== actorId) return;
 
+      // Stop turn timer
+      const sd = chainLinkRoomData[code] ?? {};
+      if (sd.turnTimer) { clearTimeout(sd.turnTimer); sd.turnTimer = null; }
+      chainLinkRoomData[code] = sd;
+
       const actor = room.players.find(p => p.id === actorId);
       const nextGs = {
         ...gs,
         turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
+        turnStartedAt: Date.now(),
         log: [...gs.log, { text: `${actor?.name ?? actorId} skipped`, type: 'skip', playerId: actorId }],
       };
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
       console.log('[chainLink] %s skipped in room %s', actorId, code);
+      clStartTurnTimer(code);
       return;
     }
 
@@ -2149,9 +2204,11 @@ io.on('connection', (socket) => {
     if (room.gameState?.game === 'chainLink' && action === 'cl-dismiss-referee') {
       const gs = room.gameState;
       if (!gs.referee || gs.referee.state !== 'done') return;
-      const nextGs = { ...gs, referee: null };
+      const isWin = gs.phase === 'win';
+      const nextGs = { ...gs, referee: null, turnStartedAt: isWin ? null : Date.now() };
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
+      if (!isWin) clStartTurnTimer(code);
       return;
     }
 

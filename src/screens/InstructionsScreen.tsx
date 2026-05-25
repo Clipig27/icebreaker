@@ -175,6 +175,27 @@ const INSTRUCTIONS: GameInfo[] = [
     ],
     tip: 'Hard questions are riskier but pay out big when the pot is stacked. Plan your strategy while others are deciding.',
   },
+  {
+    id: 'chainLink',
+    title: 'ChainLink',
+    emoji: '🔗',
+    players: '2–8 players',
+    goal: 'Be the first to empty your hand by linking words together.',
+    rules: [
+      'Each player gets 10 word cards. An anchor word starts the chain.',
+      'On your turn you have 15 seconds to play a card or skip.',
+      'Play a card by selecting it and optionally explaining how it links to the last word in the chain.',
+      'After you play, other players have 5 seconds to CHALLENGE your link.',
+      'If challenged, an AI referee rules VALID or INVALID.',
+      'VALID: your card is accepted and the challenger draws a penalty card.',
+      'INVALID: you keep your card and draw a penalty card.',
+      'If no one challenges within 5 seconds, your link is automatically accepted.',
+      'Skip your turn at any time — no penalty.',
+      'If you run out of time, your turn is automatically skipped.',
+      'First player to empty their hand wins!',
+    ],
+    tip: 'Think creatively — any real connection works. But make it strong enough to survive a challenge!',
+  },
 ];
 
 export default function InstructionsScreen({ navigation, route }: Props) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -41,83 +42,228 @@ type CLGameState = {
   turnIdx: number;
   pending: { card: string; reason: string; by: string } | null;
   challengeStartedAt: number | null;
+  turnStartedAt: number | null;
   winner: string | null;
   log: Array<{ text: string; playerId?: string; type: string }>;
   drawPile: string[];
   referee: null | CLReferee;
 };
 
-const PLAYER_COLORS = ['#C8642F', '#7C5CF6', '#06B6D4', '#22C55E'];
+const { width: SCREEN_W } = Dimensions.get('window');
+const TURN_TIMER_MS = 15000;
 const CHALLENGE_WINDOW_MS = 5000;
 
+// ── Color helpers ────────────────────────────────────────────────────────────
+function cardCountColor(count: number, maxCards: number): string {
+  // many cards → blue, few → red
+  if (maxCards <= 1) return '#3B82F6';
+  const t = Math.max(0, Math.min(1, (count - 1) / (maxCards - 1)));
+  // t=1 → blue, t=0 → red
+  const r = Math.round(239 * (1 - t) + 59 * t);
+  const g = Math.round(68 * (1 - t) + 130 * t);
+  const b = Math.round(68 * (1 - t) + 246 * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── Ellipsis hook ────────────────────────────────────────────────────────────
 function useEllipsis(): string {
   const [dots, setDots] = useState('.');
   useEffect(() => {
-    const id = setInterval(() => {
-      setDots(d => (d.length >= 3 ? '.' : d + '.'));
-    }, 500);
+    const id = setInterval(() => setDots(d => (d.length >= 3 ? '.' : d + '.')), 500);
     return () => clearInterval(id);
   }, []);
   return dots;
 }
 
-// ── Card component ──────────────────────────────────────────────────────────
-function HandCard({
-  word,
-  selected,
-  onPress,
-}: {
-  word: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.handCard, selected && styles.handCardSelected]}
-      onPress={onPress}
-      activeOpacity={0.75}
-    >
-      <Text style={styles.handCardWord}>{word}</Text>
-    </TouchableOpacity>
-  );
+// ── Flash hook (for 1-card-left warning) ─────────────────────────────────────
+function useFlash(): Animated.Value {
+  const anim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anim]);
+  return anim;
 }
 
-// ── Opponent strip card ─────────────────────────────────────────────────────
-function OpponentCard({
-  name,
-  cardCount,
-  isActive,
-  colorIdx,
-}: {
-  name: string;
-  cardCount: number;
-  isActive: boolean;
-  colorIdx: number;
-}) {
-  const color = PLAYER_COLORS[colorIdx % PLAYER_COLORS.length];
+// ── Turn timer component ─────────────────────────────────────────────────────
+function TurnTimer({ turnStartedAt }: { turnStartedAt: number | null }) {
+  const [msLeft, setMsLeft] = useState(TURN_TIMER_MS);
+
+  useEffect(() => {
+    if (turnStartedAt === null) { setMsLeft(TURN_TIMER_MS); return; }
+    const tick = () => {
+      const elapsed = Date.now() - turnStartedAt;
+      setMsLeft(Math.max(0, TURN_TIMER_MS - elapsed));
+    };
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [turnStartedAt]);
+
+  const progress = msLeft / TURN_TIMER_MS;
+  const secs = Math.ceil(msLeft / 1000);
+  const barColor = progress > 0.66 ? '#22C55E' : progress > 0.33 ? '#EAB308' : '#EF4444';
+
   return (
-    <View style={[styles.opponentCard, isActive && { borderColor: color, shadowColor: color, shadowOpacity: 0.6, shadowRadius: 8, elevation: 6 }]}>
-      <View style={[styles.opponentDot, { backgroundColor: color }]} />
-      <Text style={styles.opponentName} numberOfLines={1}>{name}</Text>
-      <Text style={styles.opponentCount}>{cardCount}</Text>
+    <View style={timerStyles.wrap}>
+      <View style={timerStyles.track}>
+        <View style={[timerStyles.fill, { width: `${progress * 100}%` as any, backgroundColor: barColor }]} />
+      </View>
+      <Text style={[timerStyles.secs, { color: barColor }]}>{secs}s</Text>
     </View>
   );
 }
 
-// ── Referee panel ───────────────────────────────────────────────────────────
+const timerStyles = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 4 },
+  track: { flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
+  fill: { height: 6, borderRadius: 3 },
+  secs: { fontSize: 13, fontWeight: '800', minWidth: 28, textAlign: 'right' },
+});
+
+// ── Opponent card ────────────────────────────────────────────────────────────
+function OpponentCard({
+  name,
+  cardCount,
+  isActive,
+  maxCards,
+}: {
+  name: string;
+  cardCount: number;
+  isActive: boolean;
+  maxCards: number;
+}) {
+  const color = cardCountColor(cardCount, maxCards);
+  const flash = useFlash();
+  const isLastCard = cardCount === 1;
+
+  const card = (
+    <View style={[
+      styles.opponentCard,
+      { borderColor: isActive ? color : COLORS.borderHi },
+      isActive && { shadowColor: color, shadowOpacity: 0.6, shadowRadius: 8, elevation: 6 },
+    ]}>
+      <View style={[styles.opponentDot, { backgroundColor: color }]} />
+      <Text style={styles.opponentName} numberOfLines={1}>{name}</Text>
+      <Text style={[styles.opponentCount, { color }]}>{cardCount}</Text>
+      {isLastCard && <Text style={styles.lastCardBadge}>!</Text>}
+    </View>
+  );
+
+  if (isLastCard) {
+    return <Animated.View style={{ opacity: flash }}>{card}</Animated.View>;
+  }
+  return card;
+}
+
+// ── Hand card ────────────────────────────────────────────────────────────────
+function HandCard({
+  word,
+  selected,
+  onPress,
+  index,
+  total,
+}: {
+  word: string;
+  selected: boolean;
+  onPress: () => void;
+  index: number;
+  total: number;
+}) {
+  const liftAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(liftAnim, {
+      toValue: selected ? 1 : 0,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 8,
+    }).start();
+  }, [selected, liftAnim]);
+
+  // Fan layout math
+  const maxAngle = Math.min(30, total * 3.5);
+  const angle = total <= 1 ? 0 : ((index - (total - 1) / 2) / ((total - 1) / 2)) * maxAngle;
+  const arcY = Math.abs(index - (total - 1) / 2) * (total > 6 ? 4 : 6);
+
+  // Overlap cards for fan effect
+  const overlap = total > 6 ? -20 : total > 4 ? -12 : 0;
+
+  const translateY = liftAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [arcY, -20],
+  });
+  const scale = liftAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.08],
+  });
+
+  return (
+    <Animated.View style={{
+      transform: [{ rotate: `${angle}deg` }, { translateY }, { scale }],
+      zIndex: selected ? 100 : index,
+      marginLeft: index === 0 ? 0 : overlap,
+    }}>
+      <TouchableOpacity
+        style={[styles.handCard, selected && styles.handCardSelected]}
+        onPress={onPress}
+        activeOpacity={0.75}
+      >
+        <Text
+          style={styles.handCardWord}
+          adjustsFontSizeToFit
+          numberOfLines={word.includes(' ') ? 2 : 1}
+        >
+          {word}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// ── Chain link connector ─────────────────────────────────────────────────────
+function ChainConnector() {
+  return (
+    <View style={styles.chainConnector}>
+      <View style={styles.chainConnectorLine} />
+      <Text style={styles.chainConnectorIcon}>🔗</Text>
+      <View style={styles.chainConnectorLine} />
+    </View>
+  );
+}
+
+// ── Referee panel ────────────────────────────────────────────────────────────
 function RefereePanel({ referee, onDismiss }: { referee: CLReferee; onDismiss: () => void }) {
   const dots = useEllipsis();
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (referee.state === 'done') {
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 8, bounciness: 12 }).start();
+    }
+  }, [referee.state, scaleAnim]);
+
   if (referee.state === 'thinking') {
     return (
       <View style={styles.refereeCard}>
-        <Text style={styles.refereeTitle}>⚖ Ruling on "{referee.card}"{dots}</Text>
+        <Text style={styles.refereeTitle}>Ruling on "{referee.card}"{dots}</Text>
         <Text style={styles.refereeSub}>AI referee is deliberating</Text>
       </View>
     );
   }
   const isValid = referee.verdict === 'VALID';
   return (
-    <View style={[styles.refereeCard, isValid ? styles.refereeValid : styles.refereeInvalid]}>
+    <Animated.View style={[
+      styles.refereeCard,
+      isValid ? styles.refereeValid : styles.refereeInvalid,
+      { transform: [{ scale: scaleAnim }] },
+    ]}>
       <Text style={[styles.refereeVerdict, { color: isValid ? '#22C55E' : '#EF4444' }]}>
         {isValid ? 'VALID' : 'INVALID'}
       </Text>
@@ -125,11 +271,11 @@ function RefereePanel({ referee, onDismiss }: { referee: CLReferee; onDismiss: (
       <TouchableOpacity style={styles.dismissBtn} onPress={onDismiss} activeOpacity={0.75}>
         <Text style={styles.dismissBtnText}>Continue</Text>
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }
 
-// ── Challenge window panel ──────────────────────────────────────────────────
+// ── Challenge window panel ───────────────────────────────────────────────────
 function ChallengePanel({
   pending,
   challengeStartedAt,
@@ -144,6 +290,7 @@ function ChallengePanel({
   byName: string;
 }) {
   const [msLeft, setMsLeft] = useState(CHALLENGE_WINDOW_MS);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (challengeStartedAt === null) return;
@@ -156,6 +303,18 @@ function ChallengePanel({
     return () => clearInterval(id);
   }, [challengeStartedAt]);
 
+  useEffect(() => {
+    if (isMyTurn) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isMyTurn, pulseAnim]);
+
   const progress = challengeStartedAt !== null ? msLeft / CHALLENGE_WINDOW_MS : 1;
   const secsLeft = (msLeft / 1000).toFixed(1);
 
@@ -165,7 +324,9 @@ function ChallengePanel({
         <Text style={{ fontWeight: '900' }}>{byName}</Text> played{' '}
         <Text style={{ fontWeight: '900', color: '#F5F0E8' }}>{pending.card}</Text>
       </Text>
-      <Text style={styles.challengeReason}>"{pending.reason}"</Text>
+      {pending.reason.length > 0 && (
+        <Text style={styles.challengeReason}>"{pending.reason}"</Text>
+      )}
 
       {challengeStartedAt !== null && (
         <View style={styles.countdownRow}>
@@ -177,17 +338,19 @@ function ChallengePanel({
       )}
 
       {!isMyTurn ? (
-        <TouchableOpacity style={styles.challengeBtn} onPress={onChallenge} activeOpacity={0.8}>
-          <Text style={styles.challengeBtnText}>CHALLENGE</Text>
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: pulseAnim }], width: '100%' }}>
+          <TouchableOpacity style={styles.challengeBtn} onPress={onChallenge} activeOpacity={0.8}>
+            <Text style={styles.challengeBtnText}>CHALLENGE</Text>
+          </TouchableOpacity>
+        </Animated.View>
       ) : (
-        <Text style={styles.challengeWaiting}>Your link is on the table…</Text>
+        <Text style={styles.challengeWaiting}>Your link is on the table...</Text>
       )}
     </View>
   );
 }
 
-// ── Event log ───────────────────────────────────────────────────────────────
+// ── Event log ────────────────────────────────────────────────────────────────
 function EventLog({ entries }: { entries: CLGameState['log'] }) {
   const last3 = entries.slice(-3);
   return (
@@ -207,7 +370,29 @@ function EventLog({ entries }: { entries: CLGameState['log'] }) {
   );
 }
 
-// ── Main screen ─────────────────────────────────────────────────────────────
+// ── YOUR TURN banner ─────────────────────────────────────────────────────────
+function YourTurnBanner() {
+  const pulseAnim = useRef(new Animated.Value(0.7)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim]);
+
+  return (
+    <Animated.View style={[styles.yourTurnBanner, { opacity: pulseAnim }]}>
+      <Text style={styles.yourTurnBannerText}>YOUR TURN</Text>
+    </Animated.View>
+  );
+}
+
+// ── Main screen ──────────────────────────────────────────────────────────────
 export default function ChainLinkScreen({ navigation }: Props) {
   const { room, players, sendPlayerAction, currentUser } = useGame();
   const gs = room?.gameState as CLGameState | null;
@@ -246,7 +431,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
-          <Text style={styles.loadingText}>Setting up ChainLink…</Text>
+          <Text style={styles.loadingText}>Setting up ChainLink...</Text>
         </View>
       </SafeAreaView>
     );
@@ -259,8 +444,18 @@ export default function ChainLinkScreen({ navigation }: Props) {
   const opponents = allPlayers.filter(p => p.id !== myId);
   const lastChainEntry = gs.chain.length > 0 ? gs.chain[gs.chain.length - 1] : null;
   const lastWord = lastChainEntry?.word ?? null;
+  const currentPlayerName = allPlayers.find(p => p.id === currentTurnId)?.name ?? 'player';
 
-  const canPlay = isMyTurn && selectedCard !== null && reason.trim().length > 0 && !gs.pending && !gs.referee;
+  // Max cards among all players (for color gradient)
+  const maxCards = useMemo(() => {
+    let mx = 1;
+    for (const pid of gs.turnOrder) {
+      mx = Math.max(mx, (gs.hands[pid] ?? []).length);
+    }
+    return mx;
+  }, [gs.hands, gs.turnOrder]);
+
+  const canPlay = isMyTurn && selectedCard !== null && !gs.pending && !gs.referee;
   const canSkip = isMyTurn && !gs.pending && !gs.referee;
 
   const handlePlay = () => {
@@ -279,7 +474,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
     sendPlayerAction('cl-challenge', {});
   };
 
-  // ── Win screen ───────────────────────────────────────────────────────────
+  // ── Win screen ─────────────────────────────────────────────────────────
   if (gs.phase === 'win') {
     const winner = allPlayers.find(p => p.id === gs.winner);
     const winnerName = winner?.name ?? gs.winner ?? 'Someone';
@@ -301,16 +496,21 @@ export default function ChainLinkScreen({ navigation }: Props) {
               const player = allPlayers.find(p => p.id === entry.by);
               return (
                 <View key={i} style={styles.winChainEntry}>
-                  <View style={styles.winChainBullet}>
+                  <View style={[styles.winChainBullet, i > 0 && styles.winChainBulletConnected]}>
                     <Text style={styles.winChainNum}>{i + 1}</Text>
                   </View>
                   <View style={styles.winChainText}>
                     <Text style={styles.winChainWord}>
                       {isAnchor ? '⚓ ' : ''}{entry.word}
                     </Text>
-                    {!isAnchor && (
+                    {!isAnchor && entry.reason.length > 0 && (
                       <Text style={styles.winChainReason}>
                         "{entry.reason}" — {player?.name ?? entry.by}
+                      </Text>
+                    )}
+                    {!isAnchor && entry.reason.length === 0 && (
+                      <Text style={styles.winChainReason}>
+                        — {player?.name ?? entry.by}
                       </Text>
                     )}
                   </View>
@@ -327,7 +527,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
     );
   }
 
-  // ── Main playing layout ──────────────────────────────────────────────────
+  // ── Main playing layout ────────────────────────────────────────────────
   const showHand = gs.phase === 'playing' && !gs.pending && !gs.referee;
   const showControls = isMyTurn && !gs.pending && !gs.referee;
 
@@ -336,11 +536,10 @@ export default function ChainLinkScreen({ navigation }: Props) {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.screen}>
 
-          {/* ── 1. Opponents strip ──────────────────────────────────────── */}
+          {/* ── 1. Opponents strip ──────────────────────────────────── */}
           <View style={styles.opponentsStrip}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.opponentsScroll}>
-              {opponents.map((p, i) => {
-                const originalIdx = allPlayers.findIndex(ap => ap.id === p.id);
+              {opponents.map((p) => {
                 const cardCount = (gs.hands[p.id] ?? []).length;
                 const isActive = p.id === currentTurnId;
                 return (
@@ -349,7 +548,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
                     name={p.name}
                     cardCount={cardCount}
                     isActive={isActive}
-                    colorIdx={originalIdx}
+                    maxCards={maxCards}
                   />
                 );
               })}
@@ -359,7 +558,18 @@ export default function ChainLinkScreen({ navigation }: Props) {
             </ScrollView>
           </View>
 
-          {/* ── 2. Chain area ───────────────────────────────────────────── */}
+          {/* ── Turn indicator + timer ─────────────────────────────── */}
+          {isMyTurn && !gs.pending && !gs.referee && <YourTurnBanner />}
+          {!isMyTurn && !gs.pending && !gs.referee && (
+            <View style={styles.waitingBanner}>
+              <Text style={styles.waitingBannerText}>{currentPlayerName}'s turn</Text>
+            </View>
+          )}
+          {!gs.pending && !gs.referee && gs.phase === 'playing' && (
+            <TurnTimer turnStartedAt={gs.turnStartedAt ?? null} />
+          )}
+
+          {/* ── 2. Chain area ──────────────────────────────────────── */}
           <View style={styles.chainArea}>
             <ScrollView
               ref={chainScrollRef}
@@ -372,14 +582,16 @@ export default function ChainLinkScreen({ navigation }: Props) {
                 const isLast = i === gs.chain.length - 1 && !isAnchor;
                 return (
                   <View key={i} style={styles.chainEntryWrap}>
-                    <View style={[styles.chainWordCard, isAnchor && styles.chainAnchorCard, isLast && styles.chainLastCard]}>
-                      <Text style={[styles.chainWordText, isLast && styles.chainLastWordText]}>
+                    {i > 0 && <ChainConnector />}
+                    <View style={[
+                      styles.chainCard,
+                      isAnchor && styles.chainAnchorCard,
+                      isLast && styles.chainLastCard,
+                    ]}>
+                      <Text style={[styles.chainCardText, isAnchor && styles.chainAnchorText, isLast && styles.chainLastCardText]}>
                         {isAnchor ? '⚓ ' : ''}{entry.word}
                       </Text>
                     </View>
-                    {i < gs.chain.length - 1 && (
-                      <Text style={styles.chainArrow}>→</Text>
-                    )}
                   </View>
                 );
               })}
@@ -397,7 +609,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* ── 3. Referee panel ────────────────────────────────────────── */}
+          {/* ── 3. Referee panel ───────────────────────────────────── */}
           {gs.referee && (
             <View style={styles.sectionPad}>
               <RefereePanel
@@ -407,7 +619,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* ── 4. Challenge window ─────────────────────────────────────── */}
+          {/* ── 4. Challenge window ────────────────────────────────── */}
           {gs.pending && !gs.referee && (
             <View style={styles.sectionPad}>
               <ChallengePanel
@@ -420,44 +632,41 @@ export default function ChainLinkScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* ── Event log ───────────────────────────────────────────────── */}
+          {/* ── Event log ──────────────────────────────────────────── */}
           {gs.log.length > 0 && (
             <EventLog entries={gs.log} />
           )}
 
-          {/* ── 5. Your hand ────────────────────────────────────────────── */}
+          {/* ── 5. Your hand (fan layout) ──────────────────────────── */}
           {showHand && (
             <View style={styles.handArea}>
               <Text style={styles.handLabel}>
                 Your hand ({myHand.length})
-                {isMyTurn && <Text style={styles.yourTurnTag}> — your turn</Text>}
               </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.handScroll}
-              >
-                {myHand.map(word => (
+              <View style={styles.handFan}>
+                {myHand.map((word, i) => (
                   <HandCard
                     key={word}
                     word={word}
                     selected={selectedCard === word}
                     onPress={() => setSelectedCard(selectedCard === word ? null : word)}
+                    index={i}
+                    total={myHand.length}
                   />
                 ))}
                 {myHand.length === 0 && (
-                  <Text style={styles.emptyHand}>No cards — waiting for result…</Text>
+                  <Text style={styles.emptyHand}>No cards — waiting for result...</Text>
                 )}
-              </ScrollView>
+              </View>
             </View>
           )}
 
-          {/* ── 6. Your turn controls ────────────────────────────────────── */}
+          {/* ── 6. Your turn controls ──────────────────────────────── */}
           {showControls && (
             <View style={styles.controlsArea}>
               <TextInput
                 style={styles.reasonInput}
-                placeholder={selectedCard ? `Why does "${selectedCard}" link to "${lastWord}"?` : 'Select a card first…'}
+                placeholder="Explain To The Referee Why This Link Works"
                 placeholderTextColor={COLORS.text2}
                 value={reason}
                 onChangeText={setReason}
@@ -465,7 +674,6 @@ export default function ChainLinkScreen({ navigation }: Props) {
                 keyboardAppearance="dark"
                 returnKeyType="done"
                 onSubmitEditing={handlePlay}
-                editable={selectedCard !== null}
               />
               <View style={styles.controlsBtnRow}>
                 <TouchableOpacity
@@ -490,22 +698,13 @@ export default function ChainLinkScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Waiting message when not your turn and no pending */}
-          {!isMyTurn && !gs.pending && !gs.referee && (
-            <View style={styles.waitingBar}>
-              <Text style={styles.waitingText}>
-                Waiting for {allPlayers.find(p => p.id === currentTurnId)?.name ?? 'player'}…
-              </Text>
-            </View>
-          )}
-
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-// ── Styles ──────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
@@ -564,9 +763,14 @@ const styles = StyleSheet.create({
     maxWidth: 80,
   },
   opponentCount: {
+    fontSize: 14,
+    fontWeight: '900',
+    marginLeft: 2,
+  },
+  lastCardBadge: {
     fontSize: 12,
     fontWeight: '900',
-    color: COLORS.text2,
+    color: '#EF4444',
     marginLeft: 2,
   },
   noOpponents: {
@@ -575,7 +779,34 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // ── Chain area ───────────────────────────────────────────────────────────
+  // ── YOUR TURN banner ──────────────────────────────────────────────────────
+  yourTurnBanner: {
+    backgroundColor: '#C8642F',
+    paddingVertical: 10,
+    alignItems: 'center',
+    shadowColor: '#C8642F',
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  yourTurnBannerText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 3,
+  },
+  waitingBanner: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  waitingBannerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text2,
+  },
+
+  // ── Chain area ────────────────────────────────────────────────────────────
   chainArea: {
     flex: 1,
     backgroundColor: '#0D1A0D',
@@ -593,42 +824,62 @@ const styles = StyleSheet.create({
   chainEntryWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
-  chainWordCard: {
-    backgroundColor: '#1A2E1A',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#2A4A2A',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+  chainCard: {
+    backgroundColor: '#F5F0E8',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#D4C9B8',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   chainAnchorCard: {
+    backgroundColor: '#1A2E1A',
     borderColor: '#4A7A4A',
-    backgroundColor: '#162816',
+  },
+  chainAnchorText: {
+    color: '#C8E6C8',
   },
   chainLastCard: {
     borderColor: '#D99A2B',
-    borderWidth: 2,
-    backgroundColor: '#1E2A14',
+    borderWidth: 3,
+    shadowColor: '#D99A2B',
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  chainWordText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#C8E6C8',
+  chainCardText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#2C2418',
     letterSpacing: 0.3,
   },
-  chainLastWordText: {
+  chainLastCardText: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#F0F0C8',
+    color: '#2C2418',
   },
-  chainArrow: {
-    fontSize: 14,
-    color: '#3A5A3A',
-    fontWeight: '700',
+  chainConnector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  chainConnectorLine: {
+    width: 6,
+    height: 2,
+    backgroundColor: '#4A7A4A',
+    borderRadius: 1,
+  },
+  chainConnectorIcon: {
+    fontSize: 12,
+    marginHorizontal: 1,
   },
   chainEmptyCard: {
     flex: 1,
@@ -650,13 +901,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // ── Section padding wrapper ───────────────────────────────────────────────
+  // ── Section padding wrapper ─────────────────────────────────────────────
   sectionPad: {
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
 
-  // ── Referee panel ────────────────────────────────────────────────────────
+  // ── Referee panel ──────────────────────────────────────────────────────
   refereeCard: {
     borderRadius: 14,
     borderWidth: 2,
@@ -714,7 +965,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // ── Challenge window ─────────────────────────────────────────────────────
+  // ── Challenge window ──────────────────────────────────────────────────
   challengePanel: {
     backgroundColor: COLORS.surface2,
     borderRadius: 14,
@@ -786,7 +1037,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  // ── Event log ────────────────────────────────────────────────────────────
+  // ── Event log ─────────────────────────────────────────────────────────
   logContainer: {
     paddingHorizontal: 16,
     paddingVertical: 6,
@@ -800,7 +1051,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ── Hand area ────────────────────────────────────────────────────────────
+  // ── Hand area (fan layout) ────────────────────────────────────────────
   handArea: {
     paddingTop: 8,
     paddingBottom: 4,
@@ -815,28 +1066,28 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  yourTurnTag: {
-    color: '#D99A2B',
-    fontWeight: '800',
-  },
-  handScroll: {
-    paddingHorizontal: 14,
-    gap: 10,
-    alignItems: 'center',
+  handFan: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingHorizontal: 10,
     paddingBottom: 8,
+    paddingTop: 10,
+    minHeight: 130,
   },
   handCard: {
-    width: 80,
-    height: 110,
+    width: 72,
+    height: 100,
     backgroundColor: '#F5F0E8',
     borderRadius: 12,
     borderWidth: 2,
     borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 6,
@@ -851,11 +1102,11 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   handCardWord: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: '#2C2418',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   emptyHand: {
     fontSize: 13,
@@ -864,7 +1115,7 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
 
-  // ── Controls area ────────────────────────────────────────────────────────
+  // ── Controls area ─────────────────────────────────────────────────────
   controlsArea: {
     paddingHorizontal: 14,
     paddingBottom: 12,
@@ -880,7 +1131,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderHi,
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 13,
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 44,
@@ -930,22 +1181,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // ── Waiting bar ──────────────────────────────────────────────────────────
-  waitingBar: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderHi,
-    backgroundColor: COLORS.bg,
-  },
-  waitingText: {
-    fontSize: 13,
-    color: COLORS.text2,
-    fontStyle: 'italic',
-  },
-
-  // ── Win screen ───────────────────────────────────────────────────────────
+  // ── Win screen ────────────────────────────────────────────────────────
   winScroll: {
     flexGrow: 1,
     paddingHorizontal: 20,
@@ -986,12 +1222,13 @@ const styles = StyleSheet.create({
   },
   winChainList: {
     width: '100%',
-    gap: 8,
+    gap: 0,
   },
   winChainEntry: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
+    paddingVertical: 6,
   },
   winChainBullet: {
     width: 26,
@@ -1003,6 +1240,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
+  },
+  winChainBulletConnected: {
+    borderTopWidth: 0,
   },
   winChainNum: {
     fontSize: 11,
