@@ -17,6 +17,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+console.log('[startup] ANTHROPIC_API_KEY:', process.env.ANTHROPIC_API_KEY ? `set (${process.env.ANTHROPIC_API_KEY.slice(0, 10)}...)` : 'NOT SET');
+
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
@@ -1007,7 +1009,7 @@ async function callChainLinkReferee(prevWord, playedWord, reason) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 200,
         messages: [{
           role: 'user',
