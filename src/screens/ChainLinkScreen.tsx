@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   Animated,
   Dimensions,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -50,15 +51,13 @@ type CLGameState = {
 };
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const TURN_TIMER_MS = 15000;
-const CHALLENGE_WINDOW_MS = 5000;
+const TURN_TIMER_MS = 20000;
+const CHALLENGE_WINDOW_MS = 3000;
 
 // ── Color helpers ────────────────────────────────────────────────────────────
 function cardCountColor(count: number, maxCards: number): string {
-  // many cards → blue, few → red
   if (maxCards <= 1) return '#3B82F6';
   const t = Math.max(0, Math.min(1, (count - 1) / (maxCards - 1)));
-  // t=1 → blue, t=0 → red
   const r = Math.round(239 * (1 - t) + 59 * t);
   const g = Math.round(68 * (1 - t) + 130 * t);
   const b = Math.round(68 * (1 - t) + 246 * t);
@@ -75,7 +74,7 @@ function useEllipsis(): string {
   return dots;
 }
 
-// ── Flash hook (for 1-card-left warning) ─────────────────────────────────────
+// ── Flash hook ───────────────────────────────────────────────────────────────
 function useFlash(): Animated.Value {
   const anim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -89,6 +88,35 @@ function useFlash(): Animated.Value {
     return () => loop.stop();
   }, [anim]);
   return anim;
+}
+
+// ── Card change alert ────────────────────────────────────────────────────────
+function CardChangeAlert({ text, color }: { text: string; color: string }) {
+  const opacity = useRef(new Animated.Value(1)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 12, bounciness: 10 }),
+      Animated.sequence([
+        Animated.delay(1800),
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -30, duration: 400, useNativeDriver: true }),
+        ]),
+      ]),
+    ]).start();
+  }, [opacity, translateY, scale]);
+
+  return (
+    <Animated.View style={[
+      styles.cardChangeAlert,
+      { backgroundColor: color, opacity, transform: [{ translateY }, { scale }] },
+    ]}>
+      <Text style={styles.cardChangeAlertText}>{text}</Text>
+    </Animated.View>
+  );
 }
 
 // ── Turn timer component ─────────────────────────────────────────────────────
@@ -162,57 +190,80 @@ function OpponentCard({
   return card;
 }
 
-// ── Hand card ────────────────────────────────────────────────────────────────
-function HandCard({
+// ── Draggable hand card ──────────────────────────────────────────────────────
+function DraggableHandCard({
   word,
   selected,
-  onPress,
-  index,
-  total,
+  onSelect,
+  onPlay,
+  canDrag,
 }: {
   word: string;
   selected: boolean;
-  onPress: () => void;
-  index: number;
-  total: number;
+  onSelect: () => void;
+  onPlay: () => void;
+  canDrag: boolean;
 }) {
-  const liftAnim = useRef(new Animated.Value(0)).current;
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const liftScale = useRef(new Animated.Value(1)).current;
+  const canDragRef = useRef(canDrag);
+  canDragRef.current = canDrag;
+  const onPlayRef = useRef(onPlay);
+  onPlayRef.current = onPlay;
+  const isDragging = useRef(false);
 
-  useEffect(() => {
-    Animated.spring(liftAnim, {
-      toValue: selected ? 1 : 0,
-      useNativeDriver: true,
-      speed: 20,
-      bounciness: 8,
-    }).start();
-  }, [selected, liftAnim]);
-
-  // Fan layout math
-  const maxAngle = Math.min(30, total * 3.5);
-  const angle = total <= 1 ? 0 : ((index - (total - 1) / 2) / ((total - 1) / 2)) * maxAngle;
-  const arcY = Math.abs(index - (total - 1) / 2) * (total > 6 ? 4 : 6);
-
-  // Overlap cards for fan effect
-  const overlap = total > 6 ? -20 : total > 4 ? -12 : 0;
-
-  const translateY = liftAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [arcY, -20],
-  });
-  const scale = liftAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.08],
-  });
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gs) => {
+        return canDragRef.current && gs.dy < -8 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5;
+      },
+      onPanResponderGrant: () => {
+        isDragging.current = true;
+        Animated.spring(liftScale, { toValue: 1.15, useNativeDriver: true, speed: 20 }).start();
+      },
+      onPanResponderMove: Animated.event(
+        [null, { dx: pan.x, dy: pan.y }],
+        { useNativeDriver: false },
+      ),
+      onPanResponderRelease: (_, gs) => {
+        isDragging.current = false;
+        if (gs.dy < -80) {
+          // Dragged up enough — play the card
+          Animated.timing(pan, {
+            toValue: { x: 0, y: -400 },
+            duration: 200,
+            useNativeDriver: false,
+          }).start(() => {
+            pan.setValue({ x: 0, y: 0 });
+            liftScale.setValue(1);
+            onPlayRef.current();
+          });
+        } else {
+          // Snap back
+          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, speed: 20 }).start();
+          Animated.spring(liftScale, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        isDragging.current = false;
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
+        Animated.spring(liftScale, { toValue: 1, useNativeDriver: true }).start();
+      },
+    }),
+  ).current;
 
   return (
-    <Animated.View style={{
-      transform: [{ rotate: `${angle}deg` }, { translateY }, { scale }],
-      zIndex: selected ? 100 : index,
-      marginLeft: index === 0 ? 0 : overlap,
-    }}>
+    <Animated.View
+      style={{
+        transform: [...pan.getTranslateTransform(), { scale: liftScale }],
+        zIndex: selected ? 100 : 1,
+      }}
+      {...panResponder.panHandlers}
+    >
       <TouchableOpacity
         style={[styles.handCard, selected && styles.handCardSelected]}
-        onPress={onPress}
+        onPress={onSelect}
         activeOpacity={0.75}
       >
         <Text
@@ -239,7 +290,7 @@ function ChainConnector() {
 }
 
 // ── Referee panel ────────────────────────────────────────────────────────────
-function RefereePanel({ referee, onDismiss }: { referee: CLReferee; onDismiss: () => void }) {
+function RefereePanel({ referee, onDismiss, isHost }: { referee: CLReferee; onDismiss: () => void; isHost: boolean }) {
   const dots = useEllipsis();
   const scaleAnim = useRef(new Animated.Value(0)).current;
 
@@ -258,6 +309,7 @@ function RefereePanel({ referee, onDismiss }: { referee: CLReferee; onDismiss: (
     );
   }
   const isValid = referee.verdict === 'VALID';
+  const why = referee.why && referee.why.length > 0 ? referee.why : (isValid ? 'Link accepted.' : 'Link rejected.');
   return (
     <Animated.View style={[
       styles.refereeCard,
@@ -267,10 +319,12 @@ function RefereePanel({ referee, onDismiss }: { referee: CLReferee; onDismiss: (
       <Text style={[styles.refereeVerdict, { color: isValid ? '#22C55E' : '#EF4444' }]}>
         {isValid ? 'VALID' : 'INVALID'}
       </Text>
-      <Text style={styles.refereeWhy}>"{referee.why}"</Text>
-      <TouchableOpacity style={styles.dismissBtn} onPress={onDismiss} activeOpacity={0.75}>
-        <Text style={styles.dismissBtnText}>Continue</Text>
-      </TouchableOpacity>
+      <Text style={styles.refereeWhy}>{why}</Text>
+      {isHost && (
+        <TouchableOpacity style={styles.dismissBtn} onPress={onDismiss} activeOpacity={0.75}>
+          <Text style={styles.dismissBtnText}>Continue</Text>
+        </TouchableOpacity>
+      )}
     </Animated.View>
   );
 }
@@ -307,8 +361,8 @@ function ChallengePanel({
     if (isMyTurn) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.05, duration: 600, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       ]),
     );
     loop.start();
@@ -394,7 +448,7 @@ function YourTurnBanner() {
 
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function ChainLinkScreen({ navigation }: Props) {
-  const { room, players, sendPlayerAction, currentUser } = useGame();
+  const { room, players, sendPlayerAction, currentUser, isHost } = useGame();
   const gs = room?.gameState as CLGameState | null;
 
   const myId = (() => {
@@ -411,7 +465,10 @@ export default function ChainLinkScreen({ navigation }: Props) {
 
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [cardAlert, setCardAlert] = useState<{ key: number; text: string; color: string } | null>(null);
+  const alertKeyRef = useRef(0);
   const chainScrollRef = useRef<ScrollView>(null);
+  const prevHandSizeRef = useRef<number | null>(null);
 
   // Scroll chain to end when it updates
   useEffect(() => {
@@ -425,6 +482,29 @@ export default function ChainLinkScreen({ navigation }: Props) {
     setSelectedCard(null);
     setReason('');
   }, [gs?.turnIdx]);
+
+  // Track card count changes for alerts
+  const myHandSize = (gs?.hands?.[myId] ?? []).length;
+  useEffect(() => {
+    if (prevHandSizeRef.current !== null && prevHandSizeRef.current !== myHandSize && myHandSize > 0) {
+      const diff = myHandSize - prevHandSizeRef.current;
+      if (diff > 0) {
+        alertKeyRef.current += 1;
+        setCardAlert({ key: alertKeyRef.current, text: `+${diff} card${diff > 1 ? 's' : ''} drawn`, color: '#EF4444' });
+      } else if (diff < 0) {
+        alertKeyRef.current += 1;
+        setCardAlert({ key: alertKeyRef.current, text: `Card played!`, color: '#22C55E' });
+      }
+    }
+    prevHandSizeRef.current = myHandSize;
+  }, [myHandSize, myId]);
+
+  // Clear alert after animation
+  useEffect(() => {
+    if (!cardAlert) return;
+    const t = setTimeout(() => setCardAlert(null), 2500);
+    return () => clearTimeout(t);
+  }, [cardAlert]);
 
   // ── Loading ──────────────────────────────────────────────────────────────
   if (!gs || !gs.turnOrder) {
@@ -457,13 +537,15 @@ export default function ChainLinkScreen({ navigation }: Props) {
 
   const canPlay = isMyTurn && selectedCard !== null && !gs.pending && !gs.referee;
   const canSkip = isMyTurn && !gs.pending && !gs.referee;
+  const canDrag = isMyTurn && !gs.pending && !gs.referee;
 
-  const handlePlay = () => {
-    if (!canPlay || !selectedCard) return;
-    sendPlayerAction('cl-play', { card: selectedCard, reason: reason.trim() });
+  const handlePlay = useCallback((card?: string) => {
+    const playCard = card ?? selectedCard;
+    if (!playCard || !isMyTurn || gs.pending || gs.referee) return;
+    sendPlayerAction('cl-play', { card: playCard, reason: reason.trim() });
     setSelectedCard(null);
     setReason('');
-  };
+  }, [selectedCard, isMyTurn, gs.pending, gs.referee, reason, sendPlayerAction]);
 
   const handleSkip = () => {
     if (!canSkip) return;
@@ -530,11 +612,17 @@ export default function ChainLinkScreen({ navigation }: Props) {
   // ── Main playing layout ────────────────────────────────────────────────
   const showHand = gs.phase === 'playing' && !gs.pending && !gs.referee;
   const showControls = isMyTurn && !gs.pending && !gs.referee;
+  const myCardColor = cardCountColor(myHand.length, maxCards);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.screen}>
+
+          {/* ── Card change alert overlay ──────────────────────────── */}
+          {cardAlert && (
+            <CardChangeAlert key={cardAlert.key} text={cardAlert.text} color={cardAlert.color} />
+          )}
 
           {/* ── 1. Opponents strip ──────────────────────────────────── */}
           <View style={styles.opponentsStrip}>
@@ -607,6 +695,13 @@ export default function ChainLinkScreen({ navigation }: Props) {
                 Link to: "{lastWord}"
               </Text>
             )}
+
+            {/* Drop zone hint when dragging */}
+            {canDrag && selectedCard && (
+              <View style={styles.dropZoneHint}>
+                <Text style={styles.dropZoneText}>Drag card here to play</Text>
+              </View>
+            )}
           </View>
 
           {/* ── 3. Referee panel ───────────────────────────────────── */}
@@ -615,6 +710,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
               <RefereePanel
                 referee={gs.referee}
                 onDismiss={() => sendPlayerAction('cl-dismiss-referee', {})}
+                isHost={isHost}
               />
             </View>
           )}
@@ -637,27 +733,37 @@ export default function ChainLinkScreen({ navigation }: Props) {
             <EventLog entries={gs.log} />
           )}
 
-          {/* ── 5. Your hand (fan layout) ──────────────────────────── */}
+          {/* ── 5. Your hand — scrollable with drag-to-play ────────── */}
           {showHand && (
             <View style={styles.handArea}>
-              <Text style={styles.handLabel}>
-                Your hand ({myHand.length})
-              </Text>
-              <View style={styles.handFan}>
-                {myHand.map((word, i) => (
-                  <HandCard
+              <View style={styles.handHeader}>
+                <Text style={styles.handLabel}>YOUR HAND</Text>
+                <View style={[styles.myCardCountBadge, { backgroundColor: myCardColor + '22', borderColor: myCardColor }]}>
+                  <Text style={[styles.myCardCountText, { color: myCardColor }]}>{myHand.length} card{myHand.length !== 1 ? 's' : ''}</Text>
+                </View>
+              </View>
+              {canDrag && (
+                <Text style={styles.dragHint}>Swipe a card up to play it</Text>
+              )}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.handScroll}
+              >
+                {myHand.map((word) => (
+                  <DraggableHandCard
                     key={word}
                     word={word}
                     selected={selectedCard === word}
-                    onPress={() => setSelectedCard(selectedCard === word ? null : word)}
-                    index={i}
-                    total={myHand.length}
+                    onSelect={() => setSelectedCard(selectedCard === word ? null : word)}
+                    onPlay={() => handlePlay(word)}
+                    canDrag={canDrag}
                   />
                 ))}
                 {myHand.length === 0 && (
                   <Text style={styles.emptyHand}>No cards — waiting for result...</Text>
                 )}
-              </View>
+              </ScrollView>
             </View>
           )}
 
@@ -673,12 +779,12 @@ export default function ChainLinkScreen({ navigation }: Props) {
                 maxLength={120}
                 keyboardAppearance="dark"
                 returnKeyType="done"
-                onSubmitEditing={handlePlay}
+                onSubmitEditing={() => handlePlay()}
               />
               <View style={styles.controlsBtnRow}>
                 <TouchableOpacity
                   style={[styles.playBtn, !canPlay && styles.playBtnDisabled]}
-                  onPress={handlePlay}
+                  onPress={() => handlePlay()}
                   disabled={!canPlay}
                   activeOpacity={0.8}
                 >
@@ -724,6 +830,27 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: COLORS.text2,
+  },
+
+  // ── Card change alert ───────────────────────────────────────────────────
+  cardChangeAlert: {
+    position: 'absolute',
+    top: 80,
+    alignSelf: 'center',
+    zIndex: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  cardChangeAlertText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 0.5,
   },
 
   // ── Opponents strip ──────────────────────────────────────────────────────
@@ -900,6 +1027,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
   },
+  dropZoneHint: {
+    position: 'absolute',
+    bottom: 30,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(200,100,47,0.15)',
+    borderWidth: 1,
+    borderColor: '#C8642F',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  dropZoneText: {
+    fontSize: 11,
+    color: '#C8642F',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
 
   // ── Section padding wrapper ─────────────────────────────────────────────
   sectionPad: {
@@ -948,6 +1093,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     textAlign: 'center',
     lineHeight: 20,
+    fontStyle: 'italic',
   },
   dismissBtn: {
     marginTop: 6,
@@ -1051,7 +1197,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ── Hand area (fan layout) ────────────────────────────────────────────
+  // ── Hand area ─────────────────────────────────────────────────────────
   handArea: {
     paddingTop: 8,
     paddingBottom: 4,
@@ -1059,23 +1205,45 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.borderHi,
     backgroundColor: COLORS.bg,
   },
+  handHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 4,
+  },
   handLabel: {
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
-    paddingHorizontal: 16,
-    marginBottom: 4,
   },
-  handFan: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
+  myCardCountBadge: {
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingVertical: 3,
     paddingHorizontal: 10,
+  },
+  myCardCountText: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  dragHint: {
+    fontSize: 10,
+    color: '#C8642F',
+    textAlign: 'center',
+    marginBottom: 4,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  handScroll: {
+    paddingHorizontal: 14,
+    gap: 10,
+    alignItems: 'center',
     paddingBottom: 8,
-    paddingTop: 10,
-    minHeight: 130,
+    paddingTop: 4,
   },
   handCard: {
     width: 72,

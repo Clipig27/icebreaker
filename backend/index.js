@@ -741,7 +741,7 @@ function startPotLuckTurnTimer(code) {
     const actor = room.players.find(p => p.id === actorId);
     console.log('[potLuck] turn timer expired for %s in room %s — auto-skip', actorId, code);
     _potLuckApplySkip(code, gs, actorId, actor?.score ?? 0);
-  }, 15000);
+  }, 20000);
 }
 
 /**
@@ -922,7 +922,7 @@ function initChainLinkGame(code) {
   if (existing?.turnTimer) clearTimeout(existing.turnTimer);
   chainLinkRoomData[code] = { challengeTimer: null, turnTimer: null };
 
-  const HAND_SIZE = 10;
+  const HAND_SIZE = 7;
   const pool = [...CL_NOUNS];
   // Fisher-Yates shuffle
   for (let i = pool.length - 1; i > 0; i--) {
@@ -984,7 +984,7 @@ function clStartTurnTimer(code) {
     io.to(code).emit('gameStateUpdated', nextGs);
     console.log('[chainLink] %s auto-skipped (timer) in room %s', actorId, code);
     clStartTurnTimer(code);
-  }, 15000);
+  }, 20000);
   chainLinkRoomData[code] = d;
 }
 
@@ -992,7 +992,7 @@ async function callChainLinkReferee(prevWord, playedWord, reason) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.warn('[chainLink] ANTHROPIC_API_KEY not set — auto-accepting');
-    return { verdict: 'VALID', why: 'Referee unavailable — link allowed.' };
+    return { verdict: 'VALID', why: 'No referee available — link accepted by default.' };
   }
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1007,24 +1007,42 @@ async function callChainLinkReferee(prevWord, playedWord, reason) {
         max_tokens: 200,
         messages: [{
           role: 'user',
-          content: `You are the referee in a word-chain party game. A player must link a new word to the previous word with a SPECIFIC, real connection (functional, physical, categorical, or strongly associative). Vague links like "both exist" or "both can be big" are REACHES and should be rejected. Reasonable everyday associations should be accepted.\n\nPrevious word: "${prevWord}"\nNew word: "${playedWord}"\nPlayer's stated reason: "${reason || '(no reason given — judge based on the words alone)'}"\n\nRespond with ONLY a JSON object, no markdown, no preamble:\n{"verdict": "VALID" or "INVALID", "why": "one short sentence (max 15 words) explaining the ruling"}`,
+          content: `You are the referee in a word-chain party game. A player must link a new word to the previous word with a SPECIFIC, real connection (functional, physical, categorical, or strongly associative). Vague links like "both exist" or "both can be big" are REACHES and should be rejected. Reasonable everyday associations should be accepted.
+
+Previous word: "${prevWord}"
+New word: "${playedWord}"
+Player's stated reason: "${reason || '(no reason given — judge based on the words alone)'}"
+
+You MUST respond with ONLY a valid JSON object. No markdown, no code blocks, no extra text. Example:
+{"verdict": "VALID", "why": "Both are kitchen appliances used for heating food"}`,
         }],
       }),
       signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined,
     });
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error('[chainLink] referee API error %d: %s', res.status, errBody.slice(0, 200));
+      return { verdict: 'VALID', why: 'Referee error — link accepted by default.' };
+    }
     const json = await res.json();
-    const text = (json.content?.[0]?.text ?? '').replace(/```json?/g, '').replace(/```/g, '').trim();
+    console.log('[chainLink] referee raw response:', JSON.stringify(json).slice(0, 300));
+    const text = (json.content?.[0]?.text ?? '').replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+    console.log('[chainLink] referee parsed text:', text);
     try {
       const parsed = JSON.parse(text);
       const verdict = parsed.verdict === 'VALID' ? 'VALID' : 'INVALID';
-      return { verdict, why: parsed.why ?? '' };
+      const why = parsed.why || (verdict === 'VALID' ? 'Link accepted.' : 'Link rejected.');
+      return { verdict, why };
     } catch {
-      const verdict = /INVALID/.test(text) ? 'INVALID' : 'VALID';
-      return { verdict, why: text.slice(0, 80) };
+      console.error('[chainLink] failed to parse referee JSON:', text);
+      const verdict = /INVALID/i.test(text) ? 'INVALID' : 'VALID';
+      // Extract explanation from raw text
+      const why = text.replace(/[{}"]/g, '').replace(/verdict\s*:\s*\w+,?\s*/i, '').replace(/why\s*:\s*/i, '').trim().slice(0, 80) || 'Link accepted.';
+      return { verdict, why };
     }
   } catch (e) {
     console.error('[chainLink] referee error:', e?.message);
-    return { verdict: 'VALID', why: 'Referee unavailable — link allowed.' };
+    return { verdict: 'VALID', why: 'Referee timed out — link accepted by default.' };
   }
 }
 
@@ -2084,7 +2102,7 @@ io.on('connection', (socket) => {
       if (d.challengeTimer) clearTimeout(d.challengeTimer);
       d.challengeTimer = setTimeout(() => {
         clAcceptLink(code);
-      }, 5000);
+      }, 3000);
       chainLinkRoomData[code] = d;
       console.log('[chainLink] %s played "%s" in room %s — challenge window open', actorId, card, code);
       return;
