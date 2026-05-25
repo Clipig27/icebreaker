@@ -1007,6 +1007,7 @@ function clBreakChain(code) {
       ...current,
       phase: 'playing',
       chain: [{ word: newAnchor, by: null, reason: 'anchor' }],
+      turnIdx: (current.turnIdx + 1) % current.turnOrder.length,
       turnStartedAt: Date.now(),
     };
     r.gameState = resumeGs;
@@ -1120,21 +1121,16 @@ function clAcceptLink(code) {
 
   const { card, reason, by } = gs.pending;
   const actor = room.players.find(p => p.id === by);
-  const newHand = (gs.hands[by] ?? []).filter(c => c !== card);
-
-  // Draw pile: give one card from drawPile if needed (not needed on valid accept)
-  const newHands = { ...gs.hands, [by]: newHand };
-  const newChain = [...gs.chain, { word: card, by, reason }];
+  // Card is already in chain and removed from hand (done in cl-play)
+  const currentHand = gs.hands[by] ?? [];
   const newLog = [...gs.log, { text: `${actor?.name ?? by} played "${card}" — accepted`, type: 'valid', playerId: by }];
 
   // Check win
-  const isWin = newHand.length === 0;
+  const isWin = currentHand.length === 0;
 
   const nextGs = {
     ...gs,
     phase: isWin ? 'win' : 'playing',
-    hands: newHands,
-    chain: newChain,
     pending: null,
     challengeStartedAt: null,
     turnStartedAt: isWin ? null : Date.now(),
@@ -2157,8 +2153,14 @@ io.on('connection', (socket) => {
       const actor = room.players.find(p => p.id === actorId);
       const challengeStartedAt = Date.now();
       const logMsg = reason ? `${actor?.name ?? actorId} played "${card}": "${reason}"` : `${actor?.name ?? actorId} played "${card}"`;
+      // Add card to chain immediately (will be removed if ruled INVALID)
+      const newChain = [...gs.chain, { word: card, by: actorId, reason }];
+      // Remove card from hand immediately
+      const newHands = { ...gs.hands, [actorId]: (gs.hands[actorId] ?? []).filter(c => c !== card) };
       const nextGs = {
         ...gs,
+        hands: newHands,
+        chain: newChain,
         pending: { card, reason, by: actorId },
         challengeStartedAt,
         turnStartedAt: null,
@@ -2215,20 +2217,17 @@ io.on('connection', (socket) => {
         const actor = r.players.find(p => p.id === by);
 
         if (verdict === 'VALID') {
-          // Link is valid — accept it; challenger gets penalized (draws a card)
-          const newHand = (currentGs.hands[by] ?? []).filter(c => c !== card);
-          const newChain = [...currentGs.chain, { word: card, by, reason }];
-          const isWin = newHand.length === 0;
-
-          // Challenger draws a card
-          const { hands: handsAfterDraw, drawPile: newDrawPile } = clDrawCard({ ...currentGs, hands: { ...currentGs.hands, [by]: newHand } }, challengerId);
+          // Link is valid — card already in chain + removed from hand (done in cl-play)
+          // Challenger draws a penalty card
+          const currentHand = currentGs.hands[by] ?? [];
+          const isWin = currentHand.length === 0;
+          const { hands: handsAfterDraw, drawPile: newDrawPile } = clDrawCard(currentGs, challengerId);
 
           const logEntry = `"${card}" ruled VALID — ${actor?.name ?? by}'s link stands. ${challenger?.name ?? challengerId} draws a card.`;
           const nextGs = {
             ...currentGs,
             phase: isWin ? 'win' : 'playing',
             hands: handsAfterDraw,
-            chain: newChain,
             drawPile: newDrawPile,
             pending: null,
             challengeStartedAt: null,
@@ -2242,11 +2241,14 @@ io.on('connection', (socket) => {
           io.to(code).emit('gameStateUpdated', nextGs);
           console.log('[chainLink] VALID ruling for "%s" in room %s — challenger %s draws', card, code, challengerId);
         } else {
-          // Link is invalid — player keeps card + draws one
-          const { hands: handsAfterDraw, drawPile: newDrawPile } = clDrawCard(currentGs, by);
+          // Link is invalid — remove card from chain, give it back + draw penalty
+          const revertedChain = currentGs.chain.filter(e => !(e.word === card && e.by === by));
+          const revertedHands = { ...currentGs.hands, [by]: [...(currentGs.hands[by] ?? []), card] };
+          const { hands: handsAfterDraw, drawPile: newDrawPile } = clDrawCard({ ...currentGs, hands: revertedHands }, by);
           const logEntry = `"${card}" ruled INVALID — ${actor?.name ?? by} keeps it and draws a card.`;
           const nextGs = {
             ...currentGs,
+            chain: revertedChain,
             hands: handsAfterDraw,
             drawPile: newDrawPile,
             pending: null,
