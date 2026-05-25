@@ -36,7 +36,7 @@ type CLReferee = {
 
 type CLGameState = {
   game: 'chainLink';
-  phase: 'playing' | 'win';
+  phase: 'playing' | 'win' | 'chainBroken';
   hands: Record<string, string[]>;
   chain: Array<CLChainEntry>;
   turnOrder: string[];
@@ -444,6 +444,48 @@ function YourTurnBanner() {
   );
 }
 
+// ── Chain broken splash ──────────────────────────────────────────────────────
+function ChainBrokenSplash({ chain }: { chain: CLChainEntry[] }) {
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.spring(scaleAnim, { toValue: 1.1, useNativeDriver: true, speed: 10, bounciness: 12 }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shakeAnim, { toValue: 8, duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -8, duration: 80, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 4, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
+        Animated.delay(1500),
+      ]),
+    ).start();
+  }, [scaleAnim, shakeAnim]);
+
+  // Get the new anchor (last item in chain)
+  const newAnchor = chain.length > 0 ? chain[chain.length - 1].word : '???';
+
+  return (
+    <View style={styles.chainBrokenContainer}>
+      <Animated.View style={{ transform: [{ scale: scaleAnim }, { translateX: shakeAnim }] }}>
+        <Text style={styles.chainBrokenEmoji}>💥</Text>
+        <Text style={styles.chainBrokenTitle}>Chain Broken!</Text>
+        <Text style={styles.chainBrokenSub}>Everyone skipped — starting fresh</Text>
+      </Animated.View>
+      <View style={styles.chainBrokenNewAnchor}>
+        <Text style={styles.chainBrokenAnchorLabel}>NEW ANCHOR</Text>
+        <Animated.View style={[styles.chainBrokenAnchorCard, { transform: [{ scale: scaleAnim }] }]}>
+          <Text style={styles.chainBrokenAnchorWord}>⚓ {newAnchor}</Text>
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function ChainLinkScreen({ navigation }: Props) {
   const { room, players, sendPlayerAction, currentUser, isHost } = useGame();
@@ -550,6 +592,15 @@ export default function ChainLinkScreen({ navigation }: Props) {
   const handleChallenge = () => {
     sendPlayerAction('cl-challenge', {});
   };
+
+  // ── Chain broken screen ──────────────────────────────────────────────
+  if (gs.phase === 'chainBroken') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ChainBrokenSplash chain={gs.chain} />
+      </SafeAreaView>
+    );
+  }
 
   // ── Win screen ─────────────────────────────────────────────────────────
   if (gs.phase === 'win') {
@@ -1406,6 +1457,62 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: COLORS.text,
+  },
+
+  // ── Chain broken splash ────────────────────────────────────────────
+  chainBrokenContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+    paddingHorizontal: 32,
+  },
+  chainBrokenEmoji: {
+    fontSize: 64,
+    textAlign: 'center',
+  },
+  chainBrokenTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#EF4444',
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  chainBrokenSub: {
+    fontSize: 14,
+    color: COLORS.text2,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  chainBrokenNewAnchor: {
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  chainBrokenAnchorLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.text2,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  chainBrokenAnchorCard: {
+    backgroundColor: '#1A2E1A',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#4A7A4A',
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    shadowColor: '#4A7A4A',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  chainBrokenAnchorWord: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#C8E6C8',
+    letterSpacing: 0.5,
   },
 
   // ── Drop zone (in chain area, visible when dragging) ────────────────

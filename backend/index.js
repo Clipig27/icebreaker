@@ -959,6 +959,7 @@ function initChainLinkGame(code) {
     pending: null,
     challengeStartedAt: null,
     turnStartedAt: Date.now(),
+    consecutiveSkips: 0,
     winner: null,
     log: [{ text: `Anchor: "${anchor}"`, type: 'system' }],
     drawPile: pool,
@@ -967,6 +968,51 @@ function initChainLinkGame(code) {
 
   // Start 15-second turn timer
   clStartTurnTimer(code);
+}
+
+function clBreakChain(code) {
+  const room = rooms[code];
+  if (!room || room.gameState?.game !== 'chainLink') return;
+  const gs = room.gameState;
+
+  // Pick a new anchor from draw pile (or recycle a random noun)
+  let newAnchor;
+  if (gs.drawPile.length > 0) {
+    newAnchor = gs.drawPile[0];
+    gs.drawPile = gs.drawPile.slice(1);
+  } else {
+    newAnchor = CL_NOUNS[Math.floor(Math.random() * CL_NOUNS.length)];
+  }
+
+  // Show chain-broken phase briefly, then resume playing
+  const brokenGs = {
+    ...gs,
+    phase: 'chainBroken',
+    consecutiveSkips: 0,
+    turnStartedAt: null,
+    log: [...gs.log, { text: `Everyone skipped — chain broken! New anchor: "${newAnchor}"`, type: 'system' }],
+  };
+  room.gameState = brokenGs;
+  io.to(code).emit('gameStateUpdated', brokenGs);
+  console.log('[chainLink] chain broken in room %s — new anchor: %s', code, newAnchor);
+
+  // After 2.5 seconds, start fresh chain with the new anchor
+  const d = chainLinkRoomData[code] ?? {};
+  if (d.turnTimer) { clearTimeout(d.turnTimer); d.turnTimer = null; }
+  setTimeout(() => {
+    const r = rooms[code];
+    if (!r || r.gameState?.game !== 'chainLink' || r.gameState.phase !== 'chainBroken') return;
+    const current = r.gameState;
+    const resumeGs = {
+      ...current,
+      phase: 'playing',
+      chain: [{ word: newAnchor, by: null, reason: 'anchor' }],
+      turnStartedAt: Date.now(),
+    };
+    r.gameState = resumeGs;
+    io.to(code).emit('gameStateUpdated', resumeGs);
+    clStartTurnTimer(code);
+  }, 2500);
 }
 
 function clStartTurnTimer(code) {
@@ -980,15 +1026,27 @@ function clStartTurnTimer(code) {
     // Auto-skip current player
     const actorId = gs.turnOrder[gs.turnIdx];
     const actor = room.players.find(p => p.id === actorId);
+    const newSkips = (gs.consecutiveSkips ?? 0) + 1;
+
+    // If everyone skipped, break the chain
+    if (newSkips >= gs.turnOrder.length) {
+      gs.consecutiveSkips = newSkips;
+      gs.log = [...gs.log, { text: `${actor?.name ?? actorId} ran out of time`, type: 'skip', playerId: actorId }];
+      room.gameState = gs;
+      clBreakChain(code);
+      return;
+    }
+
     const nextGs = {
       ...gs,
+      consecutiveSkips: newSkips,
       turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
       turnStartedAt: Date.now(),
       log: [...gs.log, { text: `${actor?.name ?? actorId} ran out of time`, type: 'skip', playerId: actorId }],
     };
     room.gameState = nextGs;
     io.to(code).emit('gameStateUpdated', nextGs);
-    console.log('[chainLink] %s auto-skipped (timer) in room %s', actorId, code);
+    console.log('[chainLink] %s auto-skipped (timer) in room %s (consecutive: %d/%d)', actorId, code, newSkips, gs.turnOrder.length);
     clStartTurnTimer(code);
   }, 15000);
   chainLinkRoomData[code] = d;
@@ -1159,7 +1217,7 @@ function buildInitialGameState(game) {
       return { game, phase: 'rolling', pot: 1, potCap: 5, winMultiplier: 5, target: 0, order: [], seatPtr: 0, consecutiveSkips: 0, usedQuestionIds: [], currentQuestion: null, lastResult: null, revealInfo: null, winnerId: null };
     case 'chainLink':
       // initChainLinkGame() overwrites this immediately
-      return { game, phase: 'playing', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, turnStartedAt: null, winner: null, log: [], drawPile: [], referee: null };
+      return { game, phase: 'playing', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, turnStartedAt: null, consecutiveSkips: 0, winner: null, log: [], drawPile: [], referee: null };
     default:
       return { game, phase: 'start' };
   }
@@ -2104,6 +2162,7 @@ io.on('connection', (socket) => {
         pending: { card, reason, by: actorId },
         challengeStartedAt,
         turnStartedAt: null,
+        consecutiveSkips: 0,
         referee: null,
         log: [...gs.log, { text: logMsg, type: 'play', playerId: actorId }],
       };
@@ -2218,15 +2277,27 @@ io.on('connection', (socket) => {
       chainLinkRoomData[code] = sd;
 
       const actor = room.players.find(p => p.id === actorId);
+      const newSkips = (gs.consecutiveSkips ?? 0) + 1;
+
+      // If everyone skipped, break the chain
+      if (newSkips >= gs.turnOrder.length) {
+        gs.consecutiveSkips = newSkips;
+        gs.log = [...gs.log, { text: `${actor?.name ?? actorId} skipped`, type: 'skip', playerId: actorId }];
+        room.gameState = gs;
+        clBreakChain(code);
+        return;
+      }
+
       const nextGs = {
         ...gs,
+        consecutiveSkips: newSkips,
         turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
         turnStartedAt: Date.now(),
         log: [...gs.log, { text: `${actor?.name ?? actorId} skipped`, type: 'skip', playerId: actorId }],
       };
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
-      console.log('[chainLink] %s skipped in room %s', actorId, code);
+      console.log('[chainLink] %s skipped in room %s (consecutive: %d/%d)', actorId, code, newSkips, gs.turnOrder.length);
       clStartTurnTimer(code);
       return;
     }
