@@ -220,7 +220,7 @@ function DraggableHandCard({
       },
       onPanResponderGrant: () => {
         isDragging.current = true;
-        Animated.spring(liftScale, { toValue: 1.15, useNativeDriver: true, speed: 20 }).start();
+        Animated.spring(liftScale, { toValue: 1.15, useNativeDriver: false, speed: 20 }).start();
       },
       onPanResponderMove: Animated.event(
         [null, { dx: pan.x, dy: pan.y }],
@@ -242,13 +242,13 @@ function DraggableHandCard({
         } else {
           // Snap back
           Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, speed: 20 }).start();
-          Animated.spring(liftScale, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+          Animated.spring(liftScale, { toValue: 1, useNativeDriver: false, speed: 20 }).start();
         }
       },
       onPanResponderTerminate: () => {
         isDragging.current = false;
         Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
-        Animated.spring(liftScale, { toValue: 1, useNativeDriver: true }).start();
+        Animated.spring(liftScale, { toValue: 1, useNativeDriver: false }).start();
       },
     }),
   ).current;
