@@ -32,7 +32,8 @@ export type GameType =
   | 'dealOrSteal'
   | 'shadowProtocol'
   | 'potLuck'
-  | 'chainLink';
+  | 'chainLink'
+  | 'plotTwist';
 
 type Room = {
   code: string;
@@ -237,6 +238,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         shadowProtocol: 'ShadowProtocol',
         potLuck:        'PotLuck',
         chainLink:      'ChainLink',
+        plotTwist:      'PlotTwist',
       };
 
       const target = GAME_ROUTE[r.gameState.game];

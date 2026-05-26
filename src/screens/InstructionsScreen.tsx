@@ -196,6 +196,26 @@ const INSTRUCTIONS: GameInfo[] = [
     ],
     tip: 'Think creatively — any real connection works. But make it strong enough to survive a challenge!',
   },
+  {
+    id: 'plotTwist',
+    title: 'Plot Twist',
+    emoji: '📜',
+    players: '2–6 players',
+    goal: 'Co-write a story. Bait others into typing your secret words to score points.',
+    rules: [
+      'Everyone takes turns adding one sentence (5–12 words) to a shared story.',
+      'You secretly hold 5 target words related to the story prompt.',
+      'You hold 4 regular words (1 pt each) and 1 hard word (3 pts).',
+      'If someone types YOUR word in their sentence, you score and they lose those points.',
+      'You CANNOT use your own secret words — the game blocks you.',
+      'Used words are immediately replaced from the pool, so you always hold 5.',
+      'You have 20 seconds per turn. If time runs out, you lose 1 point.',
+      'The table can VETO a sentence that makes no sense, repeats, or doesn\'t continue the story (majority vote skips that turn).',
+      'An AI generates the related words and judges which ones a sentence contains.',
+      'First player to 7 points wins!',
+    ],
+    tip: 'Write sentences that steer the story toward topics where others might naturally use your words — but be subtle about it.',
+  },
 ];
 
 export default function InstructionsScreen({ navigation, route }: Props) {

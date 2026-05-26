@@ -162,6 +162,23 @@ const GAMES: Game[] = [
       'First player to empty their hand wins.',
     ],
   },
+  {
+    id: 'plotTwist',
+    title: 'Plot Twist',
+    iconName: 'document-text',
+    accentColor: '#B5642A',
+    desc: 'Co-write a story. Bait others into typing your secret words.',
+    players: '2–6 players',
+    instructions: [
+      'Everyone takes turns adding one sentence (5–12 words) to a shared story.',
+      'You secretly hold 5 target words — bait others into using them.',
+      'Someone types YOUR word → you +1, they −1 (per word). Used words get replaced.',
+      'You CANNOT use your own secret words.',
+      '20 seconds per turn. The table can VETO bad sentences.',
+      'AI deals related words and judges matches.',
+      'First to 5 points wins!',
+    ],
+  },
 ];
 
 function GameRow({ game, index, onPress }: { game: Game; index: number; onPress: () => void }) {

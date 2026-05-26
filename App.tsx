@@ -22,6 +22,7 @@ import DealOrStealScreen      from './src/screens/DealOrStealScreen';
 import ShadowProtocolScreen   from './src/screens/ShadowProtocolScreen';
 import PotLuckScreen          from './src/screens/PotLuckScreen';
 import ChainLinkScreen        from './src/screens/ChainLinkScreen';
+import PlotTwistScreen        from './src/screens/PlotTwistScreen';
 import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
 import InstructionsScreen  from './src/screens/InstructionsScreen';
@@ -51,6 +52,7 @@ export type RootStackParamList = {
   ShadowProtocol:   undefined;
   PotLuck:          undefined;
   ChainLink:        undefined;
+  PlotTwist:        undefined;
   Instructions:  { game?: string } | undefined;
 };
 
@@ -59,7 +61,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 // Game screen names where back navigation should be blocked for the host during play
 const GAME_SCREENS = new Set([
   'LieDetector', 'TalentShow', 'StandOut', 'NumberGuessor',
-  'PieCharts', 'DealOrSteal', 'ShadowProtocol', 'PotLuck', 'ChainLink',
+  'PieCharts', 'DealOrSteal', 'ShadowProtocol', 'PotLuck', 'ChainLink', 'PlotTwist',
 ]);
 
 function AppInner() {
@@ -75,6 +77,7 @@ function AppInner() {
     ShadowProtocol: 'shadowProtocol',
     PotLuck: 'potLuck',
     ChainLink: 'chainLink',
+    PlotTwist: 'plotTwist',
   };
 
   // True when the host is mid-game and should not be able to back-navigate
@@ -154,6 +157,7 @@ function AppInner() {
           <Stack.Screen name="ShadowProtocol"   component={ShadowProtocolScreen}   options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
           <Stack.Screen name="PotLuck"          component={PotLuckScreen}          options={{ title: 'Pot Luck',          headerBackTitle: 'Games' }} />
           <Stack.Screen name="ChainLink"        component={ChainLinkScreen}        options={{ title: 'ChainLink',         headerBackTitle: 'Games' }} />
+          <Stack.Screen name="PlotTwist"        component={PlotTwistScreen}        options={{ title: 'Plot Twist',       headerBackTitle: 'Games' }} />
           <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
             title: (route.params as any)?.game
               ? (() => {
@@ -163,6 +167,7 @@ function AppInner() {
                     pieCharts: 'Pie Charts', dealOrSteal: 'Deal or Steal',
                     shadowProtocol: 'Shadow Protocol', potLuck: 'Pot Luck',
                     chainLink: 'ChainLink',
+                    plotTwist: 'Plot Twist',
                   };
                   return names[(route.params as any).game] ?? 'How to Play';
                 })()

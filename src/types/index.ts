@@ -5,7 +5,7 @@ export interface Player {
   eliminated?: boolean;
 }
 
-export type GameType = 'lieDetector' | 'talentShow' | 'standOut' | 'numberGuessor' | 'pieCharts' | 'dealOrSteal' | 'shadowProtocol' | 'potLuck' | 'chainLink';
+export type GameType = 'lieDetector' | 'talentShow' | 'standOut' | 'numberGuessor' | 'pieCharts' | 'dealOrSteal' | 'shadowProtocol' | 'potLuck' | 'chainLink' | 'plotTwist';
 
 export interface GameState {
   players: Player[];

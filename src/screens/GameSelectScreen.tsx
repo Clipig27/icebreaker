@@ -143,6 +143,19 @@ const GAMES: {
     glowColor: '#C8642F',
     screen: 'ChainLink',
   },
+  {
+    id: 'plotTwist',
+    title: 'Plot Twist',
+    emoji: '📜',
+    desc: 'Co-write a story. Bait others into typing your secret words.',
+    minPlayers: 2,
+    maxPlayers: 6,
+    accentColor: '#B5642A',
+    gradientColors: ['#3D2210', '#221408', '#0F0F13'],
+    glowColor: '#B5642A',
+    screen: 'PlotTwist',
+    tag: '2–6 players',
+  },
 ];
 
 // ─── Animated game card ────────────────────────────────────────────────────────
@@ -451,6 +464,10 @@ export default function GameSelectScreen({ navigation }: Props) {
       Alert.alert('ChainLink', `Needs at least 2 players. You have ${players.length}.`);
       return;
     }
+    if (game.id === 'plotTwist' && (players.length < 2 || players.length > 6)) {
+      Alert.alert('Plot Twist', `Requires 2–6 players. You have ${players.length}.`);
+      return;
+    }
     if (game.id === 'potLuck') {
       setSmartyPotConfig(prev => ({ ...prev, visible: true }));
       return;
@@ -469,6 +486,7 @@ export default function GameSelectScreen({ navigation }: Props) {
     if (game.id === 'shadowProtocol' && (players.length < 6 || players.length > 10)) return true;
     if (game.id === 'potLuck' && players.length < 3) return true;
     if (game.id === 'chainLink' && players.length < 2) return true;
+    if (game.id === 'plotTwist' && (players.length < 2 || players.length > 6)) return true;
     return false;
   }
 

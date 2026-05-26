@@ -13,6 +13,24 @@ const {
   POTLUCK_QUESTIONS,
 } = require('./prompts');
 
+const PLOT_TWIST_PROMPTS = [
+  "Write a story about a man who had his car stolen.",
+  "Write a story about a birthday party that goes wrong.",
+  "Write a story about two strangers stuck in an elevator.",
+  "Write a story about a dog who becomes mayor of a town.",
+  "Write a story about a heist at a candy factory.",
+  "Write a story about a camping trip with an unexpected guest.",
+];
+
+const PLOT_TWIST_FALLBACK_WORDS = {
+  0: ["police","keys","insurance","running","angry","phone","door","voice","hand","light","noise","shadow","smile","road","window","clock","money","stranger","night","search","witness","alarm","parking","lock","drive"],
+  1: ["cake","candles","gift","balloon","crying","music","door","voice","hand","light","noise","shadow","smile","road","window","clock","money","stranger","surprise","dance","guest","mess","scream","laughter","drink"],
+  2: ["button","stuck","phone","stranger","panic","floor","door","voice","hand","light","noise","shadow","smile","road","window","clock","money","wall","cable","mirror","ceiling","breath","silence","emergency","wait"],
+  3: ["bark","election","bone","votes","leash","treat","door","voice","hand","light","noise","shadow","smile","road","window","clock","money","stranger","collar","paw","crowd","speech","loyal","fetch","tail"],
+  4: ["chocolate","alarm","guards","sugar","vault","sticky","door","voice","hand","light","noise","shadow","smile","road","window","clock","money","stranger","wrapper","sweet","tunnel","disguise","bag","escape","catch"],
+  5: ["tent","fire","bear","marshmallow","flashlight","woods","door","voice","hand","light","noise","shadow","smile","road","window","clock","money","stranger","sleeping","creek","trail","stars","howl","branch","rain"],
+};
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -102,6 +120,10 @@ const ldRoomData = {};
 // Pot Luck — server-side secret store (correct answer index, active timers)
 // potLuckRoomData[code] = { correctIndex, turnTimer, rollTimer }
 const potLuckRoomData = {};
+
+// Plot Twist — server-side secret store (target words per player, refill pool, timers)
+// ptRoomData[code] = { targets: {playerId: [words]...}, pool: [], turnTimer, vetoTimer, vetoVotes: {} }
+const ptRoomData = {};
 
 // ── Disconnect grace period ───────────────────────────────────────────────────
 const disconnectTimers   = {};  // socketId     → timeout handle
@@ -697,6 +719,7 @@ function removeSocketFromAllRooms(socketId) {
     affected.push(code);
 
     if (room.players.length === 0) {
+      cleanupPlotTwist(code);
       delete rooms[code];
       delete dosRoundData[code];
       console.log(`Room ${code} deleted (empty)`);
@@ -1160,6 +1183,430 @@ function clDrawCard(gs, playerId) {
   };
 }
 
+// ── Plot Twist AI helpers ──────────────────────────────────────────────────────
+
+async function ptGeneratePool(prompt, need) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.warn('[plotTwist] ANTHROPIC_API_KEY not set — using fallback words');
+    return null;
+  }
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `A party game: players co-write a story from this prompt, each secretly trying to bait others into SAYING one of their target words. Generate a pool of ${need} DISTINCT target words for this prompt. EVERY word must be:\n- a single common noun, verb, or adjective (no proper nouns, no phrases)\n- clearly RELATED to the prompt so a player would plausibly and naturally use it while writing the story\n- common enough to actually come up — NOT obscure\n- not the single most obvious word, but everyday and sayable\n\nIt is critical that all words are genuinely relatable to the prompt — a word nobody would ever naturally say makes the game unfair.\n\nPrompt: "${prompt}"\n\nRespond with ONLY a JSON array of ${need} lowercase strings, no markdown: ["word1","word2",...]`,
+        }],
+      }),
+    });
+    if (!res.ok) {
+      console.error('[plotTwist] generate API error %d', res.status);
+      return null;
+    }
+    const json = await res.json();
+    const text = (json.content?.[0]?.text ?? '').replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+    const arr = JSON.parse(text);
+    if (Array.isArray(arr) && arr.length >= need * 0.8) {
+      return [...new Set(arr.map(w => String(w).toLowerCase()))];
+    }
+    return null;
+  } catch (e) {
+    console.error('[plotTwist] generate error:', e.message);
+    return null;
+  }
+}
+
+async function ptJudgeSentence(sentence, allWords) {
+  // allWords = [{idx, word}]
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  // Fallback: stem-based matching
+  const fallbackCheck = () => {
+    const lower = sentence.toLowerCase();
+    return allWords
+      .filter(({ word }) => {
+        const re = new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+        return re.test(lower);
+      })
+      .map(({ idx }) => idx);
+  };
+
+  if (!apiKey) {
+    console.warn('[plotTwist] ANTHROPIC_API_KEY not set — using fallback matching');
+    return fallbackCheck();
+  }
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `Sentence: "${sentence}"\n\nHere is a list of target words (with an index). For each, decide if the sentence contains that word OR a clear equivalent (plural, tense, or obvious synonym like cop/police, scared/afraid). Be reasonably generous on equivalents but do not match unrelated words.\n\nWords: ${JSON.stringify(allWords)}\n\nRespond with ONLY a JSON array of the "idx" values whose word is present, no markdown. Example: [0,4] or []`,
+        }],
+      }),
+    });
+    if (!res.ok) {
+      console.error('[plotTwist] judge API error %d', res.status);
+      return fallbackCheck();
+    }
+    const json = await res.json();
+    const text = (json.content?.[0]?.text ?? '').replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+    const arr = JSON.parse(text);
+    if (Array.isArray(arr)) {
+      return arr.filter(x => Number.isInteger(x) && x >= 0 && x < allWords.length);
+    }
+    return fallbackCheck();
+  } catch (e) {
+    console.error('[plotTwist] judge error:', e.message);
+    return fallbackCheck();
+  }
+}
+
+function cleanupPlotTwist(code) {
+  const d = ptRoomData[code];
+  if (!d) return;
+  if (d.turnTimer) clearInterval(d.turnTimer);
+  if (d.vetoTimer) clearTimeout(d.vetoTimer);
+  delete ptRoomData[code];
+}
+
+// ── Plot Twist game logic ─────────────────────────────────────────────────────
+
+async function initPlotTwistGame(code) {
+  const room = rooms[code];
+  if (!room) return;
+
+  const playerList = room.players;
+  const numPlayers = playerList.length;
+  const HAND_SIZE = 5; // 4 regular + 1 hard per player
+  const POOL_BUFFER = 12;
+  const needRegular = numPlayers * 4 + Math.floor(POOL_BUFFER * 0.8);
+  const needHard = numPlayers * 1 + Math.ceil(POOL_BUFFER * 0.2);
+  const need = needRegular + needHard;
+
+  // Pick a random prompt
+  const promptIdx = Math.floor(Math.random() * PLOT_TWIST_PROMPTS.length);
+  const prompt = PLOT_TWIST_PROMPTS[promptIdx];
+
+  // Generate word pool (AI or fallback)
+  let allWords = await ptGeneratePool(prompt, need);
+  if (!allWords || allWords.length < numPlayers * HAND_SIZE) {
+    const fb = PLOT_TWIST_FALLBACK_WORDS[promptIdx] || PLOT_TWIST_FALLBACK_WORDS[0];
+    allWords = [...fb];
+    while (allWords.length < need) {
+      allWords.push(...['door','voice','hand','light','noise','shadow','smile','road','window','clock']);
+    }
+    allWords = [...new Set(allWords)].slice(0, need);
+  }
+
+  // Split into regular (common, easy) and hard (uncommon) words
+  // The last ~20% of the AI-generated list tends to be less obvious; use those as hard
+  const shuffled = allWords.sort(() => Math.random() - 0.5);
+  const hardCount = needHard;
+  const hardWords = shuffled.slice(0, hardCount);
+  const regularWords = shuffled.slice(hardCount);
+
+  // Deal: each player gets 4 regular + 1 hard = 5 words
+  // Each word is {word, hard: boolean}
+  const targets = {};
+  let rCursor = 0, hCursor = 0;
+  const turnOrder = playerList.map(p => p.id);
+  for (const p of playerList) {
+    const hand = [];
+    for (let i = 0; i < 4; i++) hand.push({ word: regularWords[rCursor++], hard: false });
+    hand.push({ word: hardWords[hCursor++], hard: true });
+    // Shuffle hand so the hard word isn't always last
+    hand.sort(() => Math.random() - 0.5);
+    targets[p.id] = hand;
+  }
+  // Pool: remaining words (mix of regular and hard)
+  const pool = [];
+  for (let i = rCursor; i < regularWords.length; i++) pool.push({ word: regularWords[i], hard: false });
+  for (let i = hCursor; i < hardWords.length; i++) pool.push({ word: hardWords[i], hard: true });
+  pool.sort(() => Math.random() - 0.5);
+
+  // Store secret data server-side
+  ptRoomData[code] = { targets, pool, turnTimer: null, vetoTimer: null, vetoVotes: {} };
+
+  // Build game state (targets are NOT included — they're secret)
+  const gs = {
+    game: 'plotTwist',
+    phase: 'play',
+    prompt,
+    promptIdx,
+    story: [],
+    turn: 0,
+    turnOrder,
+    scores: Object.fromEntries(playerList.map(p => [p.id, 0])),
+    winner: null,
+    pending: null,      // {by, text} — sentence awaiting veto
+    lastResult: null,   // {by, text, hits:[{ownerId, ownerName, word}]} — notification
+    judging: false,
+    turnLeft: 20,
+  };
+
+  room.gameState = gs;
+  io.to(code).emit('gameStateUpdated', gs);
+
+  // Send each player their private words
+  for (const p of playerList) {
+    // p.id is the stableId (persistentId). Look up their current socket.
+    const sid = persistentToSocket[p.id] || persistentToSocket[p.persistentId] || p.id;
+    console.log('[plotTwist] sending words to %s (socket %s): %s', p.name, sid, targets[p.id].map(w => w.word + (w.hard ? '*' : '')).join(', '));
+    io.to(sid).emit('pt-myWords', { words: targets[p.id] });
+  }
+
+  // Start turn timer
+  ptStartTurnTimer(code);
+
+  console.log('[plotTwist] game initialized in room %s — %d players, %d pool words', code, numPlayers, pool.length);
+}
+
+function ptStartTurnTimer(code) {
+  const d = ptRoomData[code];
+  if (!d) return;
+  if (d.turnTimer) clearInterval(d.turnTimer);
+
+  const room = rooms[code];
+  if (!room || room.gameState?.game !== 'plotTwist') return;
+
+  // Reset turnLeft to 20
+  room.gameState.turnLeft = 20;
+  io.to(code).emit('gameStateUpdated', room.gameState);
+
+  // Tick every second
+  let left = 20;
+  d.turnTimer = setInterval(() => {
+    const r = rooms[code];
+    if (!r || r.gameState?.game !== 'plotTwist' || r.gameState.phase !== 'play') {
+      clearInterval(d.turnTimer);
+      d.turnTimer = null;
+      return;
+    }
+    const gs = r.gameState;
+    if (gs.pending || gs.judging || gs.lastResult) return; // pause timer during veto/judging/notification
+
+    left--;
+    gs.turnLeft = left;
+    io.to(code).emit('gameStateUpdated', gs);
+
+    if (left <= 0) {
+      clearInterval(d.turnTimer);
+      d.turnTimer = null;
+      // Auto-skip with -1 penalty
+      const currentPlayerId = gs.turnOrder[gs.turn];
+      gs.scores[currentPlayerId] = Math.max(0, (gs.scores[currentPlayerId] || 0) - 1);
+      const player = r.players.find(p => p.id === currentPlayerId);
+      if (player) player.score = gs.scores[currentPlayerId];
+      io.to(code).emit('scoresUpdated', r.players);
+      ptAdvanceTurn(code);
+    }
+  }, 1000);
+}
+
+function ptAdvanceTurn(code) {
+  const room = rooms[code];
+  if (!room || room.gameState?.game !== 'plotTwist') return;
+  const gs = room.gameState;
+  gs.turn = (gs.turn + 1) % gs.turnOrder.length;
+  gs.pending = null;
+  gs.judging = false;
+  gs.lastResult = null;
+  io.to(code).emit('gameStateUpdated', gs);
+  ptStartTurnTimer(code);
+}
+
+function ptGetPlayerSocket(code, playerId) {
+  return persistentToSocket[playerId] || playerId;
+}
+
+async function ptResolveVeto(code) {
+  const room = rooms[code];
+  if (!room || room.gameState?.game !== 'plotTwist') return;
+  const gs = room.gameState;
+  const d = ptRoomData[code];
+  if (!d || !gs.pending) return;
+
+  const nonWriters = gs.turnOrder.filter(id => id !== gs.pending.by);
+  const vetoCount = Object.values(d.vetoVotes).filter(v => v === 'veto').length;
+  const majority = Math.floor(nonWriters.length / 2) + 1;
+
+  if (vetoCount >= majority) {
+    // Vetoed — skip turn
+    console.log('[plotTwist] sentence vetoed in room %s (%d/%d votes)', code, vetoCount, nonWriters.length);
+    gs.pending = null;
+    io.to(code).emit('gameStateUpdated', gs);
+    // Brief pause then advance
+    setTimeout(() => ptAdvanceTurn(code), 1500);
+  } else {
+    // Allowed — judge the sentence
+    const { by, text } = gs.pending;
+    gs.pending = null;
+    gs.judging = true;
+    io.to(code).emit('gameStateUpdated', gs);
+    await ptResolveSentence(code, by, text);
+  }
+}
+
+async function ptResolveSentence(code, by, text) {
+  const room = rooms[code];
+  if (!room || room.gameState?.game !== 'plotTwist') return;
+  const gs = room.gameState;
+  const d = ptRoomData[code];
+  if (!d) return;
+
+  // Build flat word list with indices — words are {word, hard} objects
+  const flat = [];
+  for (const [playerId, words] of Object.entries(d.targets)) {
+    for (const entry of words) {
+      const w = entry.word || entry; // handle {word,hard} or plain string
+      const hard = entry.hard || false;
+      flat.push({ idx: flat.length, player: playerId, word: w, hard });
+    }
+  }
+
+  // AI judge
+  const hitIndices = await ptJudgeSentence(text, flat.map(f => ({ idx: f.idx, word: f.word })));
+  const allHits = hitIndices.map(idx => flat[idx]).filter(Boolean);
+
+  // Filter out self-hits
+  const scoringHits = allHits.filter(h => h.player !== by);
+
+  // Calculate scores — regular words = 1pt, hard words = 3pts
+  let writerLoss = 0;
+  const gainByPlayer = {};
+  scoringHits.forEach(h => {
+    const pts = h.hard ? 3 : 1;
+    gainByPlayer[h.player] = (gainByPlayer[h.player] || 0) + pts;
+    writerLoss += pts;
+  });
+
+  // Apply scores (floor at 0 — can never go negative)
+  for (const [pid, gain] of Object.entries(gainByPlayer)) {
+    gs.scores[pid] = (gs.scores[pid] || 0) + gain;
+    const player = room.players.find(p => p.id === pid);
+    if (player) player.score = gs.scores[pid];
+  }
+  gs.scores[by] = Math.max(0, (gs.scores[by] || 0) - writerLoss);
+  const writerPlayer = room.players.find(p => p.id === by);
+  if (writerPlayer) writerPlayer.score = gs.scores[by];
+
+  // Replace used words from pool
+  // Hard words must be replaced by hard words, regular by regular
+  // A player should never have 2 hard words at once
+  const replacements = [];
+  for (const h of scoringHits) {
+    const hand = d.targets[h.player];
+    if (!hand) continue;
+    const idx = hand.findIndex(e => (e.word || e) === h.word);
+    if (idx >= 0) {
+      let repl = null;
+      if (h.hard) {
+        // Find a hard replacement from pool
+        const hardIdx = d.pool.findIndex(e => e.hard);
+        if (hardIdx >= 0) {
+          repl = d.pool.splice(hardIdx, 1)[0];
+        } else {
+          // No hard words left — use a regular one (rare)
+          repl = d.pool.length > 0 ? d.pool.shift() : null;
+        }
+      } else {
+        // Find a regular (non-hard) replacement from pool
+        const regIdx = d.pool.findIndex(e => !e.hard);
+        if (regIdx >= 0) {
+          repl = d.pool.splice(regIdx, 1)[0];
+        } else {
+          // No regular words left — use whatever is available
+          repl = d.pool.length > 0 ? d.pool.shift() : null;
+        }
+      }
+      if (repl) {
+        hand[idx] = repl;
+        replacements.push({ playerId: h.player, oldWord: h.word, newWord: repl.word || repl });
+      } else {
+        hand.splice(idx, 1);
+        replacements.push({ playerId: h.player, oldWord: h.word, newWord: null });
+      }
+    }
+  }
+
+  // Build story line
+  const byPlayer = room.players.find(p => p.id === by);
+  const hitInfo = scoringHits.map(h => {
+    const owner = room.players.find(p => p.id === h.player);
+    const pts = h.hard ? 3 : 1;
+    return { ownerId: h.player, ownerName: owner?.name ?? 'Unknown', word: h.word, hard: h.hard, pts };
+  });
+
+  gs.story.push({ by, byName: byPlayer?.name ?? 'Unknown', text, hits: hitInfo });
+
+  // Check for winner
+  const WIN = 7;
+  let winnerId = null;
+  for (const [pid, score] of Object.entries(gs.scores)) {
+    if (score >= WIN) { winnerId = pid; break; }
+  }
+
+  gs.judging = false;
+
+  if (scoringHits.length > 0) {
+    gs.lastResult = { by, byName: byPlayer?.name ?? 'Unknown', text, hits: hitInfo, replacements };
+  } else {
+    gs.lastResult = null;
+  }
+
+  if (winnerId) {
+    gs.winner = winnerId;
+    gs.phase = 'gameover';
+    // Reveal all words on game over
+    gs.revealTargets = {};
+    for (const [pid, words] of Object.entries(d.targets)) {
+      gs.revealTargets[pid] = [...words];
+    }
+  }
+
+  io.to(code).emit('gameStateUpdated', gs);
+  io.to(code).emit('scoresUpdated', room.players);
+
+  // Send updated private words to affected players
+  for (const r of replacements) {
+    const sid = ptGetPlayerSocket(code, r.playerId);
+    if (sid) {
+      io.to(sid).emit('pt-myWords', { words: d.targets[r.playerId] || [] });
+    }
+  }
+
+  if (winnerId) {
+    cleanupPlotTwist(code);
+    return;
+  }
+
+  // After notification delay, advance turn
+  const delay = scoringHits.length > 0 ? 4500 : 900;
+  setTimeout(() => {
+    const r = rooms[code];
+    if (!r || r.gameState?.game !== 'plotTwist') return;
+    r.gameState.lastResult = null;
+    ptAdvanceTurn(code);
+  }, delay);
+}
+
 // ── Game state bootstrap ──────────────────────────────────────────────────────
 // Builds a usable initial gameState so clients receive a real state in
 // `gameStarted` and never need to wait on a second `gameStateUpdated` emit
@@ -1214,6 +1661,8 @@ function buildInitialGameState(game) {
     case 'chainLink':
       // initChainLinkGame() overwrites this immediately
       return { game, phase: 'playing', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, turnStartedAt: null, consecutiveSkips: 0, winner: null, log: [], drawPile: [], referee: null };
+    case 'plotTwist':
+      return { game, phase: 'setup', prompt: '', story: [], turn: 0, turnOrder: [], scores: {}, winner: null };
     default:
       return { game, phase: 'start' };
   }
@@ -1435,6 +1884,7 @@ io.on('connection', (socket) => {
     socket.emit('leftRoom', { code });
 
     if (room.players.length === 0) {
+      cleanupPlotTwist(code);
       delete rooms[code];
       delete dosRoundData[code];
       console.log(`Room ${code} deleted (empty after leave)`);
@@ -1457,6 +1907,7 @@ io.on('connection', (socket) => {
     if (!room || room.hostId !== stableId(socket.id)) return;
 
     io.to(code).emit('roomCancelled', { code });
+    cleanupPlotTwist(code);
     delete rooms[code];
     console.log(`Room ${code} cancelled by host`);
   });
@@ -1561,6 +2012,7 @@ io.on('connection', (socket) => {
     room.standOutAnswers     = [];
     room.standOutRoundScored = false;
     cleanupPotLuck(code);
+    cleanupPlotTwist(code);
 
     io.to(code).emit('gameEnded', room);
     console.log('[endGame] host ended game in room %s', code);
@@ -1581,6 +2033,7 @@ io.on('connection', (socket) => {
     room.standOutAnswers     = [];
     room.standOutRoundScored  = false;
     cleanupPotLuck(code);
+    cleanupPlotTwist(code);
 
     room.gameState  = buildInitialGameState(game);
     room.players    = room.players.map(p => ({ ...p, score: 0 }));
@@ -2313,6 +2766,108 @@ io.on('connection', (socket) => {
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
       if (!isWin) clStartTurnTimer(code);
+      return;
+    }
+
+    // ── Plot Twist: host starts the game (from setup screen) ────────────────
+    if (room.gameState?.game === 'plotTwist' && action === 'pt-startGame') {
+      if (room.hostId !== stableId(socket.id)) return; // host only
+      if (room.gameState.phase !== 'setup') return;
+      // Transition to dealing, then init
+      room.gameState.phase = 'dealing';
+      io.to(code).emit('gameStateUpdated', room.gameState);
+      initPlotTwistGame(code).catch(err => console.error('[plotTwist] init failed:', err));
+      return;
+    }
+
+    // ── Plot Twist: submit sentence ───────────────────────────────────────────
+    if (room.gameState?.game === 'plotTwist' && action === 'pt-submit') {
+      const gs = room.gameState;
+      const d = ptRoomData[code];
+      if (!d || gs.phase !== 'play' || gs.pending || gs.judging) return;
+
+      const actorId = stableId(socket.id);
+      const currentPlayerId = gs.turnOrder[gs.turn];
+      if (actorId !== currentPlayerId) return; // not your turn
+
+      const text = (data.text || '').trim();
+      if (!text) return;
+
+      // Self-word guard (server-side enforcement)
+      const myWords = d.targets[actorId] || [];
+      const lower = text.toLowerCase();
+      const selfHit = myWords.find(entry => {
+        const w = entry.word || entry; // handle {word,hard} or plain string
+        const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+        return re.test(lower);
+      });
+      if (selfHit) {
+        io.to(socket.id).emit('pt-selfBlock', { word: selfHit.word || selfHit });
+        return;
+      }
+
+      // Pause turn timer
+      if (d.turnTimer) { clearInterval(d.turnTimer); d.turnTimer = null; }
+
+      // Enter veto phase
+      gs.pending = { by: actorId, text };
+      d.vetoVotes = {};
+      io.to(code).emit('gameStateUpdated', gs);
+
+      // Auto-resolve veto after 10 seconds if not enough votes
+      d.vetoTimer = setTimeout(() => {
+        ptResolveVeto(code);
+      }, 10000);
+
+      return;
+    }
+
+    // ── Plot Twist: veto vote ─────────────────────────────────────────────────
+    if (room.gameState?.game === 'plotTwist' && action === 'pt-veto') {
+      const gs = room.gameState;
+      const d = ptRoomData[code];
+      if (!d || !gs.pending) return;
+
+      const voterId = stableId(socket.id);
+      if (voterId === gs.pending.by) return; // writer can't vote
+      if (d.vetoVotes[voterId] !== undefined) return; // already voted
+
+      d.vetoVotes[voterId] = data.veto ? 'veto' : 'allow';
+
+      // Check if all non-writers have voted
+      const nonWriters = gs.turnOrder.filter(id => id !== gs.pending.by);
+      const totalVotes = Object.keys(d.vetoVotes).length;
+      if (totalVotes >= nonWriters.length) {
+        if (d.vetoTimer) { clearTimeout(d.vetoTimer); d.vetoTimer = null; }
+        ptResolveVeto(code);
+      }
+      return;
+    }
+
+    // ── Plot Twist: request words (client missed initial emit) ──────────────
+    if (room.gameState?.game === 'plotTwist' && action === 'pt-requestWords') {
+      const d = ptRoomData[code];
+      if (!d) return;
+      const actorId = stableId(socket.id);
+      const words = d.targets[actorId];
+      if (words) {
+        io.to(socket.id).emit('pt-myWords', { words });
+        console.log('[plotTwist] re-sent words to %s on request', actorId);
+      }
+      return;
+    }
+
+    // ── Plot Twist: skip turn ─────────────────────────────────────────────────
+    if (room.gameState?.game === 'plotTwist' && action === 'pt-skip') {
+      const gs = room.gameState;
+      const d = ptRoomData[code];
+      if (!d || gs.phase !== 'play' || gs.pending || gs.judging) return;
+
+      const actorId = stableId(socket.id);
+      const currentPlayerId = gs.turnOrder[gs.turn];
+      if (actorId !== currentPlayerId) return;
+
+      ptAdvanceTurn(code);
       return;
     }
 

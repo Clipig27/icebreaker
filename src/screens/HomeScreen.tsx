@@ -633,7 +633,7 @@ export default function HomeScreen({ navigation }: Props) {
           <View style={s.wordmarkAccent} />
 
           <View style={s.tagPill}>
-            <Text style={s.tagText}>7 GAMES</Text>
+            <Text style={s.tagText}>10 GAMES</Text>
           </View>
         </Animated.View>
 
