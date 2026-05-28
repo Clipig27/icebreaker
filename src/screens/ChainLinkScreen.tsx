@@ -18,6 +18,7 @@ import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import socket from '../socket';
 import { COLORS } from '../constants/theme';
+import GameIntro from '../components/GameIntro';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ChainLink'>;
@@ -36,7 +37,7 @@ type CLReferee = {
 
 type CLGameState = {
   game: 'chainLink';
-  phase: 'playing' | 'win' | 'chainBroken';
+  phase: 'intro' | 'playing' | 'win' | 'chainBroken';
   hands: Record<string, string[]>;
   chain: Array<CLChainEntry>;
   turnOrder: string[];
@@ -546,13 +547,21 @@ export default function ChainLinkScreen({ navigation }: Props) {
   }, [cardAlert]);
 
   // ── Loading ──────────────────────────────────────────────────────────────
-  if (!gs || !gs.turnOrder) {
+  if (gs?.phase === 'intro' || (!gs) || !gs.turnOrder) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          <Text style={styles.loadingText}>Setting up ChainLink...</Text>
-        </View>
-      </SafeAreaView>
+      <GameIntro
+        emoji="🔗"
+        title="ChainLink"
+        tagline="Link words together. Challenge bad links."
+        rules={[
+          { emoji: '🃏', text: 'Each player gets 7 word cards. An anchor word starts the chain.' },
+          { emoji: '🔗', text: 'Play a card by linking it to the last word. 15 seconds per turn.' },
+          { emoji: '⚡', text: 'Other players can CHALLENGE your link. An AI referee decides.' },
+          { emoji: '🏆', text: 'First player to empty their hand wins!' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
     );
   }
 

@@ -28,6 +28,7 @@ import {
 } from '../utils/promptUtils';
 import { StandOutPrompt } from '../constants/gamePrompts';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import GameIntro from '../components/GameIntro';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'StandOut'>;
@@ -52,7 +53,7 @@ const CHALLENGE_PENALTY = -5;
 
 interface SOGameState {
   game: 'standOut';
-  phase: 'prompt' | 'entering' | 'reveal' | 'game-over';
+  phase: 'intro' | 'prompt' | 'entering' | 'reveal' | 'game-over';
   roundNumber: number;
   currentPrompt: StandOutPrompt;
   targetScore?: number; // set once before round 1, carried through all rounds
@@ -90,10 +91,7 @@ export default function StandOutScreen({ navigation }: Props) {
   const gs = (room?.gameState?.game === 'standOut' ? room.gameState : null) as SOGameState | null;
   useEffect(() => { gsRef.current = gs; }, [gs]);
 
-  // Block header back button for non-hosts
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   // Setup timeout — if no usable gameState within 8 s, socket is likely down
   const [setupTimedOut, setSetupTimedOut] = useState(false);
@@ -281,6 +279,25 @@ export default function StandOutScreen({ navigation }: Props) {
     sendGameState(next);
   };
 
+  // ── Intro ──────────────────────────────────────────────────────────────────
+  if (gs?.phase === 'intro' || (!gs)) {
+    return (
+      <GameIntro
+        emoji="⚡"
+        title="Stand Out"
+        tagline="Unique answers only. Think different to win."
+        rules={[
+          { emoji: '❓', text: 'A question appears. Everyone has 10 seconds to submit an answer.' },
+          { emoji: '✨', text: 'Unique answer = +10 points. Streak bonuses: +15, +20, +25.' },
+          { emoji: '💥', text: 'If someone else said the same thing, everyone who matched loses 10 points.' },
+          { emoji: '🏆', text: 'First to the target score wins!' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
+    );
+  }
+
   // ── Loading (no game state yet) ────────────────────────────────────────────
   if (!gs || !gs.currentPrompt) {
     return (
@@ -461,7 +478,7 @@ export default function StandOutScreen({ navigation }: Props) {
     answerGroups.get(key)!.push(ans);
   }
   const isDuplicate = (ans: Answer) => (answerGroups.get(normalizeAnswer(ans.text))?.length ?? 0) > 1;
-  const topScore = Math.max(...players.map(p => p.score));
+  const topScore = players.length > 0 ? Math.max(...players.map(p => p.score)) : 0;
 
   // Challenge helpers
   const isInvalidated = (playerId: string) => {

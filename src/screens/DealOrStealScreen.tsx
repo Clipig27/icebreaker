@@ -18,10 +18,12 @@ import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import { COLORS, RADIUS } from '../constants/theme';
+import GameIntro from '../components/GameIntro';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type DSPhase =
+  | 'intro'
   | 'setup'
   | 'round-intro'
   | 'discussion'
@@ -135,10 +137,7 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
   const gs = (room?.gameState?.game === 'dealOrSteal' ? room.gameState : null) as DSGameState | null;
 
-  // Block header back button for non-hosts
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   // Fade animation on phase / round change
   useEffect(() => {
@@ -443,22 +442,21 @@ export default function DealOrStealScreen({ navigation }: Props) {
 
   // ── Loading / error guards ─────────────────────────────────────────────────
 
-  if (!gs) {
+  if (gs?.phase === 'intro' || (!gs)) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          {setupTimedOut ? (
-            <>
-              <Text style={styles.waitTitle}>Could not load game</Text>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-                <Text style={styles.linkText}>← Go back</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <Text style={styles.waitTitle}>Setting up...</Text>
-          )}
-        </View>
-      </SafeAreaView>
+      <GameIntro
+        emoji="🤝"
+        title="Deal or Steal"
+        tagline="Cooperate or betray. Finish with the highest balance."
+        rules={[
+          { emoji: '💰', text: 'Everyone starts at $100. Each round, secretly choose DEAL, STEAL, or NEUTRAL.' },
+          { emoji: '🤝', text: 'Both DEAL = both gain. One DEAL + one STEAL = stealer takes from dealer.' },
+          { emoji: '⚔️', text: 'Both STEAL = nobody gains. Standings shown anonymously.' },
+          { emoji: '🏆', text: 'Highest balance at the end wins!' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
     );
   }
 

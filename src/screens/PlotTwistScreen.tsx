@@ -17,6 +17,7 @@ import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import socket from '../socket';
 import { COLORS } from '../constants/theme';
+import GameIntro from '../components/GameIntro';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PlotTwist'>;
@@ -39,7 +40,7 @@ type HitResult = {
 
 type PTGameState = {
   game: 'plotTwist';
-  phase: 'setup' | 'dealing' | 'play' | 'gameover';
+  phase: 'intro' | 'setup' | 'dealing' | 'play' | 'gameover';
   prompt: string;
   promptIdx: number;
   story: StoryLine[];
@@ -170,10 +171,7 @@ export default function PlotTwistScreen({ navigation }: Props) {
     setVetoStatus(null);
   }, [gs?.turn]);
 
-  // Block back button for non-hosts during play
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost, navigation]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   // ── Derived state ──
   const turnOrder = gs?.turnOrder ?? [];
@@ -210,53 +208,24 @@ export default function PlotTwistScreen({ navigation }: Props) {
   };
 
   // ── Setup / Intro ──
-  if (!gs || gs.phase === 'setup') {
+  if (!gs || gs.phase === 'setup' || gs.phase === 'intro') {
     return (
-      <SafeAreaView style={s.safe}>
-        <ScrollView contentContainerStyle={s.setupScroll} showsVerticalScrollIndicator={false}>
-          <Text style={s.setupEmoji}>📜</Text>
-          <Text style={s.setupTitle}>Plot Twist</Text>
-          <Text style={s.setupTagline}>Co-write a story. Bait them into saying your secret words.</Text>
-
-          <View style={s.setupCard}>
-            <View style={s.setupRule}>
-              <Text style={s.setupBullet}>✍️</Text>
-              <Text style={s.setupRuleText}>Take turns adding one sentence (5–12 words) to a shared story.</Text>
-            </View>
-            <View style={s.setupRule}>
-              <Text style={s.setupBullet}>🎯</Text>
-              <Text style={s.setupRuleText}>You hold <Text style={s.setupBold}>4 regular words</Text> (1 pt) and <Text style={s.setupBoldPurple}>1 hard word</Text> (3 pts).</Text>
-            </View>
-            <View style={s.setupRule}>
-              <Text style={s.setupBullet}>💥</Text>
-              <Text style={s.setupRuleText}>Someone types your word → you score, they lose. Used words get replaced.</Text>
-            </View>
-            <View style={s.setupRule}>
-              <Text style={s.setupBullet}>🚫</Text>
-              <Text style={s.setupRuleText}>You can't use your own words — the game blocks you.</Text>
-            </View>
-            <View style={s.setupRule}>
-              <Text style={s.setupBullet}>⏱️</Text>
-              <Text style={s.setupRuleText}>20 seconds per turn. Run out of time and you lose a point.</Text>
-            </View>
-            <View style={s.setupRule}>
-              <Text style={s.setupBullet}>🏆</Text>
-              <Text style={s.setupRuleText}>First to <Text style={s.setupBold}>7 points</Text> wins!</Text>
-            </View>
-          </View>
-
-          {isHost ? (
-            <TouchableOpacity
-              style={s.setupStartBtn}
-              onPress={() => sendPlayerAction('pt-startGame', {})}
-            >
-              <Text style={s.setupStartBtnText}>DEAL & BEGIN</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={s.setupWaiting}>Waiting for the host to start…</Text>
-          )}
-        </ScrollView>
-      </SafeAreaView>
+      <GameIntro
+        emoji="📜"
+        title="Plot Twist"
+        tagline="Co-write a story. Bait them into saying your secret words."
+        rules={[
+          { emoji: '✍️', text: 'Take turns adding one sentence (5–12 words) to a shared story.' },
+          { emoji: '🎯', text: 'You hold 4 regular words (1 pt) and 1 hard word (3 pts).' },
+          { emoji: '💥', text: 'Someone types your word → you score, they lose. Used words get replaced.' },
+          { emoji: '🚫', text: "You can't use your own words — the game blocks you." },
+          { emoji: '⏱️', text: '20 seconds per turn. Run out of time and you lose a point.' },
+          { emoji: '🏆', text: 'First to 7 points wins!' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+        buttonLabel="DEAL & BEGIN"
+      />
     );
   }
 
@@ -525,36 +494,6 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   dealMsg: { color: COLORS.text2, fontSize: 14, fontWeight: '500' },
-
-  // Setup / Intro
-  setupScroll: { padding: 24, alignItems: 'center', gap: 16, paddingBottom: 40 },
-  setupEmoji: { fontSize: 48, marginTop: 12 },
-  setupTitle: { fontSize: 28, fontWeight: '900', color: COLORS.text, letterSpacing: 1 },
-  setupTagline: { fontSize: 14, fontWeight: '500', color: COLORS.text2, textAlign: 'center', marginBottom: 4 },
-  setupCard: {
-    width: '100%',
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
-    padding: 18,
-    gap: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  setupRule: { flexDirection: 'row' as const, gap: 10, alignItems: 'flex-start' as const },
-  setupBullet: { fontSize: 16, width: 24 },
-  setupRuleText: { flex: 1, fontSize: 14, fontWeight: '500', color: COLORS.text, lineHeight: 20 },
-  setupBold: { fontWeight: '700' as const, color: '#F0C14B' },
-  setupBoldPurple: { fontWeight: '700' as const, color: '#C4B5FD' },
-  setupStartBtn: {
-    width: '100%',
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center' as const,
-    marginTop: 8,
-  },
-  setupStartBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
-  setupWaiting: { color: COLORS.text2, fontSize: 14, fontWeight: '500', fontStyle: 'italic' as const, marginTop: 8 },
 
   // Scoreboard
   scoreBar: { flexGrow: 0, paddingHorizontal: 12, paddingVertical: 8 },

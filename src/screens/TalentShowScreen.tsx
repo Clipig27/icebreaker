@@ -14,6 +14,7 @@ import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import { COLORS } from '../constants/theme';
+import GameIntro from '../components/GameIntro';
 import {
   TALENT_SHOW_PROMPTS,
   TALENT_SHOW_TIEBREAK_PROMPTS,
@@ -23,6 +24,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type TSPhase =
+  | 'intro'
   | 'round-intro'
   | 'prep'
   | 'get-ready'
@@ -212,10 +214,7 @@ export default function TalentShowScreen({ navigation }: Props) {
     gsRef.current = gs;
   }, [gs]);
 
-  // Block header back button for non-hosts
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   // Setup timeout
   const [setupTimedOut, setSetupTimedOut] = useState(false);
@@ -671,7 +670,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             return;
           }
           // No tie — determine winner
-          const winnerId = tally.filter(t => state.r3FinalistIds.includes(t.id))[0]?.id ?? state.r3FinalistIds[0];
+          const finalistTally = tally.filter(t => state.r3FinalistIds.includes(t.id));
+          const winnerId = finalistTally.length > 0 ? finalistTally[0].id : (state.r3FinalistIds[0] ?? null);
           const runnerUpId = state.r3FinalistIds.find(id => id !== winnerId) ?? null;
 
           // Award score to winner
@@ -1058,25 +1058,21 @@ export default function TalentShowScreen({ navigation }: Props) {
   };
 
   // ── Loading ────────────────────────────────────────────────────────────────
-  if (!gs || !gs.phase) {
+  if (!gs || !gs.phase || gs.phase === 'intro') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          {setupTimedOut ? (
-            <>
-              <Text style={styles.waitTitle}>Could not load game</Text>
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                style={{ marginTop: 16 }}
-              >
-                <Text style={styles.goBackLink}>← Go back</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <Text style={styles.waitTitle}>Setting up...</Text>
-          )}
-        </View>
-      </SafeAreaView>
+      <GameIntro
+        emoji="🎭"
+        title="Talent Show"
+        tagline="Perform. Survive the buzz. Win the crowd."
+        rules={[
+          { emoji: '🎤', text: 'Round 1: Perform a 30-second act. Audience can BUZZ or GOLDEN BUZZ you.' },
+          { emoji: '❌', text: 'Half or more buzzes = eliminated. Half or more golden buzzes = instant advance.' },
+          { emoji: '🗳️', text: 'Round 2: Survivors perform again. Everyone votes for 2 favorites to advance.' },
+          { emoji: '🏆', text: 'Final: 2 finalists get the same prompt. Everyone votes for the winner.' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
     );
   }
 

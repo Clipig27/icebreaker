@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import GameIntro from '../components/GameIntro';
 
 const GOLD   = '#FBBF24';
 const GOLD_D = '#D97706';
@@ -96,11 +97,21 @@ export default function PotLuckScreen() {
     sendPlayerAction('pl-next-question', {});
   };
 
-  if (!gs || !room) {
+  if (gs?.phase === 'intro' || (!gs) || !room) {
     return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.center}><Text style={s.muted}>Loading…</Text></View>
-      </SafeAreaView>
+      <GameIntro
+        emoji="🧠"
+        title="Smarty Pot"
+        tagline="Risk the growing pot or pass it on."
+        rules={[
+          { emoji: '📚', text: 'Each question has a difficulty: Easy, Medium, or Hard. Harder = bigger starting pot.' },
+          { emoji: '⏱️', text: 'On your turn you have 15 seconds — answer or skip.' },
+          { emoji: '✅', text: 'Answer correctly = win the pot. Wrong = lose points equal to the pot.' },
+          { emoji: '⏭️', text: 'Skip = pot grows by 1 and passes on. First to the target score wins!' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
     );
   }
 

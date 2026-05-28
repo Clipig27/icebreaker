@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
+    "multi-sim": "bash scripts/multi-sim.sh",
     "set-ip": "node -e \"const fs=require('fs'),ip=require('child_process').execSync('ipconfig getifaddr en0').toString().trim(),env=fs.readFileSync('.env','utf8').replace(/EXPO_PUBLIC_BACKEND_URL=http:\\/\\/[^:]+:3001/,'EXPO_PUBLIC_BACKEND_URL=http://'+ip+':3001');fs.writeFileSync('.env',env);console.log('[set-ip] EXPO_PUBLIC_BACKEND_URL → http://'+ip+':3001')\"",
     "dev": "pm2 restart icebreaker-backend && npm run set-ip && expo start --clear",
     "start": "npm run set-ip && expo start",

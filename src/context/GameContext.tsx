@@ -7,6 +7,7 @@ import React, {
   useRef,
   ReactNode,
 } from 'react';
+import { showToast } from '../components/Toast';
 import socket, { ensureSocketConnected } from '../socket';
 import { LocalUser, getProfileById } from '../storage/userStorage';
 import { navigateTo, resetToMain, goBack, replaceWith, getCurrentRouteName } from '../navigation/navigationRef';
@@ -111,6 +112,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const currentUserRef    = useRef<LocalUser | null>(null);
   const isHostRef         = useRef(false);
   const prevHostScreenRef = useRef<string | undefined>(undefined);
+  const playersRef        = useRef<Player[]>([]);
+  useEffect(() => { playersRef.current = players; }, [players]);
 
   const HOST_SCREEN_MESSAGES: Record<string, string> = {
     selecting:   'Host is picking a game...',
@@ -202,6 +205,21 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       const prevHostScreen = prevHostScreenRef.current;
       prevHostScreenRef.current = r.hostScreen;
 
+      // Detect who left / joined by comparing previous and new player lists
+      const prevPlayers = playersRef.current;
+      const newIds = new Set(r.players.map(p => p.id));
+      const prevIds = new Set(prevPlayers.map(p => p.id));
+
+      const left = prevPlayers.filter(p => !newIds.has(p.id));
+      if (left.length > 0) {
+        left.forEach(p => showToast(`${p.name} left the room`));
+      }
+
+      const joined = r.players.filter(p => !prevIds.has(p.id));
+      if (joined.length > 0 && prevPlayers.length > 0) {
+        joined.forEach(p => showToast(`${p.name} joined the room`));
+      }
+
       setRoom(r);
       setPlayers(r.players);
       const myStableId = currentUserRef.current?.id ?? socket.id;
@@ -267,7 +285,11 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       setRoom(r);
       setPlayers(r.players);
       const myStableId = currentUserRef.current?.id ?? socket.id;
-      setIsHost(newHostId === myStableId);
+      const iAmNewHost = newHostId === myStableId;
+      setIsHost(iAmNewHost);
+      if (iAmNewHost) {
+        showToast('You are now the host');
+      }
     });
 
     // Room was cancelled by the host — all non-host players get kicked
@@ -276,10 +298,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       setIsHost(false);
       setPlayers([]);
       resetToMain();
+      showToast('The host closed the room');
     });
 
     // We successfully left a room voluntarily
     socket.on('leftRoom', (_data: { code: string }) => {
+      // If we're switching to another room (join/create), don't reset to home
+      if (switchingRoomRef.current) return;
       setRoom(null);
       setIsHost(false);
       setPlayers([]);
@@ -292,6 +317,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       setIsHost(false);
       setPlayers([]);
       resetToMain();
+      showToast('You were kicked by the host');
     });
 
     // Host ended the current game — host goes to GameSelect, non-hosts wait in JoinRoom
@@ -312,6 +338,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     socket.on('error', ({ message }: { message: string }) => {
       console.error('Socket error:', message);
+      showToast(message);
     });
 
     return () => {
@@ -335,6 +362,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
   // ── Room cleanup helper ────────────────────────────────────────────────────
   // Silently exits any current room before creating/joining a new one.
+  const switchingRoomRef = useRef(false);
+
   const exitCurrentRoom = useCallback(() => {
     if (!room) return;
     // Always use leaveRoom so the host role transfers instead of cancelling the room
@@ -349,23 +378,32 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const createRoom = useCallback((playerName: string) => {
     console.log('[createRoom] emit — connected:', socket.connected, 'existingRoom:', room?.code ?? 'none');
     const persistentId = currentUserRef.current?.id ?? socket.id;
-    if (room) exitCurrentRoom();
+    if (room) { switchingRoomRef.current = true; exitCurrentRoom(); }
     ensureSocketConnected()
       .then(() => socket.emit('createRoom', { playerName, persistentId }, (ack: { ok: boolean; message?: string }) => {
+        switchingRoomRef.current = false;
         if (!ack.ok) console.error('[createRoom] server rejected:', ack.message);
       }))
-      .catch((err) => console.error('[createRoom] could not connect:', err.message));
+      .catch((err) => { switchingRoomRef.current = false; console.error('[createRoom] could not connect:', err.message); });
   }, [room, exitCurrentRoom]);
 
   const joinRoom = useCallback((code: string, playerName: string) => {
     // Clear any existing room (e.g. user was hosting and switched to join)
     const persistentId = currentUserRef.current?.id ?? socket.id;
-    if (room) exitCurrentRoom();
+    if (room) { switchingRoomRef.current = true; exitCurrentRoom(); }
     ensureSocketConnected()
       .then(() => socket.emit('joinRoom', { code, playerName, persistentId }, (ack: { ok: boolean; message?: string }) => {
-        if (!ack.ok) console.error('[joinRoom] server rejected:', ack.message);
+        switchingRoomRef.current = false;
+        if (!ack.ok) {
+          console.error('[joinRoom] server rejected:', ack.message);
+          showToast(ack.message ?? 'Failed to join room');
+          setRoom(null);
+          setIsHost(false);
+          setPlayers([]);
+          resetToMain();
+        }
       }))
-      .catch((err) => console.error('[joinRoom] could not connect:', err.message));
+      .catch((err) => { switchingRoomRef.current = false; console.error('[joinRoom] could not connect:', err.message); });
   }, [room, exitCurrentRoom]);
 
   const leaveRoom = useCallback(() => {
@@ -379,14 +417,15 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   }, [room]);
 
   const cancelRoom = useCallback(() => {
-    if (!room || !isHost) return;
-    socket.emit('cancelRoom', { code: room.code });
-    // Navigate immediately — don't wait for server echo
+    if (!room) return;
+    ensureSocketConnected()
+      .then(() => socket.emit('cancelRoom', { code: room.code }))
+      .catch((err) => console.error('[cancelRoom] could not connect:', err.message));
     setRoom(null);
     setIsHost(false);
     setPlayers([]);
     resetToMain();
-  }, [room, isHost]);
+  }, [room]);
 
   const startGame = useCallback((game: GameType, options?: { potCap?: number }) => {
     if (!room) {

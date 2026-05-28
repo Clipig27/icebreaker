@@ -21,6 +21,7 @@ import { COLORS } from '../constants/theme';
 import { LIE_DETECTOR_PROMPTS } from '../constants/prompts';
 import { Player } from '../types';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import GameIntro from '../components/GameIntro';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'LieDetector'>;
@@ -57,7 +58,7 @@ const STMT_TYPE_META: Record<StatementType, { label: string; emoji: string; colo
 
 interface LDGameState {
   game: 'lieDetector';
-  phase: 'setup' | 'entering' | 'voting' | 'results' | 'game-over';
+  phase: 'intro' | 'setup' | 'entering' | 'voting' | 'results' | 'scores' | 'game-over';
   prompt: string;
   speakerIndex: number;
   playerOrder?: string[];
@@ -108,9 +109,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
   const gs = (room?.gameState?.game === 'lieDetector' ? room.gameState : null) as LDGameState | null;
   useEffect(() => { gsRef.current = gs; }, [gs]);
 
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   // Per-statement vote state for listeners
   const [stmt1Vote, setStmt1Vote] = useState<'lie' | 'truth' | null>(null);
@@ -172,6 +171,13 @@ export default function LieDetectorScreen({ navigation }: Props) {
     if (idx >= 0) usedPromptsRef.current.add(idx);
   }, [!!gs?.prompt]); // eslint-disable-line
 
+  const handleRevealScores = () => {
+    if (!isHost || !gs) return;
+    const next: LDGameState = { ...gs, phase: 'scores' };
+    gsRef.current = next;
+    sendGameStateRef.current(next);
+  };
+
   const handleNextPlayer = () => {
     if (!isHost || !gs) return;
     const order = gs.playerOrder ?? allPlayers.map(p => p.id);
@@ -206,6 +212,25 @@ export default function LieDetectorScreen({ navigation }: Props) {
     gsRef.current = next;
     sendGameStateRef.current(next);
   };
+
+  // ── Intro ──────────────────────────────────────────────────────────────────
+  if (!gs || gs.phase === 'intro') {
+    return (
+      <GameIntro
+        emoji="🕵️"
+        title="Lie Detector"
+        tagline="Fool the group as the speaker. Catch lies as a listener."
+        rules={[
+          { emoji: '📝', text: 'The speaker reads a prompt and writes two answers — one true, one a lie.' },
+          { emoji: '🗣️', text: 'They say both answers out loud. Listeners can ask one clarifying question.' },
+          { emoji: '🗳️', text: 'Listeners vote on which statement is the LIE.' },
+          { emoji: '✅', text: 'Correct guessers earn 1 point. Speaker earns 1 point if majority guesses wrong.' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
+    );
+  }
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (!gs) {
@@ -295,7 +320,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
 
   const playerOrder = gs.playerOrder ?? allPlayers.map(p => p.id);
   const speakerId = playerOrder[gs.speakerIndex ?? 0];
-  const speaker = allPlayers.find(p => p.id === speakerId) ?? allPlayers[0];
+  const speaker = allPlayers.find(p => p.id === speakerId) ?? (allPlayers.length > 0 ? allPlayers[0] : null);
   const nonSpeakers = allPlayers.filter(p => p.id !== speakerId);
   const iAmSpeaker = myId === speaker?.id;
 
@@ -321,7 +346,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
   }
 
   // ── Phase guard ────────────────────────────────────────────────────────────
-  if (gs.phase !== 'voting' && gs.phase !== 'results') {
+  if (gs.phase !== 'voting' && gs.phase !== 'results' && gs.phase !== 'scores') {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}><Text style={styles.waitTitle}>Setting up...</Text></View>
@@ -485,7 +510,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
   const typeMeta = gs.statementType ? STMT_TYPE_META[gs.statementType] : null;
   const pointWinners = (gs.pointsAwarded ?? []).filter(r => r.points > 0);
 
-  const isLastSpeaker = (gs.speakerIndex + 1) % allPlayers.length === 0;
+  const isLastSpeaker = allPlayers.length > 0 ? (gs.speakerIndex + 1) % allPlayers.length === 0 : true;
   const isLastRound = (gs.currentRound ?? 1) >= (gs.totalRounds ?? 1);
   const nextBtnLabel = isLastSpeaker && isLastRound
     ? 'See Final Results →'
@@ -493,6 +518,38 @@ export default function LieDetectorScreen({ navigation }: Props) {
     ? `Start Round ${(gs.currentRound ?? 1) + 1} →`
     : 'Next Player →';
 
+  // ── Phase: scores (leaderboard only — shown to everyone) ───────────────────
+  if (gs.phase === 'scores') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <Text style={[styles.waitEmoji, { textAlign: 'center' }]}>📊</Text>
+          <Text style={[styles.resultsTitle, { textAlign: 'center', marginBottom: 4 }]}>Leaderboard</Text>
+
+          {gs.totalRounds && gs.totalRounds > 1 && (
+            <Text style={[styles.waitSub, { textAlign: 'center', marginBottom: 16 }]}>
+              Round {gs.currentRound} / {gs.totalRounds}
+            </Text>
+          )}
+
+          <ScoreDisplay players={players} highlightId={myId} />
+
+          <View style={styles.actions}>
+            {isHost ? (
+              <>
+                <PrimaryButton title={nextBtnLabel} onPress={handleNextPlayer} />
+                <SecondaryButton title="Back to Games" onPress={() => navigation.goBack()} />
+              </>
+            ) : (
+              <Text style={styles.waitSub}>Waiting for host to continue...</Text>
+            )}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Phase: results (verdict + points this round) ──────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -527,7 +584,6 @@ export default function LieDetectorScreen({ navigation }: Props) {
             const myGuess = myVote ? (n === 1 ? myVote.stmt1Vote : myVote.stmt2Vote) : null;
             const myGuessCorrect = myGuess ? (myGuess === 'lie') === isLie : null;
 
-            // Vote breakdown for this statement
             const lieVotes = (gs.votes ?? []).filter(v => (n === 1 ? v.stmt1Vote : v.stmt2Vote) === 'lie').length;
             const truthVotes = (gs.votes ?? []).filter(v => (n === 1 ? v.stmt1Vote : v.stmt2Vote) === 'truth').length;
             const total = lieVotes + truthVotes;
@@ -592,18 +648,11 @@ export default function LieDetectorScreen({ navigation }: Props) {
           )}
         </View>
 
-        <View style={styles.divider} />
-        <Text style={styles.sectionLabel}>Scores</Text>
-        <ScoreDisplay players={players} highlightId={myId} />
-
         <View style={styles.actions}>
           {isHost ? (
-            <>
-              <PrimaryButton title={nextBtnLabel} onPress={handleNextPlayer} />
-              <SecondaryButton title="Back to Games" onPress={() => navigation.goBack()} />
-            </>
+            <PrimaryButton title="Reveal Scores →" onPress={handleRevealScores} />
           ) : (
-            <Text style={styles.waitSub}>Waiting for host to continue...</Text>
+            <Text style={styles.waitSub}>Waiting for host to reveal scores...</Text>
           )}
         </View>
       </ScrollView>

@@ -24,6 +24,7 @@ import { buildPieChartSession, PIE_CHARTS_DEFAULT_COUNT } from '../utils/promptU
 import { PieChartPrompt } from '../constants/gamePrompts';
 import { Player } from '../types';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import GameIntro from '../components/GameIntro';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PieCharts'>;
@@ -45,7 +46,7 @@ interface PCVote {
 
 interface PCGameState {
   game: 'pieCharts';
-  phase: 'setup' | 'question-intro' | 'voting' | 'reveal' | 'final-results';
+  phase: 'intro' | 'setup' | 'question-intro' | 'voting' | 'reveal' | 'final-results';
   questions: PieChartPrompt[];
   questionIdx: number;
   submittedVoterIds: string[];
@@ -191,7 +192,7 @@ function RevealScreen({
   }, [stage]);
 
   // Find winner(s) — could be a tie
-  const maxVotes = Math.max(...players.map(p => counts[p.id] ?? 0));
+  const maxVotes = players.length > 0 ? Math.max(...players.map(p => counts[p.id] ?? 0)) : 0;
   const winners  = maxVotes > 0 ? players.filter(p => (counts[p.id] ?? 0) === maxVotes) : [];
   const isTie    = winners.length > 1;
 
@@ -371,9 +372,7 @@ export default function PieChartsScreen({ navigation }: Props) {
   const gs = (room?.gameState?.game === 'pieCharts' ? room.gameState : null) as PCGameState | null;
   useEffect(() => { gsRef.current = gs; }, [gs]);
 
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   const [setupTimedOut, setSetupTimedOut] = useState(false);
   const setupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -467,6 +466,25 @@ export default function PieChartsScreen({ navigation }: Props) {
     }
     return counts;
   };
+
+  // ── Intro ──────────────────────────────────────────────────────────────────
+  if (gs?.phase === 'intro' || (!gs?.phase)) {
+    return (
+      <GameIntro
+        emoji="🥧"
+        title="Pie Charts"
+        tagline="See who the group thinks fits each question."
+        rules={[
+          { emoji: '❓', text: 'A "who is most likely to..." question appears.' },
+          { emoji: '🗳️', text: 'Everyone votes for a player — you can vote for yourself.' },
+          { emoji: '📊', text: 'Results are revealed as a live pie chart showing the vote split.' },
+          { emoji: '📋', text: 'After all questions, scroll through the full results.' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
+    );
+  }
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (!gs?.phase) {

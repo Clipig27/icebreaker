@@ -35,7 +35,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-console.log('[startup] ANTHROPIC_API_KEY:', process.env.ANTHROPIC_API_KEY ? `set (${process.env.ANTHROPIC_API_KEY.slice(0, 10)}...)` : 'NOT SET');
+console.log('[startup] ANTHROPIC_API_KEY:', process.env.ANTHROPIC_API_KEY ? 'set' : 'NOT SET');
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
@@ -1615,10 +1615,10 @@ function buildInitialGameState(game) {
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
   switch (game) {
     case 'lieDetector':
-      return { game, phase: 'setup', prompt: '', speakerIndex: 0, votedPlayerIds: [] };
+      return { game, phase: 'intro', prompt: '', speakerIndex: 0, votedPlayerIds: [] };
     case 'talentShow':
       return {
-        game, round: 1, phase: 'prep',
+        game, round: 1, phase: 'intro',
         prompt: pick(TALENT_SHOW_PROMPTS),
         timerStartedAt: null, timerDuration: 3000, nextActDuration: 30000,
         performerQueue: [], currentPerformerIdx: 0,
@@ -1635,13 +1635,13 @@ function buildInitialGameState(game) {
       };
     case 'standOut': {
       const prompt = pick(STAND_OUT_PROMPTS);
-      return { game, phase: 'prompt', roundNumber: 1, currentPrompt: prompt, submittedPlayerIds: [] };
+      return { game, phase: 'intro', roundNumber: 1, currentPrompt: prompt, submittedPlayerIds: [] };
     }
     case 'numberGuessor': {
       const prompt = pick(NUMBER_GUESSOR_PROMPTS);
       return {
         game,
-        phase: 'guessing',
+        phase: 'intro',
         round: 1,
         currentPrompt: prompt,
         submittedGuesserIds: [],
@@ -1652,17 +1652,17 @@ function buildInitialGameState(game) {
       };
     }
     case 'pieCharts':
-      return { game, phase: 'setup', questions: [], questionIdx: 0, submittedVoterIds: [], allVotes: [] };
+      return { game, phase: 'intro', questions: [], questionIdx: 0, submittedVoterIds: [], allVotes: [] };
     case 'dealOrSteal':
-      return { game, phase: 'setup', round: 1, balances: {} };
+      return { game, phase: 'intro', round: 1, balances: {} };
     case 'potLuck':
-      // initPotLuckGame() will overwrite this with the real state before gameStarted is emitted
-      return { game, phase: 'rolling', pot: 1, potCap: 5, winMultiplier: 5, target: 0, order: [], seatPtr: 0, consecutiveSkips: 0, usedQuestionIds: [], currentQuestion: null, lastResult: null, revealInfo: null, winnerId: null };
+      return { game, phase: 'intro', pot: 1, potCap: 5, winMultiplier: 5, target: 0, order: [], seatPtr: 0, consecutiveSkips: 0, usedQuestionIds: [], currentQuestion: null, lastResult: null, revealInfo: null, winnerId: null };
     case 'chainLink':
-      // initChainLinkGame() overwrites this immediately
-      return { game, phase: 'playing', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, turnStartedAt: null, consecutiveSkips: 0, winner: null, log: [], drawPile: [], referee: null };
+      return { game, phase: 'intro', hands: {}, chain: [], turnOrder: [], turnIdx: 0, pending: null, challengeStartedAt: null, turnStartedAt: null, consecutiveSkips: 0, winner: null, log: [], drawPile: [], referee: null };
     case 'plotTwist':
-      return { game, phase: 'setup', prompt: '', story: [], turn: 0, turnOrder: [], scores: {}, winner: null };
+      return { game, phase: 'intro', prompt: '', story: [], turn: 0, turnOrder: [], scores: {}, winner: null };
+    case 'shadowProtocol':
+      return { game, phase: 'intro' };
     default:
       return { game, phase: 'start' };
   }
@@ -1676,6 +1676,24 @@ app.get('/api/status', (_req, res) => {
 /** Returns the stable canonical player ID for a socket (persistentId if known, else socket.id). */
 function stableId(socketId) {
   return playerPersistentIds[socketId] ?? socketId;
+}
+
+/**
+ * Check whether a socket is the host of a room.
+ * Handles the reconnection race where playerPersistentIds hasn't been
+ * populated yet for the new socket ID — falls back to checking whether
+ * this socket's persistentId matches the hostId via persistentToSocket.
+ */
+function isHost(room, socketId) {
+  if (!room) return false;
+  const callerId = stableId(socketId);
+  if (room.hostId === callerId) return true;
+  // Fallback: check if socket's registered persistentId matches hostId
+  const pid = playerPersistentIds[socketId];
+  if (pid && room.hostId === pid) return true;
+  // Reverse fallback: check if hostId maps to this socket via persistentToSocket
+  if (persistentToSocket[room.hostId] === socketId) return true;
+  return false;
 }
 
 /** Cancel a pending disconnect timer for a player identified by persistentId. */
@@ -1801,8 +1819,9 @@ io.on('connection', (socket) => {
     console.log('[joinRoom] socket=%s code=%s playerName=%s persistentId=%s', socket.id, code, playerName, persistentId);
     const room = rooms[code];
     if (!room) {
-      socket.emit('error', { message: 'Room not found' });
-      if (ack) ack({ ok: false, message: 'Room not found' });
+      console.log('[joinRoom] room %s not found. Active rooms: %s', code, Object.keys(rooms).join(', ') || '(none)');
+      socket.emit('error', { message: 'Room not found — check the code and try again.' });
+      if (ack) ack({ ok: false, message: 'Room not found — check the code and try again.' });
       return;
     }
 
@@ -1815,22 +1834,41 @@ io.on('connection', (socket) => {
       persistentToSocket[persistentId] = socket.id;
     }
 
-    // ── Rejoin: player was previously in this room ────────────────────────────
+    // ── Reject ALL joins if a game is in progress ─────────────────────────────
+    // Only allow reconnecting players who are still in the players list AND
+    // were disconnected (their socket left the channel). Brand new players
+    // and players who voluntarily left are always blocked mid-game.
+    if (room.phase === 'playing') {
+      const existingPlayer = persistentId
+        ? room.players.find(p => p.persistentId === persistentId || p.id === persistentId)
+        : null;
+
+      if (existingPlayer) {
+        // Genuine reconnect — they're still in the players list, let them back in
+        socket.join(code);
+        socket.emit('gameStarted', room);
+        io.to(code).emit('roomUpdated', room);
+        console.log('[joinRoom] %s RECONNECTED mid-game in room %s', playerName, code);
+        if (ack) ack({ ok: true });
+      } else {
+        // New player trying to join mid-game — reject
+        socket.emit('error', { message: 'Game in progress — try again when this round ends.' });
+        if (ack) ack({ ok: false, message: 'Game in progress — try again when this round ends.' });
+        console.log('[joinRoom] REJECTED %s — game in progress in room %s', playerName, code);
+      }
+      return;
+    }
+
+    // ── Rejoin: player was previously in this room (lobby phase) ────────────
     const existingPlayer = persistentId
       ? room.players.find(p => p.persistentId === persistentId)
       : null;
 
     if (existingPlayer) {
-      // existingPlayer.id is already the stable persistentId — no update needed
       socket.join(code);
-      // Bring them up to date
-      if (room.phase === 'playing') {
-        socket.emit('gameStarted', room);
-      } else {
-        socket.emit('roomUpdated', room);
-      }
+      socket.emit('roomUpdated', room);
       io.to(code).emit('roomUpdated', room);
-      console.log('[joinRoom] %s REJOINED room %s (was socket %s)', playerName, code, oldId);
+      console.log('[joinRoom] %s REJOINED room %s', playerName, code);
       if (ack) ack({ ok: true });
       return;
     }
@@ -1857,7 +1895,7 @@ io.on('connection', (socket) => {
       socket.leave(existingCode);
     }
 
-    // ── New player joining (including mid-game) ───────────────────────────────
+    // ── New player joining ───────────────────────────────────────────────────
     if (!room.players.find(p => p.id === joinerStableId)) {
       room.players.push({ id: joinerStableId, name: playerName, score: 0, persistentId: persistentId ?? null });
     }
@@ -1904,7 +1942,7 @@ io.on('connection', (socket) => {
   // ── Cancel room (host only — kicks everyone) ─────────────────────────────────
   socket.on('cancelRoom', ({ code }) => {
     const room = rooms[code];
-    if (!room || room.hostId !== stableId(socket.id)) return;
+    if (!room || !isHost(room, socket.id)) return;
 
     io.to(code).emit('roomCancelled', { code });
     cleanupPlotTwist(code);
@@ -1929,7 +1967,7 @@ io.on('connection', (socket) => {
       if (ack) ack({ ok: false, message: 'Room not found' });
       return;
     }
-    if (room.hostId !== stableId(socket.id)) {
+    if (!isHost(room, socket.id)) {
       console.warn('[startGame] socket %s stableId %s is not host %s of room %s', socket.id, stableId(socket.id), room.hostId, code);
       if (ack) ack({ ok: false, message: 'Not the host' });
       return;
@@ -1954,14 +1992,9 @@ io.on('connection', (socket) => {
       room.standOutAnswers     = [];
       room.standOutRoundScored = false;
     }
-    // Initialize Pot Luck (overwrites room.gameState with full state + schedules roll timer)
-    if (game === 'potLuck') {
-      if (typeof potCap === 'number') room.potLuckPotCap = Math.min(10, Math.max(5, potCap));
-      initPotLuckGame(code);
-    }
-    // Initialize Chain Link
-    if (game === 'chainLink') {
-      initChainLinkGame(code);
+    // Store pot cap for when host starts from intro
+    if (game === 'potLuck' && typeof potCap === 'number') {
+      room.potLuckPotCap = Math.min(10, Math.max(5, potCap));
     }
     console.log('[startGame] broadcasting gameStarted to room %s (%d players)', code, room.players.length);
     io.to(code).emit('gameStarted', room);
@@ -1972,7 +2005,7 @@ io.on('connection', (socket) => {
   socket.on('setHostScreen', ({ code, screen }) => {
     const room = rooms[code];
     if (!room) return;
-    if (room.hostId !== stableId(socket.id)) return;
+    if (!isHost(room, socket.id)) return;
     room.hostScreen = screen;
     io.to(code).emit('roomUpdated', room);
   });
@@ -1980,7 +2013,7 @@ io.on('connection', (socket) => {
   // ── Kick player (host only) ──────────────────────────────────────────────────
   socket.on('kickPlayer', ({ code, playerId }) => {
     const room = rooms[code];
-    if (!room || room.hostId !== stableId(socket.id)) return;
+    if (!room || !isHost(room, socket.id)) return;
     if (playerId === room.hostId) return; // can't kick yourself
 
     const targetSocketId = persistentToSocket[playerId];
@@ -2000,7 +2033,7 @@ io.on('connection', (socket) => {
   // ── End game early → host returns to game select, others return to waiting ───
   socket.on('endGame', ({ code }) => {
     const room = rooms[code];
-    if (!room || room.hostId !== stableId(socket.id)) return;
+    if (!room || !isHost(room, socket.id)) return;
 
     room.phase      = 'lobby';
     room.hostScreen = 'selecting';
@@ -2021,7 +2054,7 @@ io.on('connection', (socket) => {
   // ── Restart current game from scratch ─────────────────────────────────────────
   socket.on('restartGame', ({ code }) => {
     const room = rooms[code];
-    if (!room || room.hostId !== stableId(socket.id)) return;
+    if (!room || !isHost(room, socket.id)) return;
 
     const game = room.gameState?.game;
     if (!game) return;
@@ -2040,15 +2073,6 @@ io.on('connection', (socket) => {
     room.phase      = 'playing';
     room.hostScreen = 'playing';
 
-    // Initialize Pot Luck (overwrites room.gameState with full state + schedules roll timer)
-    if (game === 'potLuck') {
-      initPotLuckGame(code);
-    }
-    // Initialize Chain Link
-    if (game === 'chainLink') {
-      initChainLinkGame(code);
-    }
-
     io.to(code).emit('gameStarted', room);
     console.log('[restartGame] room %s restarted game %s', code, game);
   });
@@ -2058,7 +2082,7 @@ io.on('connection', (socket) => {
     console.log('[updateGameState] socket=%s code=%s phase=%s', socket.id, code, gameState?.phase ?? gameState?.currentPhase ?? '?');
     const room = rooms[code];
     if (!room) { console.warn('[updateGameState] room %s not found', code); return; }
-    if (room.hostId !== stableId(socket.id)) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); return; }
+    if (!isHost(room, socket.id)) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); return; }
 
     // Stand Out: clear accumulated answers + scored flag at the start of every round
     if (gameState?.game === 'standOut' && (gameState?.phase === 'prompt' || gameState?.phase === 'entering')) {
@@ -2090,6 +2114,55 @@ io.on('connection', (socket) => {
   socket.on('playerAction', ({ code, action, data }) => {
     const room = rooms[code];
     if (!room) return;
+
+    // ── Generic: advance from intro screen (host only) ──────────────────────
+    if (action === 'advanceFromIntro') {
+      if (!isHost(room, socket.id)) return;
+      const gs = room.gameState;
+      if (!gs || gs.phase !== 'intro') return;
+
+      const game = gs.game;
+      // Determine the real starting phase for each game
+      const STARTING_PHASES = {
+        lieDetector: 'setup',
+        talentShow: 'prep',
+        standOut: 'prompt',
+        numberGuessor: 'guessing',
+        pieCharts: 'setup',
+        dealOrSteal: 'setup',
+        shadowProtocol: 'setup',
+        potLuck: 'rolling',
+        chainLink: 'playing',
+        plotTwist: 'dealing',
+      };
+
+      const nextPhase = STARTING_PHASES[game] || 'setup';
+
+      // Games with async init
+      if (game === 'potLuck') {
+        gs.phase = nextPhase;
+        initPotLuckGame(code);
+        return;
+      }
+      if (game === 'chainLink') {
+        gs.phase = nextPhase;
+        initChainLinkGame(code);
+        return;
+      }
+      if (game === 'plotTwist') {
+        gs.phase = 'dealing';
+        io.to(code).emit('gameStateUpdated', gs);
+        initPlotTwistGame(code).catch(err => console.error('[plotTwist] init failed:', err));
+        return;
+      }
+
+      // All other games: just advance the phase
+      gs.phase = nextPhase;
+      room.gameState = gs;
+      io.to(code).emit('gameStateUpdated', gs);
+      console.log('[advanceFromIntro] %s → phase %s in room %s', game, nextPhase, code);
+      return;
+    }
 
     // ── Stand Out: server owns answer collection + scoring ───────────────────
     if (action === 'so-answer') {
@@ -2392,7 +2465,7 @@ io.on('connection', (socket) => {
     // Unsubmitted players are treated as Neutral by scoreDoSRound's default.
     if (room.gameState?.game === 'dealOrSteal' && action === 'dos-force-score') {
       const gs = room.gameState;
-      if (room.hostId !== stableId(socket.id)) return;
+      if (!isHost(room, socket.id)) return;
       if (gs.phase !== 'action') return;
 
       console.log('[dos-force-score] host triggered force score | round=%d', gs.round);
@@ -2574,7 +2647,7 @@ io.on('connection', (socket) => {
     // ── Pot Luck: host advances to next question ──────────────────────────────
     if (room.gameState?.game === 'potLuck' && action === 'pl-next-question') {
       console.log('[potLuck] pl-next-question from socket=%s stableId=%s hostId=%s phase=%s', socket.id, stableId(socket.id), room.hostId, room.gameState.phase);
-      if (room.hostId !== stableId(socket.id)) {
+      if (!isHost(room, socket.id)) {
         console.warn('[potLuck] pl-next-question rejected: not host');
         return;
       }
@@ -2769,17 +2842,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // ── Plot Twist: host starts the game (from setup screen) ────────────────
-    if (room.gameState?.game === 'plotTwist' && action === 'pt-startGame') {
-      if (room.hostId !== stableId(socket.id)) return; // host only
-      if (room.gameState.phase !== 'setup') return;
-      // Transition to dealing, then init
-      room.gameState.phase = 'dealing';
-      io.to(code).emit('gameStateUpdated', room.gameState);
-      initPlotTwistGame(code).catch(err => console.error('[plotTwist] init failed:', err));
-      return;
-    }
-
     // ── Plot Twist: submit sentence ───────────────────────────────────────────
     if (room.gameState?.game === 'plotTwist' && action === 'pt-submit') {
       const gs = room.gameState;
@@ -2878,7 +2940,7 @@ io.on('connection', (socket) => {
   // ── Update scores (host only) ────────────────────────────────────────────────
   socket.on('updateScores', ({ code, players }) => {
     const room = rooms[code];
-    if (!room || room.hostId !== stableId(socket.id)) return;
+    if (!room || !isHost(room, socket.id)) return;
     room.players = players;
     io.to(code).emit('scoresUpdated', players);
   });

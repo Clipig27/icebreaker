@@ -21,12 +21,13 @@ import { COLORS, RADIUS } from '../constants/theme';
 import { pickNumberPrompt, GuessResult } from '../utils/promptUtils';
 import { NumberPrompt } from '../constants/gamePrompts';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import GameIntro from '../components/GameIntro';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'NumberGuessor'>;
 };
 
-type NGPhase = 'guessing' | 'reveal' | 'round-end' | 'game-over';
+type NGPhase = 'intro' | 'guessing' | 'reveal' | 'round-end' | 'game-over';
 
 const ROUND_OPTIONS = [5, 10, 20] as const;
 const GUESS_TIMER_SECS = 20;
@@ -119,10 +120,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
 
   const gs = (room?.gameState?.game === 'numberGuessor' ? room.gameState : null) as NGGameState | null;
 
-  // Block header back button for non-hosts
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   // Keep ref fresh on every gs change so computeNGReveal sees the latest guesses
   useEffect(() => {
@@ -239,7 +237,25 @@ export default function NumberGuessorScreen({ navigation }: Props) {
     setInputText('');
   };
 
-  if (!gs || !gs.currentPrompt) {
+  if (gs?.phase === 'intro' || (!gs)) {
+    return (
+      <GameIntro
+        emoji="🎯"
+        title="Number Guessor"
+        tagline="Guess closest to the correct number."
+        rules={[
+          { emoji: '🔢', text: 'Each round shows a prompt with a hidden number between 1 and 100.' },
+          { emoji: '⏱️', text: 'You have 20 seconds to submit your guess.' },
+          { emoji: '📊', text: 'Your penalty = how far off + seconds taken. No guess = max penalty (120).' },
+          { emoji: '🏆', text: 'Lowest total penalty after all rounds wins!' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
+    );
+  }
+
+  if (!gs.currentPrompt) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>

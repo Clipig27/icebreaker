@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameProvider }           from './src/context/GameContext';
 import { NotificationsProvider }  from './src/context/NotificationsContext';
-import { navigationRef }          from './src/navigation/navigationRef';
+import { navigationRef, resetToMain } from './src/navigation/navigationRef';
 import MainTabs                   from './src/navigation/MainTabs';
 import NotificationsScreen        from './src/screens/NotificationsScreen';
 
@@ -27,13 +27,15 @@ import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
 import InstructionsScreen  from './src/screens/InstructionsScreen';
 
+import GameErrorBoundary from './src/components/GameErrorBoundary';
+import { ToastProvider } from './src/components/Toast';
 import { COLORS } from './src/constants/theme';
+
 import InviteModal from './src/components/InviteModal';
 import HostOptionsMenu from './src/components/HostOptionsMenu';
 import HostStatusBanner from './src/components/HostStatusBanner';
-import GameErrorBoundary from './src/components/GameErrorBoundary';
 import { useGame } from './src/context/GameContext';
-import { TouchableOpacity, Text, View } from 'react-native';
+import { TouchableOpacity, Text, View, Alert } from 'react-native';
 
 export type RootStackParamList = {
   MainTabs:      undefined;
@@ -58,6 +60,22 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// Wrap game screens with error boundary so crashes go home instead of showing red screen
+const Safe = (C: React.ComponentType<any>) =>
+  function SafeScreen(props: any) {
+    return <GameErrorBoundary><C {...props} /></GameErrorBoundary>;
+  };
+const SafeLieDetector     = Safe(LieDetectorScreen);
+const SafeTalentShow      = Safe(TalentShowScreen);
+const SafeStandOut        = Safe(StandOutScreen);
+const SafeNumberGuessor   = Safe(NumberGuessorScreen);
+const SafePieCharts       = Safe(PieChartsScreen);
+const SafeDealOrSteal     = Safe(DealOrStealScreen);
+const SafeShadowProtocol  = Safe(ShadowProtocolScreen);
+const SafePotLuck         = Safe(PotLuckScreen);
+const SafeChainLink       = Safe(ChainLinkScreen);
+const SafePlotTwist       = Safe(PlotTwistScreen);
+
 // Game screen names where back navigation should be blocked for the host during play
 const GAME_SCREENS = new Set([
   'LieDetector', 'TalentShow', 'StandOut', 'NumberGuessor',
@@ -65,7 +83,21 @@ const GAME_SCREENS = new Set([
 ]);
 
 function AppInner() {
-  const { currentUser, room, isHost } = useGame();
+  const { currentUser, room, isHost, leaveRoom } = useGame();
+
+  // If there's no room but we're stuck on a game screen, go home.
+  // Only resets from game screens — NOT from lobby/join/setup screens where room may be temporarily null.
+  React.useEffect(() => {
+    if (room) return;
+    const timer = setTimeout(() => {
+      if (!navigationRef.isReady()) return;
+      const route = navigationRef.getCurrentRoute()?.name;
+      if (route && GAME_SCREENS.has(route)) {
+        resetToMain();
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [room]);
 
   const ROUTE_TO_GAME: Record<string, string> = {
     LieDetector: 'lieDetector',
@@ -125,8 +157,10 @@ function AppInner() {
         <Stack.Navigator
           initialRouteName="MainTabs"
           screenOptions={({ navigation, route }) => {
-            // Block the host from pressing back on game screens during an active game
-            const blockHostBack = hostInActiveGame && GAME_SCREENS.has(route.name);
+            const isGameScreen = GAME_SCREENS.has(route.name);
+            const isRoomScreen = isGameScreen || ['HostLobby', 'JoinRoom', 'GameSelect', 'PlayerSetup'].includes(route.name);
+            const inRoom = !!room?.code;
+            const showLeave = isRoomScreen && inRoom;
             return {
               headerStyle:         { backgroundColor: COLORS.background },
               headerTintColor:     COLORS.text,
@@ -134,8 +168,34 @@ function AppInner() {
               headerShadowVisible: false,
               contentStyle:        { backgroundColor: COLORS.background },
               animation:           'slide_from_right',
-              gestureEnabled:      !blockHostBack,
-              headerLeft:          blockHostBack ? () => null : undefined,
+              gestureEnabled:      !showLeave,
+              headerLeft:          showLeave ? () => (
+                <TouchableOpacity
+                  onPress={() => {
+                    Alert.alert(
+                      'Leave Game?',
+                      isHost
+                        ? 'Host role will transfer to another player. The game continues without you.'
+                        : 'You will leave the room and return to the home screen.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Leave', style: 'destructive', onPress: leaveRoom },
+                      ],
+                    );
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={{
+                    backgroundColor: COLORS.danger + '18',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: COLORS.danger + '44',
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                  }}
+                >
+                  <Text style={{ color: COLORS.danger, fontSize: 12, fontWeight: '700' }}>Leave</Text>
+                </TouchableOpacity>
+              ) : undefined,
               // Room code pill + ? button — always visible (code only when in a room)
               headerRight: () => <HeaderRight routeName={route.name} nav={navigation} />,
             };
@@ -148,16 +208,16 @@ function AppInner() {
           <Stack.Screen name="HostLobby"     component={HostLobbyScreen}     options={{ title: 'Host Game' }} />
           <Stack.Screen name="JoinRoom"      component={JoinRoomScreen}      options={{ title: 'Join Game' }} />
           <Stack.Screen name="GameSelect"    component={GameSelectScreen}    options={{ title: 'Select Game', headerBackTitle: 'Players' }} />
-          <Stack.Screen name="LieDetector"   component={LieDetectorScreen}   options={{ title: 'Lie Detector',   headerBackTitle: 'Games' }} />
-          <Stack.Screen name="TalentShow"    component={TalentShowScreen}    options={{ title: 'Talent Show',    headerBackTitle: 'Games' }} />
-          <Stack.Screen name="StandOut"      component={StandOutScreen}      options={{ title: 'Stand Out',      headerBackTitle: 'Games' }} />
-          <Stack.Screen name="NumberGuessor" component={NumberGuessorScreen} options={{ title: 'Number Guessor', headerBackTitle: 'Games' }} />
-          <Stack.Screen name="PieCharts"     component={PieChartsScreen}     options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
-          <Stack.Screen name="DealOrSteal"      component={DealOrStealScreen}      options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
-          <Stack.Screen name="ShadowProtocol"   component={ShadowProtocolScreen}   options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
-          <Stack.Screen name="PotLuck"          component={PotLuckScreen}          options={{ title: 'Pot Luck',          headerBackTitle: 'Games' }} />
-          <Stack.Screen name="ChainLink"        component={ChainLinkScreen}        options={{ title: 'ChainLink',         headerBackTitle: 'Games' }} />
-          <Stack.Screen name="PlotTwist"        component={PlotTwistScreen}        options={{ title: 'Plot Twist',       headerBackTitle: 'Games' }} />
+          <Stack.Screen name="LieDetector"   component={SafeLieDetector}     options={{ title: 'Lie Detector',   headerBackTitle: 'Games' }} />
+          <Stack.Screen name="TalentShow"    component={SafeTalentShow}      options={{ title: 'Talent Show',    headerBackTitle: 'Games' }} />
+          <Stack.Screen name="StandOut"      component={SafeStandOut}        options={{ title: 'Stand Out',      headerBackTitle: 'Games' }} />
+          <Stack.Screen name="NumberGuessor" component={SafeNumberGuessor}   options={{ title: 'Number Guessor', headerBackTitle: 'Games' }} />
+          <Stack.Screen name="PieCharts"     component={SafePieCharts}       options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
+          <Stack.Screen name="DealOrSteal"      component={SafeDealOrSteal}       options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
+          <Stack.Screen name="ShadowProtocol"   component={SafeShadowProtocol}    options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
+          <Stack.Screen name="PotLuck"          component={SafePotLuck}           options={{ title: 'Pot Luck',          headerBackTitle: 'Games' }} />
+          <Stack.Screen name="ChainLink"        component={SafeChainLink}         options={{ title: 'ChainLink',         headerBackTitle: 'Games' }} />
+          <Stack.Screen name="PlotTwist"        component={SafePlotTwist}         options={{ title: 'Plot Twist',       headerBackTitle: 'Games' }} />
           <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
             title: (route.params as any)?.game
               ? (() => {
@@ -185,11 +245,13 @@ function AppInner() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <GameProvider>
-        <NotificationsProvider>
-          <AppInner />
-        </NotificationsProvider>
-      </GameProvider>
+      <ToastProvider>
+        <GameProvider>
+          <NotificationsProvider>
+            <AppInner />
+          </NotificationsProvider>
+        </GameProvider>
+      </ToastProvider>
     </SafeAreaProvider>
   );
 }

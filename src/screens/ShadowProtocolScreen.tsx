@@ -17,6 +17,7 @@ import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import GameIntro from '../components/GameIntro';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -138,10 +139,7 @@ export default function ShadowProtocolScreen({ navigation }: any) {
   })();
   const timeLeft = useCountdown(gs?.phaseEndsAt);
 
-  // Block header back button for non-hosts
-  useEffect(() => {
-    navigation.setOptions({ headerBackVisible: isHost, gestureEnabled: isHost });
-  }, [isHost]);
+  // headerLeft (Leave button) is set globally in App.tsx screenOptions
 
   // ── Request private state on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -214,9 +212,28 @@ export default function ShadowProtocolScreen({ navigation }: any) {
     setChatInput('');
   };
 
+  // ── Intro ──────────────────────────────────────────────────────────────────
+  if (gs?.phase === 'intro' || (!gs)) {
+    return (
+      <GameIntro
+        emoji="🌑"
+        title="Shadow Protocol"
+        tagline="Find the Shadows before it's too late."
+        rules={[
+          { emoji: '🎭', text: 'Players are secretly assigned roles: Innocents or Shadows.' },
+          { emoji: '🗣️', text: 'Each round, discuss who you suspect and vote to eliminate someone.' },
+          { emoji: '👤', text: 'The eliminated player\'s role is revealed.' },
+          { emoji: '🏆', text: 'Innocents win if all Shadows are eliminated. Shadows win if they match or outnumber Innocents.' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
+    );
+  }
+
   // ── Render guards ────────────────────────────────────────────────────────────
 
-  if (!gs || gs.phase === 'loading' || !priv) {
+  if (gs.phase === 'loading' || !priv) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
