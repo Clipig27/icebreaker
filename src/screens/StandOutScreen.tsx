@@ -47,7 +47,7 @@ interface SOChallenge {
 }
 
 // penalty applied to the challenged player's score when a challenge succeeds
-const CHALLENGE_PENALTY = -5;
+const CHALLENGE_PENALTY = -10;
 
 // ─── Game state ───────────────────────────────────────────────────────────────
 

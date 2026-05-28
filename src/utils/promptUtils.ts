@@ -35,8 +35,8 @@ export function normalizeAnswer(text: string): string {
   return text
     .trim()
     .toLowerCase()
-    .replace(/[^\w\s]/g, '')  // remove punctuation (keeps alphanumeric + underscore + space)
-    .replace(/\s+/g, ' ')     // collapse runs of whitespace
+    .replace(/[^\w\s+#.'-]/g, '')  // keep +#.' so C++, C#, .NET, etc. stay distinct
+    .replace(/\s+/g, ' ')          // collapse runs of whitespace
     .trim();
 }
 

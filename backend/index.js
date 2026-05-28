@@ -59,7 +59,7 @@ function normalizeAnswer(text) {
   return text
     .trim()
     .toLowerCase()
-    .replace(/[^\w\s]/g, '')
+    .replace(/[^\w\s+#.'-]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -657,15 +657,18 @@ function checkGameProgressAfterLeave(code, leaverId) {
         room.standOutAnswers, room.players,
       );
       room.players = updatedPlayers;
+      const winTarget = gs.targetScore ?? STAND_OUT_WIN_SCORE;
       const top = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
-      const isGameOver = top && top.score >= STAND_OUT_WIN_SCORE;
+      const isGameOver = top && top.score >= winTarget;
+      const winners = isGameOver ? updatedPlayers.filter(p => p.score >= winTarget) : [];
+      const winnerName = winners.length > 1 ? winners.map(p => p.name).join(' & ') : (top?.name ?? '');
       const nextGs = {
         ...gs,
         phase: isGameOver ? 'game-over' : 'reveal',
         submittedPlayerIds: [...uniqueSubmitters],
         answers: room.standOutAnswers,
         roundDeltas: deltas,
-        ...(isGameOver ? { winnerName: top.name } : {}),
+        ...(isGameOver ? { winnerName } : {}),
       };
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
@@ -2234,8 +2237,11 @@ io.on('connection', (socket) => {
         );
         room.players = updatedPlayers;
 
+        const winTarget2 = gs.targetScore ?? STAND_OUT_WIN_SCORE;
         const top        = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
-        const isGameOver = top && top.score >= STAND_OUT_WIN_SCORE;
+        const isGameOver = top && top.score >= winTarget2;
+        const winners2   = isGameOver ? updatedPlayers.filter(p => p.score >= winTarget2) : [];
+        const winnerName2 = winners2.length > 1 ? winners2.map(p => p.name).join(' & ') : (top?.name ?? '');
 
         const nextGs = {
           ...gs,
@@ -2243,7 +2249,7 @@ io.on('connection', (socket) => {
           submittedPlayerIds: newSubmitted,
           answers:            room.standOutAnswers,
           roundDeltas:        deltas,
-          ...(isGameOver ? { winnerName: top.name } : {}),
+          ...(isGameOver ? { winnerName: winnerName2 } : {}),
         };
         room.gameState = nextGs;
 
@@ -2304,8 +2310,11 @@ io.on('connection', (socket) => {
       room.players = updatedPlayers;
 
       const allDeltas = [...answeredDeltas, ...timedOutDeltas];
+      const winTarget3 = gs.targetScore ?? STAND_OUT_WIN_SCORE;
       const top = [...updatedPlayers].sort((a, b) => b.score - a.score)[0];
-      const isGameOver = top && top.score >= (gs.targetScore ?? STAND_OUT_WIN_SCORE);
+      const isGameOver = top && top.score >= winTarget3;
+      const winners3 = isGameOver ? updatedPlayers.filter(p => p.score >= winTarget3) : [];
+      const winnerName3 = winners3.length > 1 ? winners3.map(p => p.name).join(' & ') : (top?.name ?? '');
 
       const nextGs = {
         ...gs,
@@ -2313,7 +2322,7 @@ io.on('connection', (socket) => {
         submittedPlayerIds: newSubmitted,
         answers: room.standOutAnswers,
         roundDeltas: allDeltas,
-        ...(isGameOver ? { winnerName: top.name } : {}),
+        ...(isGameOver ? { winnerName: winnerName3 } : {}),
       };
       room.gameState = nextGs;
 
