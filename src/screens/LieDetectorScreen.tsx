@@ -132,20 +132,17 @@ export default function LieDetectorScreen({ navigation }: Props) {
     return () => { if (setupTimerRef.current) clearTimeout(setupTimerRef.current); };
   }, [!!gs]);
 
+  // The backend sets the initial game state to phase: 'intro'.
+  // The host presses "START GAME" in GameIntro → sendPlayerAction('advanceFromIntro')
+  // → backend transitions to phase: 'setup' and broadcasts to all players.
+  // On 'setup', the host shuffles player order and stores it in game state.
   useEffect(() => {
-    if (!isHost) return;
+    if (!isHost || !gs || gs.phase !== 'setup' || gs.playerOrder) return;
     const shuffled = [...(room?.players ?? players)].sort(() => Math.random() - 0.5).map(p => p.id);
-    const init: LDGameState = {
-      game: 'lieDetector',
-      phase: 'setup',
-      prompt: '',
-      speakerIndex: 0,
-      playerOrder: shuffled,
-      votedPlayerIds: [],
-    };
-    gsRef.current = init;
-    sendGameStateRef.current(init);
-  }, []); // eslint-disable-line
+    const next: LDGameState = { ...gs, playerOrder: shuffled };
+    gsRef.current = next;
+    sendGameStateRef.current(next);
+  }, [gs?.phase]); // eslint-disable-line
 
   const handleSelectRounds = (n: number) => {
     if (!isHost || !gs) return;

@@ -196,6 +196,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     });
 
     socket.on('roomCreated', ({ room: r }: { code: string; room: Room }) => {
+      prevHostScreenRef.current = undefined;
       setRoom(r);
       setIsHost(true);
       setPlayers(r.players);
@@ -233,7 +234,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // If host navigated away from a live game, send non-hosts back one screen (to JoinRoom)
-      if (!iAmHost && prevHostScreen === 'playing' && r.hostScreen !== 'playing') {
+      // Only do this if we were actually in a game (prevHostScreen was set by us, not stale)
+      if (!iAmHost && prevPlayers.length > 0 && prevHostScreen === 'playing' && r.hostScreen !== 'playing') {
         goBack();
       }
     });
@@ -304,7 +306,11 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     // We successfully left a room voluntarily
     socket.on('leftRoom', (_data: { code: string }) => {
       // If we're switching to another room (join/create), don't reset to home
-      if (switchingRoomRef.current) return;
+      if (switchingRoomRef.current) {
+        prevHostScreenRef.current = undefined;
+        return;
+      }
+      prevHostScreenRef.current = undefined;
       setRoom(null);
       setIsHost(false);
       setPlayers([]);
@@ -397,10 +403,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         if (!ack.ok) {
           console.error('[joinRoom] server rejected:', ack.message);
           showToast(ack.message ?? 'Failed to join room');
-          setRoom(null);
-          setIsHost(false);
-          setPlayers([]);
-          resetToMain();
         }
       }))
       .catch((err) => { switchingRoomRef.current = false; console.error('[joinRoom] could not connect:', err.message); });
