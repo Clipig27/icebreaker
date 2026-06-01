@@ -441,6 +441,7 @@ export default function PlotTwistScreen({ navigation }: Props) {
                   style={[s.input, selfBlock && s.inputError]}
                   placeholder="Continue the story… (5–12 words)"
                   placeholderTextColor={COLORS.text3}
+                  maxLength={80}
                   value={draft}
                   onChangeText={t => { setDraft(t); if (selfBlock) setSelfBlock(null); }}
                   multiline

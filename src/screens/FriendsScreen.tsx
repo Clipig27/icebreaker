@@ -210,6 +210,7 @@ export default function FriendsScreen({ navigation }: Props) {
                 style={s.input}
                 placeholder="Enter username..."
                 placeholderTextColor={COLORS.text2}
+                maxLength={20}
                 value={username}
                 onChangeText={text => {
                   setUsername(text);

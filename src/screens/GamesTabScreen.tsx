@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
+import { fetchEnabledGames, checkIsAdmin } from '../storage/gameConfigStorage';
 
 type Game = {
   id: string;
@@ -221,11 +222,22 @@ function GameRow({ game, index, onPress }: { game: Game; index: number; onPress:
 
 export default function GamesTabScreen() {
   const [selected, setSelected] = useState<Game | null>(null);
+  const [enabledGames, setEnabledGames] = useState<Set<string> | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetchEnabledGames().then(setEnabledGames);
+    checkIsAdmin().then(setIsAdmin);
+  }, []);
+
+  const visibleGames = enabledGames
+    ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
+    : GAMES;
 
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView contentContainerStyle={s.list}>
-        {GAMES.map((game, i) => (
+        {visibleGames.map((game, i) => (
           <React.Fragment key={game.id}>
             {i === 0 && <View style={s.divider} />}
             <GameRow game={game} index={i} onPress={() => setSelected(game)} />

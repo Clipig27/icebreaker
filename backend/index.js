@@ -1916,7 +1916,7 @@ io.on('connection', (socket) => {
   // ── Leave room (voluntary) ───────────────────────────────────────────────────
   socket.on('leaveRoom', ({ code }) => {
     const room = rooms[code];
-    if (!room) return;
+    if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
 
     const leaverId = stableId(socket.id);
     const wasHost = room.hostId === leaverId;
@@ -1945,7 +1945,8 @@ io.on('connection', (socket) => {
   // ── Cancel room (host only — kicks everyone) ─────────────────────────────────
   socket.on('cancelRoom', ({ code }) => {
     const room = rooms[code];
-    if (!room || !isHost(room, socket.id)) return;
+    if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
+    if (!isHost(room, socket.id)) { socket.emit('error', { message: 'Only the host can cancel the room.' }); return; }
 
     io.to(code).emit('roomCancelled', { code });
     cleanupPlotTwist(code);
@@ -2016,7 +2017,8 @@ io.on('connection', (socket) => {
   // ── Kick player (host only) ──────────────────────────────────────────────────
   socket.on('kickPlayer', ({ code, playerId }) => {
     const room = rooms[code];
-    if (!room || !isHost(room, socket.id)) return;
+    if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
+    if (!isHost(room, socket.id)) { socket.emit('error', { message: 'Only the host can kick players.' }); return; }
     if (playerId === room.hostId) return; // can't kick yourself
 
     const targetSocketId = persistentToSocket[playerId];
@@ -2036,7 +2038,8 @@ io.on('connection', (socket) => {
   // ── End game early → host returns to game select, others return to waiting ───
   socket.on('endGame', ({ code }) => {
     const room = rooms[code];
-    if (!room || !isHost(room, socket.id)) return;
+    if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
+    if (!isHost(room, socket.id)) { socket.emit('error', { message: 'Only the host can end the game.' }); return; }
 
     room.phase      = 'lobby';
     room.hostScreen = 'selecting';
@@ -2057,7 +2060,8 @@ io.on('connection', (socket) => {
   // ── Restart current game from scratch ─────────────────────────────────────────
   socket.on('restartGame', ({ code }) => {
     const room = rooms[code];
-    if (!room || !isHost(room, socket.id)) return;
+    if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
+    if (!isHost(room, socket.id)) { socket.emit('error', { message: 'Only the host can restart the game.' }); return; }
 
     const game = room.gameState?.game;
     if (!game) return;
@@ -2084,8 +2088,8 @@ io.on('connection', (socket) => {
   socket.on('updateGameState', ({ code, gameState }) => {
     console.log('[updateGameState] socket=%s code=%s phase=%s', socket.id, code, gameState?.phase ?? gameState?.currentPhase ?? '?');
     const room = rooms[code];
-    if (!room) { console.warn('[updateGameState] room %s not found', code); return; }
-    if (!isHost(room, socket.id)) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); return; }
+    if (!room) { console.warn('[updateGameState] room %s not found', code); socket.emit('error', { message: 'Room no longer exists.' }); return; }
+    if (!isHost(room, socket.id)) { console.warn('[updateGameState] socket %s is not host of %s', socket.id, code); socket.emit('error', { message: 'Only the host can update game state.' }); return; }
 
     // Stand Out: clear accumulated answers + scored flag at the start of every round
     if (gameState?.game === 'standOut' && (gameState?.phase === 'prompt' || gameState?.phase === 'entering')) {
@@ -2116,7 +2120,7 @@ io.on('connection', (socket) => {
   // ── Player action (any player) ───────────────────────────────────────────────
   socket.on('playerAction', ({ code, action, data }) => {
     const room = rooms[code];
-    if (!room) return;
+    if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
 
     // ── Generic: advance from intro screen (host only) ──────────────────────
     if (action === 'advanceFromIntro') {
@@ -2949,7 +2953,8 @@ io.on('connection', (socket) => {
   // ── Update scores (host only) ────────────────────────────────────────────────
   socket.on('updateScores', ({ code, players }) => {
     const room = rooms[code];
-    if (!room || !isHost(room, socket.id)) return;
+    if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
+    if (!isHost(room, socket.id)) { socket.emit('error', { message: 'Only the host can update scores.' }); return; }
     room.players = players;
     io.to(code).emit('scoresUpdated', players);
   });

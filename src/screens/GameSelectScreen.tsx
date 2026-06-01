@@ -19,6 +19,8 @@ import { useGame } from '../context/GameContext';
 import ScoreDisplay from '../components/ScoreDisplay';
 import { COLORS } from '../constants/theme';
 import { GameType } from '../types';
+import { fetchEnabledGames, toggleGame, checkIsAdmin } from '../storage/gameConfigStorage';
+import { showToast } from '../components/Toast';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'GameSelect'>;
@@ -165,12 +167,18 @@ function GameCard({
   onHelp,
   delay,
   disabled,
+  isAdmin,
+  isEnabled,
+  onToggle,
 }: {
   game: (typeof GAMES)[0];
   onPress: () => void;
   onHelp: () => void;
   delay: number;
   disabled: boolean;
+  isAdmin?: boolean;
+  isEnabled?: boolean;
+  onToggle?: (enabled: boolean) => void;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
@@ -269,6 +277,24 @@ function GameCard({
             </View>
             {disabled && <Text style={card.needMore}>need more</Text>}
           </View>
+
+          {/* Admin toggle */}
+          {isAdmin && onToggle && (
+            <TouchableOpacity
+              style={{
+                position: 'absolute', top: 6, left: 6,
+                backgroundColor: isEnabled ? '#0d3d0d' : '#3d0d0d',
+                borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+                borderWidth: 1, borderColor: isEnabled ? '#1a6b1a' : '#6b1a1a',
+              }}
+              onPress={() => onToggle(!isEnabled)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={{ color: isEnabled ? '#4ade80' : '#f87171', fontSize: 9, fontWeight: '800' }}>
+                {isEnabled ? 'ON' : 'OFF'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* Bottom accent bar */}
           <View
@@ -398,9 +424,14 @@ export default function GameSelectScreen({ navigation }: Props) {
 
   const players = room ? room.players : contextPlayers;
 
+  const [enabledGames, setEnabledGames] = useState<Set<string> | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
   useFocusEffect(
     React.useCallback(() => {
       if (room) setHostScreen('selecting');
+      fetchEnabledGames().then(setEnabledGames);
+      checkIsAdmin().then(setIsAdmin);
     }, [room?.code])
   );
 
@@ -492,10 +523,15 @@ export default function GameSelectScreen({ navigation }: Props) {
 
   const hasScores = players.some(p => p.score > 0);
 
+  // Filter games: admins see all, regular users only see enabled
+  const visibleGames = enabledGames
+    ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
+    : GAMES;
+
   // Pair games into rows of 2
   const rows: (typeof GAMES)[] = [];
-  for (let i = 0; i < GAMES.length; i += 2) {
-    rows.push(GAMES.slice(i, i + 2));
+  for (let i = 0; i < visibleGames.length; i += 2) {
+    rows.push(visibleGames.slice(i, i + 2));
   }
 
   return (
@@ -528,6 +564,18 @@ export default function GameSelectScreen({ navigation }: Props) {
                   }
                   delay={(rowIdx * 2 + colIdx) * 60}
                   disabled={isDisabled(game)}
+                  isAdmin={isAdmin}
+                  isEnabled={enabledGames?.has(game.id) ?? true}
+                  onToggle={(enabled) => {
+                    toggleGame(game.id, enabled).then(() => {
+                      setEnabledGames(prev => {
+                        const next = new Set(prev);
+                        if (enabled) next.add(game.id); else next.delete(game.id);
+                        return next;
+                      });
+                      showToast(`${game.title} ${enabled ? 'enabled' : 'disabled'}`);
+                    }).catch(() => showToast('Failed to toggle game'));
+                  }}
                 />
               ))}
               {row.length === 1 && <View style={{ width: CARD_WIDTH }} />}

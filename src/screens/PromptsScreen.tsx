@@ -213,6 +213,7 @@ function EditModal({
               onChangeText={setText}
               placeholder="Enter question text…"
               placeholderTextColor={COLORS.text3}
+              maxLength={150}
               multiline
               numberOfLines={3}
             />
@@ -232,6 +233,7 @@ function EditModal({
                   onChangeText={v => updateChoice(i, v)}
                   placeholder={`Choice ${i + 1}`}
                   placeholderTextColor={COLORS.text3}
+                  maxLength={60}
                 />
               </View>
             ))}
