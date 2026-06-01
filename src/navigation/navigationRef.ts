@@ -5,9 +5,9 @@ import { createNavigationContainerRef, StackActions } from '@react-navigation/na
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const navigationRef = createNavigationContainerRef<any>();
 
-export function navigateTo(screen: string) {
+export function navigateTo(screen: string, params?: Record<string, any>) {
   if (navigationRef.isReady()) {
-    navigationRef.navigate(screen as never);
+    (navigationRef.navigate as any)(screen, params);
   }
 }
 

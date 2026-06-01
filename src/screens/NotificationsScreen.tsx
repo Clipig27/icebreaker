@@ -133,40 +133,42 @@ export default function NotificationsScreen() {
 
           return (
             <View style={[s.item, item.isRead && s.itemRead]}>
-              <View style={s.itemBody}>
-                <Text style={s.message}>{notificationMessage(item)}</Text>
-                <Text style={s.time}>{relativeTime(item.createdAt)}</Text>
-              </View>
-
-              {showActions && (
-                <View style={s.actions}>
-                  <TouchableOpacity
-                    style={[s.acceptBtn, actionLoading === acceptKey && s.btnDisabled]}
-                    onPress={() => handleAccept(item)}
-                    disabled={!!actionLoading}
-                  >
-                    {actionLoading === acceptKey
-                      ? <ActivityIndicator size="small" color="#fff" />
-                      : <Text style={s.acceptBtnText}>Accept</Text>
-                    }
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[s.declineBtn, actionLoading === declineKey && s.btnDisabled]}
-                    onPress={() => handleDecline(item)}
-                    disabled={!!actionLoading}
-                  >
-                    {actionLoading === declineKey
-                      ? <ActivityIndicator size="small" color={COLORS.text2} />
-                      : <Text style={s.declineBtnText}>Decline</Text>
-                    }
-                  </TouchableOpacity>
+              <View style={s.itemRow}>
+                <View style={s.itemBody}>
+                  <Text style={s.message}>{notificationMessage(item)}</Text>
+                  <Text style={s.time}>{relativeTime(item.createdAt)}</Text>
                 </View>
-              )}
 
-              {item.type === 'friend_request' && isProcessed && (
-                <Text style={s.processedLabel}>Done ✓</Text>
-              )}
+                {showActions && (
+                  <View style={s.actions}>
+                    <TouchableOpacity
+                      style={[s.acceptBtn, actionLoading === acceptKey && s.btnDisabled]}
+                      onPress={() => handleAccept(item)}
+                      disabled={!!actionLoading}
+                    >
+                      {actionLoading === acceptKey
+                        ? <ActivityIndicator size="small" color="#fff" />
+                        : <Text style={s.acceptBtnText}>Accept</Text>
+                      }
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[s.declineBtn, actionLoading === declineKey && s.btnDisabled]}
+                      onPress={() => handleDecline(item)}
+                      disabled={!!actionLoading}
+                    >
+                      {actionLoading === declineKey
+                        ? <ActivityIndicator size="small" color={COLORS.text2} />
+                        : <Text style={s.declineBtnText}>Decline</Text>
+                      }
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {item.type === 'friend_request' && isProcessed && (
+                  <Text style={s.processedLabel}>Done ✓</Text>
+                )}
+              </View>
             </View>
           );
         }}
@@ -204,8 +206,14 @@ const s = StyleSheet.create({
   itemRead: {
     borderColor: COLORS.border, // muted border once read
   },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    justifyContent: 'space-between',
+  },
   itemBody: {
-    marginBottom: SPACING.sm,
+    flex: 1,
+    marginRight: SPACING.sm,
   },
   message: {
     color:      COLORS.text,

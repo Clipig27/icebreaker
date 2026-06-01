@@ -8,7 +8,7 @@ import HomeScreen        from '../screens/HomeScreen';
 import GamesTabScreen    from '../screens/GamesTabScreen';
 import FriendsScreen     from '../screens/FriendsScreen';
 import ProfileScreen     from '../screens/ProfileScreen';
-import NotificationsBell from '../components/NotificationsBell';
+// NotificationsBell removed for now
 
 export type TabParamList = {
   Play:    undefined;
@@ -112,7 +112,7 @@ export default function MainTabs() {
           backgroundColor: COLORS.surface,
         },
         headerShadowVisible: false,
-        headerRight: () => <NotificationsBell />,
+        headerRight: undefined,
       })}
     >
       <Tab.Screen name="Play"    component={HomeScreen} options={{ headerShown: false }} />

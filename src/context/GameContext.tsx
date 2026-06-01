@@ -134,6 +134,141 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   // ── Presence tracking (app-level online status) ───────────────────────────
   usePresence(currentUser);
 
+  // ── Friend request alerts (polling + realtime) ──────────────────────────
+  const seenRequestIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    const userId = currentUser?.id;
+    if (!userId) return;
+
+    // Seed seen set with existing pending requests so we don't alert on app open
+    supabase
+      .from('friend_requests')
+      .select('id')
+      .eq('receiver_id', userId)
+      .eq('status', 'pending')
+      .then(({ data }) => {
+        (data ?? []).forEach((r: any) => seenRequestIds.current.add(r.id));
+      });
+
+    const showRequestAlert = async (row: { id: string; sender_id: string; status: string }) => {
+      if (row.status !== 'pending') return;
+      if (seenRequestIds.current.has(row.id)) return;
+      seenRequestIds.current.add(row.id);
+
+      const { data: sender } = await supabase
+        .from('users')
+        .select('username')
+        .eq('id', row.sender_id)
+        .maybeSingle();
+
+      const senderName = sender?.username ?? 'Someone';
+      showToast(`${senderName} sent you a friend request`);
+    };
+
+    // Realtime subscription (instant if Supabase realtime is enabled for this table)
+    const channel = supabase
+      .channel('friend-requests-incoming')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friend_requests',
+          filter: `receiver_id=eq.${userId}`,
+        },
+        (payload: any) => {
+          const row = payload.new;
+          if (row?.status === 'pending') showRequestAlert(row);
+        },
+      )
+      .subscribe();
+
+    // Polling fallback — check every 5 seconds for new requests
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from('friend_requests')
+        .select('id, sender_id, status')
+        .eq('receiver_id', userId)
+        .eq('status', 'pending');
+      (data ?? []).forEach((r: any) => showRequestAlert(r));
+    }, 5000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
+  }, [currentUser?.id]);
+
+  // ── Game invite alerts (polling) ───────────────────────────────────────
+  const seenInviteIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    const userId = currentUser?.id;
+    if (!userId) return;
+
+    // Seed with existing pending invites
+    supabase
+      .from('game_invites')
+      .select('id')
+      .eq('receiver_id', userId)
+      .eq('status', 'pending')
+      .then(({ data }) => {
+        (data ?? []).forEach((r: any) => seenInviteIds.current.add(r.id));
+      });
+
+    const pollInvites = setInterval(async () => {
+      const { data } = await supabase
+        .from('game_invites')
+        .select('id, sender_id, room_code, status')
+        .eq('receiver_id', userId)
+        .eq('status', 'pending');
+
+      for (const inv of data ?? []) {
+        if (seenInviteIds.current.has(inv.id)) continue;
+        seenInviteIds.current.add(inv.id);
+
+        const { data: sender } = await supabase
+          .from('users')
+          .select('username')
+          .eq('id', inv.sender_id)
+          .maybeSingle();
+
+        const senderName = sender?.username ?? 'Someone';
+        const roomCode = inv.room_code;
+        const inviteId = inv.id;
+
+        showToast(`${senderName} invited you to room ${roomCode}`, {
+          action: {
+            label: 'Join',
+            onPress: () => {
+              // Accept the invite
+              supabase
+                .from('game_invites')
+                .update({ status: 'accepted' })
+                .eq('id', inviteId)
+                .then(() => {});
+              // Join the room directly via socket
+              const user = currentUserRef.current;
+              if (user?.username) {
+                const persistentId = user.id ?? socket.id;
+                ensureSocketConnected()
+                  .then(() => {
+                    socket.emit('joinRoom', { code: roomCode, playerName: user.username, persistentId });
+                    navigateTo('JoinRoom', { roomCode });
+                  })
+                  .catch(() => showToast('Could not connect to server'));
+              }
+            },
+          },
+          durationMs: 8000,
+        });
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInvites);
+  }, [currentUser?.id]);
+
   // ── Auth bootstrap: restore or create session, then load profile ──────────
   useEffect(() => {
     let active = true;

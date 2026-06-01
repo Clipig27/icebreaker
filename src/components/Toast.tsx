@@ -1,26 +1,34 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Animated, Text, StyleSheet, ViewStyle } from 'react-native';
+import { Animated, Text, StyleSheet, ViewStyle, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, RADIUS, SPACING } from '../constants/theme';
 
 // ── Imperative API (works outside React tree) ────────────────────────────────
 
-type ToastEntry = { id: number; message: string };
+type ToastAction = { label: string; onPress: () => void };
+type ToastEntry = { id: number; message: string; action?: ToastAction; durationMs?: number };
 
 let _nextId = 0;
 let _listener: ((entry: ToastEntry) => void) | null = null;
 
 /** Call from anywhere — no hooks or context needed. */
-export function showToast(message: string) {
-  const entry: ToastEntry = { id: _nextId++, message };
+export function showToast(message: string, options?: { action?: ToastAction; durationMs?: number }) {
+  const entry: ToastEntry = { id: _nextId++, message, action: options?.action, durationMs: options?.durationMs };
   if (_listener) _listener(entry);
 }
 
 // ── Single toast item ────────────────────────────────────────────────────────
 
-function ToastItem({ message, onDone }: { message: string; onDone: () => void }) {
+function ToastItem({ entry, onDone }: { entry: ToastEntry; onDone: () => void }) {
   const translateY = useRef(new Animated.Value(-80)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+
+  const dismiss = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(translateY, { toValue: -80, duration: 250, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]).start(() => onDone());
+  }, []);
 
   useEffect(() => {
     // Slide in
@@ -29,20 +37,28 @@ function ToastItem({ message, onDone }: { message: string; onDone: () => void })
       Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
 
-    // Auto-dismiss after 3s
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(translateY, { toValue: -80, duration: 250, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: true }),
-      ]).start(() => onDone());
-    }, 3000);
+    // Auto-dismiss (longer if has action button)
+    const duration = entry.durationMs ?? (entry.action ? 6000 : 3000);
+    const timer = setTimeout(dismiss, duration);
 
     return () => clearTimeout(timer);
   }, []);
 
   return (
-    <Animated.View style={[styles.toast, { transform: [{ translateY }], opacity }]}>
-      <Text style={styles.text} numberOfLines={2}>{message}</Text>
+    <Animated.View style={[styles.toast, entry.action && styles.toastWithAction, { transform: [{ translateY }], opacity }]}>
+      <Text style={styles.text} numberOfLines={2}>{entry.message}</Text>
+      {entry.action && (
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => {
+            entry.action!.onPress();
+            dismiss();
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.actionText}>{entry.action.label}</Text>
+        </TouchableOpacity>
+      )}
     </Animated.View>
   );
 }
@@ -71,7 +87,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           style={[styles.container, { top: insets.top + 4 } as ViewStyle]}
         >
           {toasts.map(t => (
-            <ToastItem key={t.id} message={t.message} onDone={() => remove(t.id)} />
+            <ToastItem key={t.id} entry={t} onDone={() => remove(t.id)} />
           ))}
         </Animated.View>
       )}
@@ -105,9 +121,27 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     maxWidth: 300,
   },
+  toastWithAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    maxWidth: 340,
+  },
   text: {
     color: COLORS.text,
     fontSize: 13,
     fontWeight: '600',
+    flexShrink: 1,
+  },
+  actionBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  actionText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

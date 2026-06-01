@@ -992,6 +992,9 @@ function initChainLinkGame(code) {
     referee: null,
   };
 
+  io.to(code).emit('gameStateUpdated', room.gameState);
+  console.log('[chainLink] game initialized for room %s (%d players)', code, room.players.length);
+
   // Start 15-second turn timer
   clStartTurnTimer(code);
 }
@@ -2746,7 +2749,7 @@ io.on('connection', (socket) => {
       io.to(code).emit('gameStateUpdated', thinkingGs);
 
       // Call referee async
-      const prevWord = gs.chain.length > 0 ? gs.chain[gs.chain.length - 1].word : '';
+      const prevWord = gs.chain.length > 1 ? gs.chain[gs.chain.length - 2].word : '';
       const { card, reason, by } = gs.pending;
       callChainLinkReferee(prevWord, card, reason).then(({ verdict, why }) => {
         const r = rooms[code];

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -49,12 +50,14 @@ export default function ProfileScreen({ navigation }: Props) {
   const [usernameError, setUsernameError] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
 
-  useEffect(() => {
-    if (!currentUser) return;
-    getFriends()
-      .then(f => setFriendsCount(f.length))
-      .catch(() => setFriendsCount(null));
-  }, [currentUser?.id]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentUser) return;
+      getFriends()
+        .then(f => setFriendsCount(f.length))
+        .catch(() => setFriendsCount(null));
+    }, [currentUser?.id])
+  );
 
   const handleStartEdit = () => {
     setNewUsername(currentUser?.username ?? '');

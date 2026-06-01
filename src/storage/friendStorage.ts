@@ -77,6 +77,39 @@ export async function sendFriendRequest(username: string): Promise<FriendRequest
   if (!target) throw new Error(`User "${username}" not found`);
   if (target.id === currentUserId) throw new Error('Cannot send a friend request to yourself');
 
+  // Check if already friends
+  const { data: existingFriend } = await supabase
+    .from('friends')
+    .select('id')
+    .eq('user_id', currentUserId)
+    .eq('friend_id', target.id)
+    .maybeSingle();
+  if (existingFriend) throw new Error('You are already friends with this user');
+
+  // Check for existing declined request from us → re-send by updating to pending
+  const { data: declinedRow } = await supabase
+    .from('friend_requests')
+    .select('id')
+    .eq('sender_id', currentUserId)
+    .eq('receiver_id', target.id)
+    .eq('status', 'declined')
+    .maybeSingle();
+
+  if (declinedRow) {
+    const { data: updated, error: updateErr } = await supabase
+      .from('friend_requests')
+      .update({ status: 'pending', created_at: new Date().toISOString() })
+      .eq('id', declinedRow.id)
+      .select(`
+        *,
+        sender:sender_id ( username ),
+        receiver:receiver_id ( username )
+      `)
+      .single();
+    if (updateErr) throw updateErr;
+    return rowToFriendRequest(updated);
+  }
+
   const { data, error } = await supabase
     .from('friend_requests')
     .insert({ sender_id: currentUserId, receiver_id: target.id })
@@ -89,6 +122,18 @@ export async function sendFriendRequest(username: string): Promise<FriendRequest
 
   if (error) throw error;
   return rowToFriendRequest(data);
+}
+
+/**
+ * Cancel (withdraw) a pending friend request you sent.
+ */
+export async function cancelFriendRequest(requestId: string): Promise<void> {
+  const { error } = await supabase
+    .from('friend_requests')
+    .update({ status: 'declined' })
+    .eq('id', requestId);
+
+  if (error) throw error;
 }
 
 /**

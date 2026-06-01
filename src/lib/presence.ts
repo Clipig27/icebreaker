@@ -24,6 +24,13 @@ const CHANNEL_NAME = 'app:presence';
  * Safe to call multiple times (foreground transitions).
  */
 export function startPresence(userId: string, username: string): void {
+  // Write is_online = true to the users table so friends can see status
+  supabase
+    .from('users')
+    .update({ is_online: true, last_seen_at: new Date().toISOString() })
+    .eq('id', userId)
+    .then(() => {});
+
   if (!channel) {
     // First call — create and subscribe the channel keyed by this user.
     channel = supabase.channel(CHANNEL_NAME, {
@@ -71,7 +78,12 @@ export function stopPresence(userId: string): void {
   if (channel && isSubscribed) {
     channel.untrack().catch(() => {});
   }
-  writeLastSeen(userId).catch(() => {});
+  // Write is_online = false to the users table
+  supabase
+    .from('users')
+    .update({ is_online: false, last_seen_at: new Date().toISOString() })
+    .eq('id', userId)
+    .then(() => {});
 }
 
 /**

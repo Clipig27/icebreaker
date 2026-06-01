@@ -632,9 +632,7 @@ export default function HomeScreen({ navigation }: Props) {
 
           <View style={s.wordmarkAccent} />
 
-          <View style={s.tagPill}>
-            <Text style={s.tagText}>10 GAMES</Text>
-          </View>
+          {/* tag pill removed */}
         </Animated.View>
 
         {/* ── Hero ── */}
@@ -701,7 +699,7 @@ const s = StyleSheet.create({
     width: '100%',
     fontSize: 38,
     fontWeight: '900',
-    letterSpacing: 2,
+    letterSpacing: 8,
     color: '#EDE9FE',
     textShadowColor: '#8B5CF6',
     textShadowOffset: { width: 0, height: 0 },
