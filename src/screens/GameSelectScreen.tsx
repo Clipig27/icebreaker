@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import ScoreDisplay from '../components/ScoreDisplay';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { GameType } from '../types';
 import { fetchEnabledGames, toggleGame, checkIsAdmin } from '../storage/gameConfigStorage';
 import { showToast } from '../components/Toast';
@@ -182,21 +182,30 @@ function GameCard({
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const entrance = useRef(new Animated.Value(0)).current;
-  const slideY = useRef(new Animated.Value(18)).current;
+  const slideY = useRef(new Animated.Value(40)).current;
+  const scaleIn = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(entrance, {
         toValue: 1,
-        duration: 400,
+        duration: 500,
         delay,
         useNativeDriver: true,
       }),
-      Animated.timing(slideY, {
+      Animated.spring(slideY, {
         toValue: 0,
-        duration: 380,
         delay,
         useNativeDriver: true,
+        friction: 8,
+        tension: 40,
+      }),
+      Animated.spring(scaleIn, {
+        toValue: 1,
+        delay,
+        useNativeDriver: true,
+        friction: 7,
+        tension: 50,
       }),
     ]).start();
   }, []);
@@ -212,7 +221,7 @@ function GameCard({
     <Animated.View
       style={[
         card.wrapper,
-        { opacity: entrance, transform: [{ scale }, { translateY: slideY }] },
+        { opacity: entrance, transform: [{ scale }, { translateY: slideY }, { scale: scaleIn }] },
         disabled && card.disabledWrapper,
       ]}
     >
@@ -290,7 +299,7 @@ function GameCard({
               onPress={() => onToggle(!isEnabled)}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              <Text style={{ color: isEnabled ? '#4ade80' : '#f87171', fontSize: 9, fontWeight: '800' }}>
+              <Text style={{ color: isEnabled ? '#4ade80' : '#f87171', fontSize: 9, fontFamily: FONTS.extrabold }}>
                 {isEnabled ? 'ON' : 'OFF'}
               </Text>
             </TouchableOpacity>
@@ -338,9 +347,9 @@ const card = StyleSheet.create({
     right: 0,
     bottom: 0,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 1.5,
     shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 10,
+    shadowRadius: 16,
     shadowOpacity: 1,
   },
   topRow: {
@@ -359,10 +368,10 @@ const card = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  helpText: { fontSize: 12, fontWeight: '800', lineHeight: 16 },
+  helpText: { fontSize: 12, fontFamily: FONTS.extrabold, lineHeight: 16 },
   title: {
     fontSize: 15,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: '#F2F2F7',
     letterSpacing: -0.2,
     marginBottom: 4,
@@ -389,12 +398,12 @@ const card = StyleSheet.create({
   },
   tagText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     letterSpacing: 0.3,
   },
   needMore: {
     fontSize: 9,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: '#44445A',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -562,7 +571,7 @@ export default function GameSelectScreen({ navigation }: Props) {
                   onHelp={() =>
                     (navigation as any).navigate('Instructions', { game: game.id })
                   }
-                  delay={(rowIdx * 2 + colIdx) * 60}
+                  delay={(rowIdx * 2 + colIdx) * 100}
                   disabled={isDisabled(game)}
                   isAdmin={isAdmin}
                   isEnabled={enabledGames?.has(game.id) ?? true}
@@ -661,19 +670,19 @@ const cfg = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   sheet: { width: '100%', backgroundColor: '#1A1A24', borderRadius: 20, padding: 24, alignItems: 'center', gap: 12, borderWidth: 1, borderColor: '#FBBF2440' },
   emoji: { fontSize: 40 },
-  title: { fontSize: 22, fontWeight: '900', color: '#FBBF24', letterSpacing: -0.4 },
+  title: { fontSize: 22, fontFamily: FONTS.extrabold, color: '#FBBF24', letterSpacing: -0.4 },
   subtitle: { fontSize: 13, color: '#8585A0' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', backgroundColor: '#12121A', borderRadius: 12, padding: 14, marginTop: 4 },
-  label: { fontWeight: '700', fontSize: 13, color: '#E0E0F0', letterSpacing: 0.5 },
+  label: { fontFamily: FONTS.bold, fontSize: 13, color: '#E0E0F0', letterSpacing: 0.5 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   stepBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FBBF2433', borderWidth: 1, borderColor: '#FBBF2466', alignItems: 'center', justifyContent: 'center' },
   stepBtnDisabled: { opacity: 0.3 },
-  stepBtnText: { fontSize: 20, fontWeight: '700', color: '#FBBF24', lineHeight: 24 },
+  stepBtnText: { fontSize: 20, fontFamily: FONTS.bold, color: '#FBBF24', lineHeight: 24 },
   stepVal: { width: 48, alignItems: 'center' },
-  stepValText: { fontSize: 28, fontWeight: '900', color: '#FBBF24' },
+  stepValText: { fontSize: 28, fontFamily: FONTS.extrabold, color: '#FBBF24' },
   hint: { fontSize: 11, color: '#5A5A7A', textAlign: 'center' },
   startBtn: { backgroundColor: '#FBBF24', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 32, width: '100%', alignItems: 'center', marginTop: 4 },
-  startBtnText: { fontWeight: '900', fontSize: 15, color: '#1A1300', letterSpacing: 1 },
+  startBtnText: { fontFamily: FONTS.extrabold, fontSize: 15, color: '#1A1300', letterSpacing: 1 },
   cancelBtn: { paddingVertical: 8 },
   cancelBtnText: { fontSize: 13, color: '#5A5A7A' },
 });
@@ -690,7 +699,7 @@ const s = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     letterSpacing: -0.8,
     color: COLORS.text,
     marginBottom: 10,
@@ -709,7 +718,7 @@ const s = StyleSheet.create({
   },
   metaText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
     letterSpacing: 0.2,
   },
@@ -726,7 +735,7 @@ const s = StyleSheet.create({
   },
   scoreLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.5,

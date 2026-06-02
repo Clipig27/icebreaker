@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 
 interface Props {
   text: string;
@@ -22,12 +22,12 @@ const styles = StyleSheet.create({
   },
   lg: {
     fontSize: 28,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     lineHeight: 38,
   },
   md: {
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     lineHeight: 28,
   },
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Player } from '../types';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 
 interface Props {
   players: Player[];
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   rank: {
     color: COLORS.text3,
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     width: 30,
   },
   rankMe: {
@@ -61,15 +61,15 @@ const styles = StyleSheet.create({
     flex: 1,
     color: COLORS.text,
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
   nameMe: {
     color: COLORS.warning,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
   youBadge: {
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.warning,
     backgroundColor: COLORS.warning + '22',
     borderRadius: 4,
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
   },
   score: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
   scoreMe: {
     color: COLORS.warning,

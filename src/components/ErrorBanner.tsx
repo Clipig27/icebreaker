@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { COLORS, RADIUS, SPACING } from '../constants/theme';
+import { COLORS, FONTS, RADIUS, SPACING } from '../constants/theme';
 
 interface Props {
   message: string;
@@ -73,7 +73,7 @@ const s = StyleSheet.create({
   icon: {
     color: '#fff',
     fontSize: 13,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     lineHeight: 22,
     textAlign: 'center',
   },
@@ -81,7 +81,7 @@ const s = StyleSheet.create({
     flex: 1,
     color: '#FCA5A5',
     fontSize: 13,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
     lineHeight: 18,
   },
   close: {

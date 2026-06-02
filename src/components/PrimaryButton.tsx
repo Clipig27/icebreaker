@@ -1,6 +1,8 @@
-import React, { useRef } from 'react';
-import { Animated, Pressable, Text, StyleSheet, ViewStyle } from 'react-native';
-import { COLORS } from '../constants/theme';
+import React from 'react';
+import { Pressable, Text, StyleSheet, ViewStyle } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import { COLORS, FONTS } from '../constants/theme';
 
 interface Props {
   title: string;
@@ -10,28 +12,23 @@ interface Props {
 }
 
 export default function PrimaryButton({ title, onPress, disabled = false, style }: Props) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const scale = useSharedValue(1);
 
   const onPressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.94,
-      speed: 60,
-      bounciness: 0,
-      useNativeDriver: true,
-    }).start();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    scale.value = withSpring(0.94, { damping: 15, stiffness: 400 });
   };
 
   const onPressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      speed: 18,
-      bounciness: 10,
-      useNativeDriver: true,
-    }).start();
+    scale.value = withSpring(1, { damping: 12, stiffness: 200 });
   };
 
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
-    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+    <Animated.View style={[animatedStyle, style]}>
       <Pressable
         onPress={disabled ? undefined : onPress}
         onPressIn={disabled ? undefined : onPressIn}
@@ -62,6 +59,6 @@ const styles = StyleSheet.create({
   text: {
     color: '#FFFFFF',
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
 });

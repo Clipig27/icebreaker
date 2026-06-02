@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
-import { COLORS, RADIUS, SPACING } from '../constants/theme';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { COLORS, RADIUS, SPACING, FONTS } from '../constants/theme';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Instructions'>;
@@ -224,8 +225,20 @@ export default function InstructionsScreen({ navigation, route }: Props) {
     ? INSTRUCTIONS.filter(g => g.id === targetGame)
     : INSTRUCTIONS;
 
+  const enterOpacity = useSharedValue(0);
+  const enterSlide = useSharedValue(14);
+  useEffect(() => {
+    enterOpacity.value = withTiming(1, { duration: 350 });
+    enterSlide.value = withTiming(0, { duration: 350 });
+  }, []);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enterOpacity.value,
+    transform: [{ translateY: enterSlide.value }],
+  }));
+
   return (
     <SafeAreaView style={styles.safe}>
+      <Animated.View style={[{ flex: 1 }, enterStyle]}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {!targetGame && (
           <Text style={styles.pageSubtitle}>
@@ -273,6 +286,7 @@ export default function InstructionsScreen({ navigation, route }: Props) {
           <Text style={styles.backBtnText}>← Back</Text>
         </TouchableOpacity>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -307,14 +321,14 @@ const styles = StyleSheet.create({
   cardHeaderText: { flex: 1, gap: 2 },
   cardTitle: {
     fontSize: 20,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.3,
   },
   cardPlayers: {
     fontSize: 12,
     color: COLORS.accent,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -326,20 +340,20 @@ const styles = StyleSheet.create({
   },
   goalLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text3,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
   },
   goalText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text,
     lineHeight: 22,
   },
   sectionLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text3,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -372,7 +386,7 @@ const styles = StyleSheet.create({
   },
   tipLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.warning,
     textTransform: 'uppercase',
     letterSpacing: 1.5,

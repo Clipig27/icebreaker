@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import {
   View,
   Text,
@@ -20,6 +21,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { TabParamList } from '../navigation/MainTabs';
 import type { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
+import { FONTS } from '../constants/theme';
 
 type Props = {
   navigation: CompositeNavigationProp<
@@ -432,7 +434,7 @@ function HostButton({ onPress }: { onPress: () => void }) {
 
   return (
     <Pressable
-      onPressIn={() => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 60, bounciness: 0 }).start()}
+      onPressIn={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 60, bounciness: 0 }).start(); }}
       onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 20, bounciness: 12 }).start()}
       onPress={onPress}
       style={{ width: '100%' }}
@@ -471,7 +473,7 @@ const hb = StyleSheet.create({
     borderRadius: 18,
     gap: 10,
   },
-  label: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
+  label: { color: '#fff', fontSize: 16, fontFamily: FONTS.bold, flex: 1, textAlign: 'center' },
 });
 
 // ─── Join button (glass outline) ──────────────────────────────────────────────
@@ -480,7 +482,7 @@ function JoinButton({ onPress }: { onPress: () => void }) {
 
   return (
     <Pressable
-      onPressIn={() => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 60, bounciness: 0 }).start()}
+      onPressIn={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 60, bounciness: 0 }).start(); }}
       onPressOut={() => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 20, bounciness: 12 }).start()}
       onPress={onPress}
       style={{ width: '100%' }}
@@ -511,7 +513,7 @@ const jb = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 10,
   },
-  label: { color: '#A78BFA', fontSize: 16, fontWeight: '600', flex: 1, textAlign: 'center' },
+  label: { color: '#A78BFA', fontSize: 16, fontFamily: FONTS.semibold, flex: 1, textAlign: 'center' },
 });
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -519,11 +521,11 @@ export default function HomeScreen({ navigation }: Props) {
   const { userLoaded, currentUser, authError } = useGame();
 
   const titleFade   = useRef(new Animated.Value(0)).current;
-  const titleSlide  = useRef(new Animated.Value(-22)).current;
+  const titleSlide  = useRef(new Animated.Value(-40)).current;
   const heroFade    = useRef(new Animated.Value(0)).current;
-  const heroScale   = useRef(new Animated.Value(0.86)).current;
+  const heroScale   = useRef(new Animated.Value(0.6)).current;
   const bottomFade  = useRef(new Animated.Value(0)).current;
-  const bottomSlide = useRef(new Animated.Value(26)).current;
+  const bottomSlide = useRef(new Animated.Value(50)).current;
   const glowPulse   = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -535,18 +537,18 @@ export default function HomeScreen({ navigation }: Props) {
   useEffect(() => {
     if (!currentUser) return;
 
-    Animated.stagger(130, [
+    Animated.stagger(250, [
       Animated.parallel([
-        Animated.timing(titleFade,  { toValue: 1, duration: 650, useNativeDriver: true }),
-        Animated.timing(titleSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
+        Animated.timing(titleFade,  { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.spring(titleSlide, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }),
       ]),
       Animated.parallel([
-        Animated.timing(heroFade,  { toValue: 1, duration: 750, useNativeDriver: true }),
-        Animated.spring(heroScale, { toValue: 1, useNativeDriver: true, friction: 7, tension: 55 }),
+        Animated.timing(heroFade,  { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.spring(heroScale, { toValue: 1, useNativeDriver: true, friction: 6, tension: 35 }),
       ]),
       Animated.parallel([
-        Animated.timing(bottomFade,  { toValue: 1, duration: 650, useNativeDriver: true }),
-        Animated.timing(bottomSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
+        Animated.timing(bottomFade,  { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.spring(bottomSlide, { toValue: 0, useNativeDriver: true, friction: 8, tension: 40 }),
       ]),
     ]).start();
 
@@ -589,7 +591,7 @@ export default function HomeScreen({ navigation }: Props) {
           }}>
             <Ionicons name="wifi-outline" size={26} color="#F43F5E" />
           </View>
-          <Text style={{ color: '#F2F2F7', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>
+          <Text style={{ color: '#F2F2F7', fontSize: 17, fontFamily: FONTS.bold, textAlign: 'center' }}>
             Connection Failed
           </Text>
           <Text style={{ color: '#8585A0', fontSize: 13, textAlign: 'center', lineHeight: 19 }}>
@@ -625,14 +627,14 @@ export default function HomeScreen({ navigation }: Props) {
             <Animated.Text
               style={[s.wordmark, { textShadowRadius: wordmarkGlow } as any]}
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
             >
               ICEBREAKER
             </Animated.Text>
           </View>
 
-          <View style={s.wordmarkAccent} />
-
-          {/* tag pill removed */}
+          {/* wordmark accent + tag pill removed */}
         </Animated.View>
 
         {/* ── Hero ── */}
@@ -676,7 +678,7 @@ const s = StyleSheet.create({
   },
   greeting: {
     fontSize: 13,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
     color: '#5A5A7A',
     letterSpacing: 0.4,
   },
@@ -697,14 +699,15 @@ const s = StyleSheet.create({
   },
   wordmark: {
     width: '100%',
-    fontSize: 38,
-    fontWeight: '900',
-    letterSpacing: 8,
-    color: '#EDE9FE',
-    textShadowColor: '#8B5CF6',
+    fontSize: 46,
+    fontFamily: FONTS.extrabold,
+    letterSpacing: 7,
+    color: '#FFFFFF',
+    textShadowColor: '#9B6FFF',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    textShadowRadius: 28,
     textAlign: 'center',
+    textTransform: 'uppercase',
   },
   wordmarkAccent: {
     width: 56,
@@ -722,7 +725,7 @@ const s = StyleSheet.create({
   },
   tagText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: '#5B21B6',
     letterSpacing: 2.5,
   },
@@ -741,7 +744,7 @@ const s = StyleSheet.create({
   },
   subtitle: {
     fontSize: 13,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
     color: '#55556A',
     letterSpacing: 0.4,
     textAlign: 'center',

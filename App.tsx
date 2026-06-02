@@ -1,8 +1,11 @@
+import 'react-native-reanimated';
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts, Exo2_500Medium, Exo2_600SemiBold, Exo2_700Bold, Exo2_800ExtraBold } from '@expo-google-fonts/exo-2';
+import { ActivityIndicator, View as RNView } from 'react-native';
 
 import { GameProvider }           from './src/context/GameContext';
 import { NotificationsProvider }  from './src/context/NotificationsContext';
@@ -29,7 +32,7 @@ import InstructionsScreen  from './src/screens/InstructionsScreen';
 
 import GameErrorBoundary from './src/components/GameErrorBoundary';
 import { ToastProvider } from './src/components/Toast';
-import { COLORS } from './src/constants/theme';
+import { COLORS, FONTS } from './src/constants/theme';
 
 import InviteModal from './src/components/InviteModal';
 import HostOptionsMenu from './src/components/HostOptionsMenu';
@@ -132,7 +135,7 @@ function AppInner() {
             paddingHorizontal: 9,
             paddingVertical: 4,
           }}>
-            <Text style={{ color: COLORS.text2, fontSize: 12, fontWeight: '800', letterSpacing: 2 }}>
+            <Text style={{ color: COLORS.text2, fontSize: 12, fontFamily: FONTS.extrabold, letterSpacing: 2 }}>
               {room.code}
             </Text>
           </View>
@@ -143,7 +146,7 @@ function AppInner() {
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 4 }}
             style={{ paddingHorizontal: 4 }}
           >
-            <Text style={{ color: COLORS.accentHi, fontSize: 20, fontWeight: '800' }}>?</Text>
+            <Text style={{ color: COLORS.accentHi, fontSize: 20, fontFamily: FONTS.extrabold }}>?</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -164,7 +167,7 @@ function AppInner() {
             return {
               headerStyle:         { backgroundColor: COLORS.background },
               headerTintColor:     COLORS.text,
-              headerTitleStyle:    { fontWeight: '800', fontSize: 18 },
+              headerTitleStyle:    { fontFamily: FONTS.extrabold, fontSize: 18 },
               headerShadowVisible: false,
               contentStyle:        { backgroundColor: COLORS.background },
               animation:           'slide_from_right',
@@ -193,7 +196,7 @@ function AppInner() {
                     paddingVertical: 5,
                   }}
                 >
-                  <Text style={{ color: COLORS.danger, fontSize: 12, fontWeight: '700' }}>Leave</Text>
+                  <Text style={{ color: COLORS.danger, fontSize: 12, fontFamily: FONTS.bold }}>Leave</Text>
                 </TouchableOpacity>
               ) : undefined,
               // Room code pill + ? button — always visible (code only when in a room)
@@ -243,6 +246,21 @@ function AppInner() {
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Exo2_500Medium,
+    Exo2_600SemiBold,
+    Exo2_700Bold,
+    Exo2_800ExtraBold,
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <RNView style={{ flex: 1, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={COLORS.accent} />
+      </RNView>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <ToastProvider>

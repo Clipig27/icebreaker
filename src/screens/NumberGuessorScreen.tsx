@@ -17,11 +17,12 @@ import { useGame } from '../context/GameContext';
 import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
-import { COLORS, RADIUS } from '../constants/theme';
+import { COLORS, RADIUS, FONTS } from '../constants/theme';
 import { pickNumberPrompt, GuessResult } from '../utils/promptUtils';
 import { NumberPrompt } from '../constants/gamePrompts';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import GameIntro from '../components/GameIntro';
+import PhaseTransition from '../components/PhaseTransition';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'NumberGuessor'>;
@@ -258,6 +259,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
   if (!gs.currentPrompt) {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey="loading">
         <View style={styles.centered}>
           {setupTimedOut ? (
             <>
@@ -272,6 +274,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
             <Text style={styles.waitTitle}>Setting up...</Text>
           )}
         </View>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -281,6 +284,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
     if (isHost) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
           <Animated.View style={[styles.centeredContainer, { opacity: fadeAnim }]}>
             <Text style={styles.setupTitle}>How many rounds?</Text>
             <Text style={styles.setupSub}>Closest guess each round wins. Lower total distance wins.</Text>
@@ -297,15 +301,18 @@ export default function NumberGuessorScreen({ navigation }: Props) {
               ))}
             </View>
           </Animated.View>
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <View style={styles.centered}>
           <Text style={styles.waitTitle}>Waiting for host...</Text>
           <Text style={styles.waitSub}>Host is choosing the number of rounds.</Text>
         </View>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -326,6 +333,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.gameOverEmoji}>🏆</Text>
           <Text style={styles.gameOverTitle}>{winnerText} wins!</Text>
@@ -362,6 +370,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
             )}
           </View>
         </ScrollView>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -378,11 +387,13 @@ export default function NumberGuessorScreen({ navigation }: Props) {
     if (isExpired) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
           <View style={styles.centered}>
             <Text style={styles.waitEmoji}>⏰</Text>
             <Text style={styles.waitTitle}>Time's up!</Text>
             <Text style={styles.waitSub}>Loading results...</Text>
           </View>
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
@@ -390,6 +401,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
     if (iHaveGuessed) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
           <Animated.View style={[styles.centeredContainer, { opacity: fadeAnim }]}>
             <Text style={styles.waitEmoji}>✅</Text>
             <Text style={styles.waitTitle}>Guess locked in!</Text>
@@ -401,12 +413,14 @@ export default function NumberGuessorScreen({ navigation }: Props) {
               <Text style={[styles.timerText, { color: timerColor }]}>{secondsLeft}s</Text>
             </View>
           </Animated.View>
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -468,6 +482,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
             </Text>
           </Animated.View>
         </KeyboardAvoidingView>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -480,6 +495,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <ScrollView contentContainerStyle={styles.scroll}>
           <Animated.View style={{ opacity: fadeAnim, gap: 16 }}>
             <Text style={styles.revealTitle}>Round {gs.round} reveal</Text>
@@ -537,6 +553,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
             </View>
           </Animated.View>
         </ScrollView>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -544,6 +561,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
   // ── Round end standings ───────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
+      <PhaseTransition phaseKey={gs.phase}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Animated.View style={{ opacity: fadeAnim, gap: 16 }}>
           <Text style={styles.revealTitle}>After round {gs.round}</Text>
@@ -594,6 +612,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
           </View>
         </Animated.View>
       </ScrollView>
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -623,11 +642,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   waitEmoji: { fontSize: 52 },
-  waitTitle: { fontSize: 22, fontWeight: '700', color: COLORS.text, textAlign: 'center' },
+  waitTitle: { fontSize: 22, fontFamily: FONTS.bold, color: COLORS.text, textAlign: 'center' },
   waitSub: { fontSize: 14, color: COLORS.text2, textAlign: 'center', lineHeight: 20 },
   sectionLabel: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -636,7 +655,7 @@ const styles = StyleSheet.create({
   actions: { gap: 10, marginTop: 8, alignItems: 'center' },
   setupTitle: {
     fontSize: 30,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
     textAlign: 'center',
@@ -665,14 +684,14 @@ const styles = StyleSheet.create({
   },
   setupOptionNum: {
     fontSize: 36,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -1,
   },
   setupOptionLabel: {
     fontSize: 12,
     color: COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     marginTop: 2,
   },
   topRow: {
@@ -690,7 +709,7 @@ const styles = StyleSheet.create({
   },
   roundBadgeText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 1.5,
   },
@@ -703,7 +722,7 @@ const styles = StyleSheet.create({
   },
   timerText: {
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 1,
   },
   timerHint: {
@@ -726,7 +745,7 @@ const styles = StyleSheet.create({
   },
   promptText: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     textAlign: 'center',
     letterSpacing: -0.3,
@@ -746,14 +765,14 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     paddingVertical: 16,
     fontSize: 44,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     textAlign: 'center',
   },
   rangeTip: { fontSize: 12, color: COLORS.text3 },
   revealTitle: {
     fontSize: 28,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: -0.5,
     color: COLORS.text,
   },
@@ -764,7 +783,7 @@ const styles = StyleSheet.create({
   },
   promptQuoteText: {
     fontSize: 15,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
     color: COLORS.text2,
     lineHeight: 22,
   },
@@ -780,13 +799,13 @@ const styles = StyleSheet.create({
   answerRevealLabel: {
     fontSize: 12,
     color: COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
   },
   answerRevealNum: {
     fontSize: 72,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.accentHi,
     letterSpacing: -2,
   },
@@ -808,7 +827,7 @@ const styles = StyleSheet.create({
   guessRank: { fontSize: 18, width: 30, textAlign: 'center' },
   guessInfo: { flex: 1, gap: 2 },
   guessNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  guessName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  guessName: { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text },
   guessNameMe: { color: COLORS.warning },
   guessRowMe: { borderColor: COLORS.warning, borderWidth: 1.5, backgroundColor: '#2a2000' },
   timeBadge: {
@@ -819,16 +838,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.text3,
   },
-  timeBadgeText: { fontSize: 11, fontWeight: '700', color: COLORS.text2 },
+  timeBadgeText: { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text2 },
   guessValue: { fontSize: 13, color: COLORS.text2 },
-  guessDist: { fontSize: 14, fontWeight: '700' },
+  guessDist: { fontSize: 14, fontFamily: FONTS.bold },
   closestBanner: {
     backgroundColor: COLORS.surface2,
     borderRadius: RADIUS.md,
     padding: 14,
     alignItems: 'center',
   },
-  closestText: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  closestText: { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text },
   standingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -845,14 +864,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#071d0f',
   },
   roundBreakdown: { fontSize: 12, color: COLORS.text2, marginTop: 2 },
-  standingRank: { fontSize: 13, fontWeight: '700', color: COLORS.text2, width: 28 },
+  standingRank: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2, width: 28 },
   standingRankMe: { color: COLORS.warning },
-  standingName: { flex: 1, fontSize: 16, fontWeight: '700', color: COLORS.text },
-  standingNameMe: { color: COLORS.warning, fontWeight: '800' },
-  standingScore: { fontSize: 15, fontWeight: '700', color: COLORS.text2 },
+  standingName: { flex: 1, fontSize: 16, fontFamily: FONTS.bold, color: COLORS.text },
+  standingNameMe: { color: COLORS.warning, fontFamily: FONTS.extrabold },
+  standingScore: { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text2 },
   standingScoreMe: { color: COLORS.warning },
   standingYouBadge: {
-    fontSize: 10, fontWeight: '800', color: COLORS.warning,
+    fontSize: 10, fontFamily: FONTS.extrabold, color: COLORS.warning,
     backgroundColor: COLORS.warning + '22', borderRadius: 4,
     paddingHorizontal: 5, paddingVertical: 2, letterSpacing: 0.5,
   },
@@ -864,7 +883,7 @@ const styles = StyleSheet.create({
   gameOverEmoji: { fontSize: 64, textAlign: 'center' },
   gameOverTitle: {
     fontSize: 36,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -1,
     textAlign: 'center',

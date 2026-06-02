@@ -17,8 +17,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import socket from '../socket';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import GameIntro from '../components/GameIntro';
+import PhaseTransition from '../components/PhaseTransition';
+
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ChainLink'>;
@@ -53,7 +55,7 @@ type CLGameState = {
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const TURN_TIMER_MS = 15000;
-const CHALLENGE_WINDOW_MS = 3000;
+// Challenge window removed — discussion is open-ended now
 
 // ── Color helpers ────────────────────────────────────────────────────────────
 function cardCountColor(count: number, maxCards: number): string {
@@ -153,7 +155,7 @@ const timerStyles = StyleSheet.create({
   wrap: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 4 },
   track: { flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3 },
-  secs: { fontSize: 13, fontWeight: '800', minWidth: 28, textAlign: 'right' },
+  secs: { fontSize: 13, fontFamily: FONTS.extrabold, minWidth: 28, textAlign: 'right' },
 });
 
 // ── Opponent card ────────────────────────────────────────────────────────────
@@ -331,73 +333,47 @@ function RefereePanel({ referee, onDismiss, isHost }: { referee: CLReferee; onDi
 // ── Challenge window panel ───────────────────────────────────────────────────
 function ChallengePanel({
   pending,
-  challengeStartedAt,
   isMyTurn,
+  isHost,
   onChallenge,
+  onAccept,
   byName,
 }: {
   pending: { card: string; reason: string; by: string };
-  challengeStartedAt: number | null;
   isMyTurn: boolean;
+  isHost: boolean;
   onChallenge: () => void;
+  onAccept: () => void;
   byName: string;
 }) {
-  const [msLeft, setMsLeft] = useState(CHALLENGE_WINDOW_MS);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (challengeStartedAt === null) return;
-    const tick = () => {
-      const elapsed = Date.now() - challengeStartedAt;
-      setMsLeft(Math.max(0, CHALLENGE_WINDOW_MS - elapsed));
-    };
-    tick();
-    const id = setInterval(tick, 100);
-    return () => clearInterval(id);
-  }, [challengeStartedAt]);
-
-  useEffect(() => {
-    if (isMyTurn) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.05, duration: 400, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [isMyTurn, pulseAnim]);
-
-  const progress = challengeStartedAt !== null ? msLeft / CHALLENGE_WINDOW_MS : 1;
-  const secsLeft = (msLeft / 1000).toFixed(1);
-
   return (
     <View style={styles.challengePanel}>
       <Text style={styles.challengeTitle}>
-        <Text style={{ fontWeight: '900' }}>{byName}</Text> played{' '}
-        <Text style={{ fontWeight: '900', color: '#F5F0E8' }}>{pending.card}</Text>
+        Discuss — is <Text style={{ fontFamily: FONTS.extrabold, color: '#F5F0E8' }}>{byName}</Text>'s answer valid?
       </Text>
+
+      <View style={styles.challengeCardRow}>
+        <Text style={styles.challengeCardLabel}>{pending.card}</Text>
+      </View>
+
       {pending.reason.length > 0 && (
         <Text style={styles.challengeReason}>"{pending.reason}"</Text>
       )}
 
-      {challengeStartedAt !== null && (
-        <View style={styles.countdownRow}>
-          <View style={styles.countdownTrack}>
-            <View style={[styles.countdownFill, { width: `${progress * 100}%` as any, backgroundColor: progress > 0.4 ? '#22C55E' : '#EF4444' }]} />
-          </View>
-          <Text style={styles.countdownSecs}>{secsLeft}s</Text>
-        </View>
+      {!isMyTurn && (
+        <TouchableOpacity style={styles.challengeBtn} onPress={onChallenge} activeOpacity={0.8}>
+          <Text style={styles.challengeBtnText}>🤖  Call AI Referee</Text>
+        </TouchableOpacity>
       )}
 
-      {!isMyTurn ? (
-        <Animated.View style={{ transform: [{ scale: pulseAnim }], width: '100%' }}>
-          <TouchableOpacity style={styles.challengeBtn} onPress={onChallenge} activeOpacity={0.8}>
-            <Text style={styles.challengeBtnText}>CHALLENGE</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      ) : (
-        <Text style={styles.challengeWaiting}>Your link is on the table...</Text>
+      {isHost && (
+        <TouchableOpacity style={styles.acceptBtn} onPress={onAccept} activeOpacity={0.8}>
+          <Text style={styles.acceptBtnText}>Accept & Continue →</Text>
+        </TouchableOpacity>
+      )}
+
+      {isMyTurn && !isHost && (
+        <Text style={styles.challengeWaiting}>Waiting for group decision...</Text>
       )}
     </View>
   );
@@ -504,6 +480,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
     return currentUser?.id ?? socket.id ?? '';
   })();
 
+
   const [reason, setReason] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [cardAlert, setCardAlert] = useState<{ key: number; text: string; color: string } | null>(null);
@@ -546,6 +523,25 @@ export default function ChainLinkScreen({ navigation }: Props) {
     return () => clearTimeout(t);
   }, [cardAlert]);
 
+  // Max cards among all players (for color gradient)
+  const maxCards = useMemo(() => {
+    if (!gs?.turnOrder) return 1;
+    let mx = 1;
+    for (const pid of gs.turnOrder) {
+      mx = Math.max(mx, (gs.hands[pid] ?? []).length);
+    }
+    return mx;
+  }, [gs?.hands, gs?.turnOrder]);
+
+  const handlePlay = useCallback((card: string) => {
+    if (!card || !gs || !gs.turnOrder) return;
+    const currentTurnId_ = gs.turnOrder[gs.turnIdx] ?? null;
+    const isMyTurn_ = currentTurnId_ === myId;
+    if (!isMyTurn_ || gs.pending || gs.referee) return;
+    sendPlayerAction('cl-play', { card, reason: reason.trim() });
+    setReason('');
+  }, [gs?.turnOrder, gs?.turnIdx, gs?.pending, gs?.referee, myId, reason, sendPlayerAction]);
+
   // ── Loading ──────────────────────────────────────────────────────────────
   if (gs?.phase === 'intro' || (!gs) || !gs.turnOrder) {
     return (
@@ -574,24 +570,9 @@ export default function ChainLinkScreen({ navigation }: Props) {
   const lastWord = lastChainEntry?.word ?? null;
   const currentPlayerName = allPlayers.find(p => p.id === currentTurnId)?.name ?? 'player';
 
-  // Max cards among all players (for color gradient)
-  const maxCards = useMemo(() => {
-    let mx = 1;
-    for (const pid of gs.turnOrder) {
-      mx = Math.max(mx, (gs.hands[pid] ?? []).length);
-    }
-    return mx;
-  }, [gs.hands, gs.turnOrder]);
-
   const canPlay = isMyTurn && !gs.pending && !gs.referee;
   const canSkip = isMyTurn && !gs.pending && !gs.referee;
   const canDrag = isMyTurn && !gs.pending && !gs.referee;
-
-  const handlePlay = useCallback((card: string) => {
-    if (!card || !isMyTurn || gs.pending || gs.referee) return;
-    sendPlayerAction('cl-play', { card, reason: reason.trim() });
-    setReason('');
-  }, [isMyTurn, gs.pending, gs.referee, reason, sendPlayerAction]);
 
   const handleSkip = () => {
     if (!canSkip) return;
@@ -606,7 +587,11 @@ export default function ChainLinkScreen({ navigation }: Props) {
   if (gs.phase === 'chainBroken') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ChainBrokenSplash chain={gs.chain} />
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -618,6 +603,8 @@ export default function ChainLinkScreen({ navigation }: Props) {
     const isIWinner = gs.winner === myId;
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.winScroll}>
           <Text style={styles.winEmoji}>{isIWinner ? '🏆' : '🎉'}</Text>
           <Text style={styles.winTitle}>{isIWinner ? 'You win!' : `${winnerName} wins!`}</Text>
@@ -660,6 +647,8 @@ export default function ChainLinkScreen({ navigation }: Props) {
             <Text style={styles.winPlayAgainText}>Back to Lobby</Text>
           </TouchableOpacity>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -671,6 +660,8 @@ export default function ChainLinkScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <PhaseTransition phaseKey={gs.phase}>
+
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.screen}>
 
@@ -775,9 +766,10 @@ export default function ChainLinkScreen({ navigation }: Props) {
             <View style={styles.sectionPad}>
               <ChallengePanel
                 pending={gs.pending}
-                challengeStartedAt={gs.challengeStartedAt}
                 isMyTurn={isMyTurn}
+                isHost={isHost}
                 onChallenge={handleChallenge}
+                onAccept={() => sendPlayerAction('cl-accept', {})}
                 byName={allPlayers.find(p => p.id === gs.pending?.by)?.name ?? gs.pending.by}
               />
             </View>
@@ -860,6 +852,8 @@ export default function ChainLinkScreen({ navigation }: Props) {
 
         </View>
       </KeyboardAvoidingView>
+
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -882,7 +876,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 18,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
   },
 
@@ -902,7 +896,7 @@ const styles = StyleSheet.create({
   },
   cardChangeAlertText: {
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#FFF',
     letterSpacing: 0.5,
   },
@@ -939,18 +933,18 @@ const styles = StyleSheet.create({
   },
   opponentName: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
     maxWidth: 80,
   },
   opponentCount: {
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     marginLeft: 2,
   },
   lastCardBadge: {
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#EF4444',
     marginLeft: 2,
   },
@@ -972,7 +966,7 @@ const styles = StyleSheet.create({
   },
   yourTurnBannerText: {
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#FFF',
     letterSpacing: 3,
   },
@@ -983,7 +977,7 @@ const styles = StyleSheet.create({
   },
   waitingBannerText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
   },
 
@@ -1038,13 +1032,13 @@ const styles = StyleSheet.create({
   },
   chainCardText: {
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: '#2C2418',
     letterSpacing: 0.3,
   },
   chainLastCardText: {
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#2C2418',
   },
   chainConnector: {
@@ -1078,7 +1072,7 @@ const styles = StyleSheet.create({
     color: '#D99A2B',
     textAlign: 'center',
     paddingBottom: 8,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     letterSpacing: 0.5,
   },
   // (drop zone moved to drag overlay)
@@ -1110,7 +1104,7 @@ const styles = StyleSheet.create({
   },
   refereeTitle: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: '#D99A2B',
     textAlign: 'center',
   },
@@ -1122,7 +1116,7 @@ const styles = StyleSheet.create({
   },
   refereeVerdict: {
     fontSize: 36,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 2,
   },
   refereeWhy: {
@@ -1143,7 +1137,7 @@ const styles = StyleSheet.create({
   },
   dismissBtnText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 0.5,
   },
@@ -1188,29 +1182,54 @@ const styles = StyleSheet.create({
   },
   countdownSecs: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     minWidth: 32,
     textAlign: 'right',
   },
   challengeBtn: {
-    backgroundColor: '#C8642F',
+    backgroundColor: 'transparent',
     borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 40,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
     alignItems: 'center',
     marginTop: 4,
     width: '100%',
-    shadowColor: '#C8642F',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 4,
+    borderWidth: 1.5,
+    borderColor: '#C8642F',
   },
   challengeBtnText: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
+    color: '#C8642F',
+  },
+  challengeCardRow: {
+    backgroundColor: COLORS.surface2,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  challengeCardLabel: {
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
+    color: '#F5F0E8',
+    textAlign: 'center',
+  },
+  acceptBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    marginTop: 6,
+    width: '100%',
+  },
+  acceptBtnText: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
     color: '#FFF',
-    letterSpacing: 2,
   },
   challengeWaiting: {
     fontSize: 14,
@@ -1231,7 +1250,7 @@ const styles = StyleSheet.create({
   },
   logEntry: {
     fontSize: 11,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
   },
 
   // ── Hand area ─────────────────────────────────────────────────────────
@@ -1251,14 +1270,14 @@ const styles = StyleSheet.create({
   },
   handLabel: {
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
   myCardCountText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
   },
   dragHint: {
@@ -1266,7 +1285,7 @@ const styles = StyleSheet.create({
     color: '#C8642F',
     textAlign: 'center',
     marginBottom: 2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     letterSpacing: 0.3,
   },
   handFan: {
@@ -1304,7 +1323,7 @@ const styles = StyleSheet.create({
   },
   handCardWord: {
     fontSize: 13,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: '#2C2418',
     textAlign: 'center',
     lineHeight: 17,
@@ -1349,7 +1368,7 @@ const styles = StyleSheet.create({
   },
   dragPlayHintText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
     letterSpacing: 0.5,
   },
@@ -1364,7 +1383,7 @@ const styles = StyleSheet.create({
   },
   skipBtnText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 1,
   },
@@ -1383,7 +1402,7 @@ const styles = StyleSheet.create({
   },
   winTitle: {
     fontSize: 36,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
     textAlign: 'center',
@@ -1402,7 +1421,7 @@ const styles = StyleSheet.create({
   },
   winChainLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 2,
@@ -1434,7 +1453,7 @@ const styles = StyleSheet.create({
   },
   winChainNum: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
   },
   winChainText: {
@@ -1443,7 +1462,7 @@ const styles = StyleSheet.create({
   },
   winChainWord: {
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
   },
   winChainReason: {
@@ -1464,7 +1483,7 @@ const styles = StyleSheet.create({
   },
   winPlayAgainText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
   },
 
@@ -1482,7 +1501,7 @@ const styles = StyleSheet.create({
   },
   chainBrokenTitle: {
     fontSize: 32,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#EF4444',
     textAlign: 'center',
     letterSpacing: 1,
@@ -1500,7 +1519,7 @@ const styles = StyleSheet.create({
   },
   chainBrokenAnchorLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 2,
     textTransform: 'uppercase',
@@ -1519,7 +1538,7 @@ const styles = StyleSheet.create({
   },
   chainBrokenAnchorWord: {
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#C8E6C8',
     letterSpacing: 0.5,
   },
@@ -1538,7 +1557,7 @@ const styles = StyleSheet.create({
   },
   dropZoneTargetText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: '#C8642F',
     letterSpacing: 0.5,
   },

@@ -17,11 +17,14 @@ import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import ScoreDisplay from '../components/ScoreDisplay';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { LIE_DETECTOR_PROMPTS } from '../constants/prompts';
 import { Player } from '../types';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import GameIntro from '../components/GameIntro';
+import PromptCard from '../components/PromptCard';
+import PhaseTransition from '../components/PhaseTransition';
+
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'LieDetector'>;
@@ -120,6 +123,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
     setStmt1Vote(null);
     setStmt2Vote(null);
   }, [gs?.phase]);
+
 
   const [setupTimedOut, setSetupTimedOut] = useState(false);
   const setupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,6 +237,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
   if (!gs) {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey="loading">
+
         <View style={styles.centered}>
           {setupTimedOut ? (
             <>
@@ -246,6 +252,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
             <Text style={styles.waitTitle}>Setting up...</Text>
           )}
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -255,6 +263,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
     if (isHost) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             <Text style={styles.waitEmoji}>🕵️</Text>
             <Text style={styles.setupTitle}>How many rounds?</Text>
@@ -270,16 +280,22 @@ export default function LieDetectorScreen({ navigation }: Props) {
               ))}
             </View>
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centered}>
           <Text style={styles.waitEmoji}>🕵️</Text>
           <Text style={styles.waitTitle}>Waiting for host...</Text>
           <Text style={styles.waitSub}>Host is choosing the number of rounds.</Text>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -291,6 +307,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
     const winners = sorted.filter(p => p.score === topScore);
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={[styles.waitEmoji, { textAlign: 'center' }]}>🏆</Text>
           <Text style={styles.gameOverTitle}>
@@ -311,6 +329,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
             )}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -328,16 +348,18 @@ export default function LieDetectorScreen({ navigation }: Props) {
     }
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centered}>
           <Text style={styles.waitEmoji}>✍️</Text>
           <Text style={styles.waitTitle}>{speaker?.name} is writing their statements...</Text>
           <Text style={styles.waitSub}>
             They're crafting two answers — could be{'\n'}Lie + Truth, Two Lies, or Two Truths.{'\n'}You'll vote on each one.
           </Text>
-          <View style={styles.promptQuote}>
-            <Text style={styles.promptQuoteText}>"{gs.prompt}"</Text>
-          </View>
+          <PromptCard text={gs.prompt} accentColor="#7C5CF6" />
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -346,7 +368,11 @@ export default function LieDetectorScreen({ navigation }: Props) {
   if (gs.phase !== 'voting' && gs.phase !== 'results' && gs.phase !== 'scores') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centered}><Text style={styles.waitTitle}>Setting up...</Text></View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -360,11 +386,15 @@ export default function LieDetectorScreen({ navigation }: Props) {
     if (iAmSpeaker) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             <Text style={styles.waitEmoji}>🔒</Text>
             <Text style={styles.waitTitle}>Players are reading you...{'\n'}stay poker-faced.</Text>
             <Text style={styles.waitSub}>{votesIn} / {totalVoters} players have voted</Text>
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
@@ -372,11 +402,15 @@ export default function LieDetectorScreen({ navigation }: Props) {
     if (iHaveVoted) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             <Text style={styles.waitEmoji}>✅</Text>
             <Text style={styles.waitTitle}>Votes locked in!</Text>
             <Text style={styles.waitSub}>{votesIn} / {totalVoters} players have voted</Text>
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
@@ -384,23 +418,25 @@ export default function LieDetectorScreen({ navigation }: Props) {
     if (!instructionSeen) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             <Text style={styles.waitEmoji}>💬</Text>
             <Text style={styles.waitTitle}>Ask a question first</Text>
             <Text style={styles.waitSub}>
               Challenge{' '}
-              <Text style={{ color: COLORS.text, fontWeight: '700' }}>@{speaker?.name}</Text>
+              <Text style={{ color: COLORS.text, fontFamily: FONTS.bold }}>@{speaker?.name}</Text>
               {' '}on their answers before you decide. Then vote on each statement — LIE or TRUTH.
             </Text>
-            <View style={styles.promptQuote}>
-              <Text style={styles.promptQuoteText}>"{gs.prompt}"</Text>
-            </View>
+            <PromptCard text={gs.prompt} accentColor="#7C5CF6" />
             <PrimaryButton
               title="I'm Ready to Vote →"
               onPress={() => setInstructionSeen(true)}
               style={{ marginTop: 8, width: '100%' }}
             />
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
@@ -413,14 +449,14 @@ export default function LieDetectorScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.badge}>
             <Text style={styles.badgeText}>🗳️ Label each statement</Text>
           </View>
 
-          <View style={styles.promptQuote}>
-            <Text style={styles.promptQuoteText}>"{gs.prompt}"</Text>
-          </View>
+          <PromptCard text={gs.prompt} accentColor="#7C5CF6" />
 
           <Text style={styles.votingQuestion}>
             Is each statement a LIE or the TRUTH?
@@ -447,7 +483,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
                     onPress={() => setVote(currentVote === 'lie' ? null : 'lie')}
                     activeOpacity={0.75}
                   >
-                    <Text style={[styles.voteBtnText, currentVote === 'lie' && { color: COLORS.danger, fontWeight: '900' }]}>
+                    <Text style={[styles.voteBtnText, currentVote === 'lie' && { color: COLORS.danger, fontFamily: FONTS.extrabold }]}>
                       ✗ LIE
                     </Text>
                   </TouchableOpacity>
@@ -456,7 +492,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
                     onPress={() => setVote(currentVote === 'truth' ? null : 'truth')}
                     activeOpacity={0.75}
                   >
-                    <Text style={[styles.voteBtnText, currentVote === 'truth' && { color: COLORS.success, fontWeight: '900' }]}>
+                    <Text style={[styles.voteBtnText, currentVote === 'truth' && { color: COLORS.success, fontFamily: FONTS.extrabold }]}>
                       ✓ TRUTH
                     </Text>
                   </TouchableOpacity>
@@ -474,6 +510,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
 
           <Text style={styles.voterProgress}>{votesIn} / {totalVoters} voted</Text>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -482,7 +520,11 @@ export default function LieDetectorScreen({ navigation }: Props) {
   if (gs.stmt1IsLie === undefined || gs.stmt2IsLie === undefined) {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centered}><Text style={styles.waitTitle}>Loading results...</Text></View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -519,6 +561,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
   if (gs.phase === 'scores') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={[styles.waitEmoji, { textAlign: 'center' }]}>📊</Text>
           <Text style={[styles.resultsTitle, { textAlign: 'center', marginBottom: 4 }]}>Leaderboard</Text>
@@ -542,6 +586,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
             )}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -549,6 +595,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
   // ── Phase: results (verdict + points this round) ──────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
+      <PhaseTransition phaseKey={gs.phase}>
+
       <ScrollView contentContainerStyle={styles.scroll}>
         {gs.totalRounds && gs.totalRounds > 1 && (
           <View style={styles.badge}>
@@ -653,6 +701,8 @@ export default function LieDetectorScreen({ navigation }: Props) {
           )}
         </View>
       </ScrollView>
+
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -724,9 +774,7 @@ function SpeakerEntering({
           </View>
 
           <Text style={styles.sectionLabel}>Your prompt</Text>
-          <View style={styles.promptBox}>
-            <Text style={styles.promptText}>{prompt}</Text>
-          </View>
+          <PromptCard text={prompt} accentColor="#7C5CF6" />
 
           <Text style={styles.instruction}>
             Write two answers to the prompt and read them aloud. You choose the mix — nobody else knows your secret.
@@ -758,7 +806,7 @@ function SpeakerEntering({
             inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
           />
 
-          <Text style={[styles.instruction, { marginTop: 4, fontWeight: '700', color: COLORS.text2 }]}>
+          <Text style={[styles.instruction, { marginTop: 4, fontFamily: FONTS.bold, color: COLORS.text2 }]}>
             Choose your combination:
           </Text>
 
@@ -834,7 +882,7 @@ const styles = StyleSheet.create({
   waitEmoji: { fontSize: 52 },
   waitTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
     textAlign: 'center',
     lineHeight: 30,
@@ -849,10 +897,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     alignSelf: 'flex-start',
   },
-  badgeText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  badgeText: { color: COLORS.text, fontSize: 13, fontFamily: FONTS.bold },
   sectionLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text3,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -867,13 +915,13 @@ const styles = StyleSheet.create({
   },
   promptText: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     lineHeight: 30,
     letterSpacing: -0.3,
   },
   instruction: { fontSize: 14, color: COLORS.text2, lineHeight: 22 },
-  inputLabel: { fontSize: 13, fontWeight: '700', color: COLORS.text2, marginBottom: -8 },
+  inputLabel: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2, marginBottom: -8 },
   stmtInput: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
@@ -903,7 +951,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(124,92,246,0.12)',
   },
   typeBtnEmoji: { fontSize: 22 },
-  typeBtnLabel: { fontSize: 13, fontWeight: '800', color: COLORS.text2, textAlign: 'center' },
+  typeBtnLabel: { fontSize: 13, fontFamily: FONTS.extrabold, color: COLORS.text2, textAlign: 'center' },
   typeBtnLabelSelected: { color: COLORS.text },
   typeBtnSub: { fontSize: 10, color: COLORS.text3, textAlign: 'center' },
   // Lie picker (shown when lietruth is selected)
@@ -915,7 +963,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-  liePickerLabel: { fontSize: 13, fontWeight: '700', color: COLORS.text2 },
+  liePickerLabel: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2 },
   liePickerRow: { flexDirection: 'row', gap: 12 },
   liePickBtn: {
     flex: 1,
@@ -932,16 +980,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.danger,
     backgroundColor: '#1d0710',
   },
-  liePickNum: { fontSize: 12, color: COLORS.text2, fontWeight: '600' },
-  liePickTag: { fontSize: 18, fontWeight: '900', color: COLORS.text3 },
+  liePickNum: { fontSize: 12, color: COLORS.text2, fontFamily: FONTS.semibold },
+  liePickTag: { fontSize: 18, fontFamily: FONTS.extrabold, color: COLORS.text3 },
   // Voting cards
   promptQuote: {
     borderLeftWidth: 2,
     borderLeftColor: COLORS.text3,
     paddingLeft: 12,
   },
-  promptQuoteText: { fontSize: 15, fontWeight: '500', color: COLORS.text2, lineHeight: 22 },
-  votingQuestion: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  promptQuoteText: { fontSize: 15, fontFamily: FONTS.medium, color: COLORS.text2, lineHeight: 22 },
+  votingQuestion: { fontSize: 16, fontFamily: FONTS.bold, color: COLORS.text },
   voteCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
@@ -955,13 +1003,13 @@ const styles = StyleSheet.create({
   voteCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   voteCardNum: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text3,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
   },
-  voteCardBadge: { fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
-  voteCardText: { fontSize: 17, fontWeight: '600', color: COLORS.text, lineHeight: 24 },
+  voteCardBadge: { fontSize: 12, fontFamily: FONTS.extrabold, letterSpacing: 0.5 },
+  voteCardText: { fontSize: 17, fontFamily: FONTS.semibold, color: COLORS.text, lineHeight: 24 },
   voteBtnRow: { flexDirection: 'row', gap: 10 },
   voteBtn: {
     flex: 1,
@@ -980,7 +1028,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.success,
     backgroundColor: 'rgba(34,197,94,0.12)',
   },
-  voteBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.text2 },
+  voteBtnText: { fontSize: 14, fontFamily: FONTS.bold, color: COLORS.text2 },
   voterProgress: { fontSize: 13, color: COLORS.text3, textAlign: 'center' },
   // Results
   typeRevealPill: {
@@ -994,7 +1042,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   typeRevealEmoji: { fontSize: 16 },
-  typeRevealLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
+  typeRevealLabel: { fontSize: 13, fontFamily: FONTS.extrabold, letterSpacing: 0.2 },
   statementReveal: { gap: 12 },
   revealCard: {
     borderRadius: 14,
@@ -1006,20 +1054,20 @@ const styles = StyleSheet.create({
   revealLie: { borderColor: COLORS.danger, backgroundColor: '#1d0710' },
   revealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   revealTagRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  myPickBadge: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
+  myPickBadge: { fontSize: 11, fontFamily: FONTS.extrabold, letterSpacing: 0.3 },
   revealNum: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
-  revealTag: { fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
-  revealStatementText: { fontSize: 18, fontWeight: '700', color: COLORS.text, lineHeight: 26 },
+  revealTag: { fontSize: 14, fontFamily: FONTS.extrabold, letterSpacing: 0.5 },
+  revealStatementText: { fontSize: 18, fontFamily: FONTS.bold, color: COLORS.text, lineHeight: 26 },
   voteBreakdown: { flexDirection: 'row', alignItems: 'center', gap: 0 },
   voteBreakdownItem: { flex: 1, alignItems: 'center', gap: 2 },
-  voteBreakdownNum: { fontSize: 28, fontWeight: '900', lineHeight: 32 },
-  voteBreakdownLabel: { fontSize: 11, color: COLORS.text2, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  voteBreakdownNum: { fontSize: 28, fontFamily: FONTS.extrabold, lineHeight: 32 },
+  voteBreakdownLabel: { fontSize: 11, color: COLORS.text2, fontFamily: FONTS.semibold, textTransform: 'uppercase', letterSpacing: 0.8 },
   voteBreakdownDivider: { width: 1, height: 40, backgroundColor: COLORS.border },
   voteBarTrack: {
     height: 5,
@@ -1035,19 +1083,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     alignItems: 'center',
   },
-  resultBannerText: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
-  resultsTitle: { fontSize: 30, fontWeight: '800', letterSpacing: -0.5, color: COLORS.text },
+  resultBannerText: { fontSize: 22, fontFamily: FONTS.extrabold, letterSpacing: -0.3 },
+  resultsTitle: { fontSize: 30, fontFamily: FONTS.extrabold, letterSpacing: -0.5, color: COLORS.text },
   pointsBlock: { gap: 8 },
   pointRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  pointPlus: { fontSize: 13, fontWeight: '700', color: COLORS.success },
-  pointName: { fontSize: 15, fontWeight: '600', color: COLORS.text, flex: 1 },
+  pointPlus: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.success },
+  pointName: { fontSize: 15, fontFamily: FONTS.semibold, color: COLORS.text, flex: 1 },
   pointTag: { fontSize: 12, color: COLORS.text3, fontStyle: 'italic' },
   noPoints: { fontSize: 14, color: COLORS.text2, fontStyle: 'italic' },
   divider: { height: 1, backgroundColor: COLORS.border },
   actions: { gap: 10, marginTop: 8, alignItems: 'center' },
   setupTitle: {
     fontSize: 28,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
     textAlign: 'center',
@@ -1072,19 +1120,19 @@ const styles = StyleSheet.create({
   },
   setupOptionNum: {
     fontSize: 36,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -1,
   },
   setupOptionLabel: {
     fontSize: 12,
     color: COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     marginTop: 2,
   },
   gameOverTitle: {
     fontSize: 32,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
     textAlign: 'center',

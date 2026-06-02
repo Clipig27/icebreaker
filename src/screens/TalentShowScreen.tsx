@@ -13,8 +13,10 @@ import { useGame } from '../context/GameContext';
 import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import GameIntro from '../components/GameIntro';
+import PhaseTransition from '../components/PhaseTransition';
+
 import {
   TALENT_SHOW_PROMPTS,
   TALENT_SHOW_TIEBREAK_PROMPTS,
@@ -191,6 +193,7 @@ export default function TalentShowScreen({ navigation }: Props) {
     if (bySocket) return bySocket.id;
     return currentUser?.id ?? socket.id ?? '';
   })();
+
 
   // Host-only refs
   const gsRef = useRef<TSGameState | null>(null);
@@ -1114,6 +1117,8 @@ export default function TalentShowScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.roundIntroContainer}>
           <View style={styles.roundIntroTop}>
             <Text style={styles.roundIntroEmoji}>{roundEmoji}</Text>
@@ -1158,6 +1163,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             )}
           </View>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1167,6 +1174,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     const isFinals = gs.round === 3;
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.roundBadge}>
             <Text style={styles.roundBadgeText}>{roundLabel}</Text>
@@ -1211,6 +1220,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             </View>
           )}
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1222,6 +1233,8 @@ export default function TalentShowScreen({ navigation }: Props) {
       ratio > 0.6 ? COLORS.success : ratio > 0.3 ? COLORS.warning : COLORS.danger;
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centeredFull}>
           <Text style={styles.getReadyLabel}>Get ready!</Text>
           <Text style={[styles.bigCountdown, { color: countColor }]}>{secondsLeft}</Text>
@@ -1232,6 +1245,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             <Text style={styles.promptTextSmall}>{gs.prompt}</Text>
           </View>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1250,6 +1265,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     if (iAmPerformer) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centeredFull}>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>🎤 You're performing!</Text>
@@ -1284,6 +1301,8 @@ export default function TalentShowScreen({ navigation }: Props) {
               />
             )}
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
@@ -1292,6 +1311,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     if (gs.round === 1) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <ScrollView contentContainerStyle={styles.centeredScroll}>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>🎤 {currentPerformer?.name} is performing</Text>
@@ -1355,6 +1376,8 @@ export default function TalentShowScreen({ navigation }: Props) {
               </Text>
             </View>
           </ScrollView>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
@@ -1362,6 +1385,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     // R2, R3, or tiebreak audience — just watch
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centeredFull}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
@@ -1375,6 +1400,8 @@ export default function TalentShowScreen({ navigation }: Props) {
           <Text style={styles.performTimerLabel}>seconds left</Text>
           <Text style={styles.watchText}>Sit back and watch!</Text>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1400,6 +1427,8 @@ export default function TalentShowScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centeredFull}>
           <Text style={styles.resultEmoji}>{emoji}</Text>
           <Text style={styles.resultName}>{lastResult?.playerName ?? '???'}</Text>
@@ -1444,6 +1473,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             <Text style={styles.waitSub}>Waiting for host to continue...</Text>
           )}
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1459,6 +1490,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     if (iAmPerformer || !amINeutralVoter || iHaveVotedNeutral) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             {iHaveVotedNeutral ? (
               <>
@@ -1478,12 +1511,16 @@ export default function TalentShowScreen({ navigation }: Props) {
             )}
             <Text style={styles.waitSub}>{votesIn} / {totalNeutral} voted</Text>
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centeredFull}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>⚖️ Jury Vote</Text>
@@ -1514,6 +1551,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1528,6 +1567,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     if (!amIVoter || iHaveSubmitted) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             {iHaveSubmitted ? (
               <>
@@ -1544,6 +1585,8 @@ export default function TalentShowScreen({ navigation }: Props) {
               {votesIn} / {totalVotersR2} voted
             </Text>
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
@@ -1562,6 +1605,8 @@ export default function TalentShowScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>🗳️ Round 2 Vote</Text>
@@ -1607,6 +1652,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             style={{ marginTop: 8 }}
           />
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1619,6 +1666,8 @@ export default function TalentShowScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.tiebreakerHeader}>
             <Text style={styles.tiebreakerTitle}>
@@ -1653,6 +1702,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             </View>
           )}
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1668,6 +1719,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     if (!amIVoterTB || iHaveSubmittedTB) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             {iHaveSubmittedTB ? (
               <>
@@ -1684,12 +1737,16 @@ export default function TalentShowScreen({ navigation }: Props) {
               {tbVotesIn} / {tbTotalVoters} voted
             </Text>
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.tiebreakerHeader}>
             <Text style={styles.tiebreakerTitle}>
@@ -1723,6 +1780,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             })}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1737,6 +1796,8 @@ export default function TalentShowScreen({ navigation }: Props) {
     if (iAmFinalist || !amIR3Voter || iHaveSubmittedR3) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centered}>
             {iHaveSubmittedR3 ? (
               <><Text style={styles.waitEmoji}>🏆</Text><Text style={styles.waitTitle}>Final vote cast!</Text></>
@@ -1747,12 +1808,16 @@ export default function TalentShowScreen({ navigation }: Props) {
             )}
             <Text style={styles.waitSub}>{r3VotesIn} / {gs.r3VoterIds.length} voted</Text>
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>🏆 Final Vote</Text>
@@ -1784,6 +1849,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             })}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1795,6 +1862,8 @@ export default function TalentShowScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.winnerHeadline}>🎉 Talent Show Over!</Text>
 
@@ -1855,6 +1924,8 @@ export default function TalentShowScreen({ navigation }: Props) {
             )}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -1862,9 +1933,11 @@ export default function TalentShowScreen({ navigation }: Props) {
   // Fallback
   return (
     <SafeAreaView style={styles.safe}>
+
       <View style={styles.centered}>
         <Text style={styles.waitTitle}>Loading...</Text>
       </View>
+
     </SafeAreaView>
   );
 }
@@ -1925,7 +1998,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     alignSelf: 'center',
   },
-  badgeText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  badgeText: { color: COLORS.text, fontSize: 13, fontFamily: FONTS.bold },
 
   roundBadge: {
     backgroundColor: COLORS.accent,
@@ -1937,7 +2010,7 @@ const styles = StyleSheet.create({
   roundBadgeText: {
     color: '#fff',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
@@ -1968,7 +2041,7 @@ const styles = StyleSheet.create({
   roundIntroBadgeText: {
     color: '#fff',
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 3,
   },
   roundIntroBody: {
@@ -1980,7 +2053,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     textAlign: 'center',
     lineHeight: 28,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
   roundIntroTip: {
     backgroundColor: COLORS.surface2,
@@ -2002,7 +2075,7 @@ const styles = StyleSheet.create({
 
   finalistsVsLabel: {
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.warning,
     letterSpacing: 3,
     textAlign: 'center',
@@ -2016,14 +2089,14 @@ const styles = StyleSheet.create({
   },
   finalistName: {
     fontSize: 36,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -1,
     textAlign: 'center',
   },
   finalistsVs: {
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.warning,
     letterSpacing: 2,
   },
@@ -2040,7 +2113,7 @@ const styles = StyleSheet.create({
   performerBadgeText: {
     color: COLORS.text,
     fontSize: 20,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
   },
 
   extremeLabel: {
@@ -2055,7 +2128,7 @@ const styles = StyleSheet.create({
   extremeLabelText: {
     color: COLORS.danger,
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 1.5,
   },
 
@@ -2093,21 +2166,21 @@ const styles = StyleSheet.create({
   },
   promptTiebreakLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.warning,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
   },
   promptText: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     lineHeight: 30,
     letterSpacing: -0.3,
   },
   promptTextSmall: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
     textAlign: 'center',
     lineHeight: 22,
@@ -2141,34 +2214,34 @@ const styles = StyleSheet.create({
   // ── Get-ready screen ──────────────────────────────────────────────────────
   getReadyLabel: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
   bigCountdown: {
     fontSize: 120,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     letterSpacing: -5,
     lineHeight: 120,
   },
   getReadyPerformer: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
   },
 
   // ── Performing screen ─────────────────────────────────────────────────────
   performTimer: {
     fontSize: 90,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     letterSpacing: -4,
     lineHeight: 90,
   },
   performTimerLabel: {
     fontSize: 13,
     color: COLORS.text3,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
     marginTop: -6,
   },
 
@@ -2191,13 +2264,13 @@ const styles = StyleSheet.create({
   },
   buzzStatCount: {
     fontSize: 26,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
   },
   buzzStatLabel: {
     fontSize: 11,
     color: COLORS.text3,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     textTransform: 'uppercase',
   },
 
@@ -2225,11 +2298,11 @@ const styles = StyleSheet.create({
   buzzBtnEmoji: { fontSize: 28 },
   buzzBtnText: {
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#fff',
     letterSpacing: 2,
   },
-  buzzBtnCount: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
+  buzzBtnCount: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: FONTS.semibold },
 
   goldenBtn: {
     width: 160,
@@ -2248,11 +2321,11 @@ const styles = StyleSheet.create({
   goldenBtnEmoji: { fontSize: 28 },
   goldenBtnText: {
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#fff',
     letterSpacing: 1,
   },
-  goldenBtnCount: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
+  goldenBtnCount: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontFamily: FONTS.semibold },
 
   reactedNotice: {
     backgroundColor: COLORS.surface2,
@@ -2279,13 +2352,13 @@ const styles = StyleSheet.create({
   resultEmoji: { fontSize: 70 },
   resultName: {
     fontSize: 32,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     textAlign: 'center',
   },
   resultOutcome: {
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
@@ -2297,7 +2370,7 @@ const styles = StyleSheet.create({
   resultStatText: {
     fontSize: 14,
     color: COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
   resultSub: {
     fontSize: 14,
@@ -2312,13 +2385,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
-  progressText: { fontSize: 12, color: COLORS.text3, fontWeight: '500' },
+  progressText: { fontSize: 12, color: COLORS.text3, fontFamily: FONTS.medium },
   advanceBtn: { marginTop: 20, width: '100%' },
 
   // ── Voting ────────────────────────────────────────────────────────────────
   votingTitle: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     textAlign: 'center',
   },
@@ -2360,7 +2433,7 @@ const styles = StyleSheet.create({
   voteRowName: {
     flex: 1,
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
   },
   voteRowNameFinals: { fontSize: 20 },
@@ -2388,7 +2461,7 @@ const styles = StyleSheet.create({
   voteCheckmark: {
     fontSize: 13,
     color: '#fff',
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
   },
 
   // ── Tiebreaker ────────────────────────────────────────────────────────────
@@ -2404,20 +2477,20 @@ const styles = StyleSheet.create({
   },
   tiebreakerTitle: {
     fontSize: 26,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.warning,
     letterSpacing: 1,
   },
   tiebreakerSubtitle: {
     fontSize: 14,
     color: COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
 
   // ── Winner ceremony ───────────────────────────────────────────────────────
   winnerHeadline: {
     fontSize: 30,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     textAlign: 'center',
     letterSpacing: -0.5,
@@ -2448,7 +2521,7 @@ const styles = StyleSheet.create({
   winnerMedal: { fontSize: 44 },
   winnerName: {
     fontSize: 28,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.accentHi,
     textAlign: 'center',
   },
@@ -2458,7 +2531,7 @@ const styles = StyleSheet.create({
   // ── Result table ──────────────────────────────────────────────────────────
   sectionLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text3,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -2479,7 +2552,7 @@ const styles = StyleSheet.create({
   resultTableName: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text,
   },
   resultTableStats: {
@@ -2489,7 +2562,7 @@ const styles = StyleSheet.create({
   },
   resultTableOutcome: {
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 1,
   },
 
@@ -2536,7 +2609,7 @@ const styles = StyleSheet.create({
   },
   neutralBtnText: {
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: '#fff',
     letterSpacing: 1.5,
   },
@@ -2546,7 +2619,7 @@ const styles = StyleSheet.create({
   waitEmoji: { fontSize: 52 },
   waitTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
     textAlign: 'center',
   },

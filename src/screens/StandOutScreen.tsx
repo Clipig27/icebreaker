@@ -18,7 +18,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import ScoreDisplay from '../components/ScoreDisplay';
 import CountdownTimer from '../components/CountdownTimer';
-import { COLORS, RADIUS } from '../constants/theme';
+import { COLORS, RADIUS, FONTS } from '../constants/theme';
 import {
   pickStandOutPrompt,
   normalizeAnswer,
@@ -29,6 +29,9 @@ import {
 import { StandOutPrompt } from '../constants/gamePrompts';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import GameIntro from '../components/GameIntro';
+import PromptCard from '../components/PromptCard';
+import PhaseTransition from '../components/PhaseTransition';
+
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'StandOut'>;
@@ -92,6 +95,7 @@ export default function StandOutScreen({ navigation }: Props) {
   useEffect(() => { gsRef.current = gs; }, [gs]);
 
   // headerLeft (Leave button) is set globally in App.tsx screenOptions
+
 
   // Setup timeout — if no usable gameState within 8 s, socket is likely down
   const [setupTimedOut, setSetupTimedOut] = useState(false);
@@ -302,6 +306,8 @@ export default function StandOutScreen({ navigation }: Props) {
   if (!gs || !gs.currentPrompt) {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey="loading">
+
         <View style={styles.centered}>
           {setupTimedOut ? (
             <>
@@ -314,6 +320,8 @@ export default function StandOutScreen({ navigation }: Props) {
             <Text style={styles.waitTitle}>Setting up...</Text>
           )}
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -330,6 +338,8 @@ export default function StandOutScreen({ navigation }: Props) {
     };
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.waitTitle}>Stand Out</Text>
           <Text style={styles.waitSub}>
@@ -339,6 +349,8 @@ export default function StandOutScreen({ navigation }: Props) {
             <PrimaryButton key={t} title={`Race to ${t}`} onPress={() => handleSelectTarget(t)} />
           ))}
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -349,6 +361,8 @@ export default function StandOutScreen({ navigation }: Props) {
   if (gs.phase === 'game-over') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.gameOverEmoji}>🏆</Text>
           <Text style={styles.gameOverTitle}>{gs.winnerName} wins!</Text>
@@ -367,6 +381,8 @@ export default function StandOutScreen({ navigation }: Props) {
             )}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -375,14 +391,14 @@ export default function StandOutScreen({ navigation }: Props) {
   if (gs.phase === 'prompt') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.centeredContainer}>
           <View style={styles.roundBadge}>
             <Text style={styles.roundBadgeText}>ROUND {gs.roundNumber}</Text>
           </View>
           <Text style={styles.promptLabel}>Stand out from the crowd</Text>
-          <View style={styles.promptBox}>
-            <Text style={styles.promptText}>{gs.currentPrompt?.text}</Text>
-          </View>
+          <PromptCard text={gs.currentPrompt.text} accentColor="#F59E0B" />
           <Text style={styles.timerInstruction}>Think of a unique answer!</Text>
           <CountdownTimer
             seconds={5}
@@ -396,6 +412,8 @@ export default function StandOutScreen({ navigation }: Props) {
           />
           <Text style={styles.difficultyTag}>{(gs.currentPrompt?.difficulty ?? '').toUpperCase()}</Text>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -408,23 +426,27 @@ export default function StandOutScreen({ navigation }: Props) {
     if (iHaveSubmitted) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+  
           <View style={styles.centeredContainer}>
             <Text style={styles.waitEmoji}>✅</Text>
             <Text style={styles.waitTitle}>Answer locked in!</Text>
             <Text style={styles.waitSub}>{answered} / {total} players answered</Text>
             <EnteringTimer secondsLeft={enteringSecondsLeft} />
           </View>
+  
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.centeredContainer}>
-            <View style={styles.promptBox}>
-              <Text style={styles.promptText}>{gs.currentPrompt?.text}</Text>
-            </View>
+            <PromptCard text={gs.currentPrompt.text} accentColor="#F59E0B" />
             <Text style={styles.enterInstruction}>Your answer (keep it secret):</Text>
             <TextInput
               style={styles.textInput}
@@ -462,6 +484,8 @@ export default function StandOutScreen({ navigation }: Props) {
           </View>
         </KeyboardAvoidingView>
         <KeyboardDoneBar />
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -492,6 +516,8 @@ export default function StandOutScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <PhaseTransition phaseKey={gs.phase}>
+
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.revealTitle}>Round {gs.roundNumber} results</Text>
         <View style={styles.promptQuoteBox}>
@@ -590,6 +616,8 @@ export default function StandOutScreen({ navigation }: Props) {
           )}
         </View>
       </ScrollView>
+
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -708,11 +736,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   waitEmoji: { fontSize: 52 },
-  waitTitle: { fontSize: 22, fontWeight: '700', color: COLORS.text, textAlign: 'center' },
+  waitTitle: { fontSize: 22, fontFamily: FONTS.bold, color: COLORS.text, textAlign: 'center' },
   waitSub: { fontSize: 14, color: COLORS.text2, textAlign: 'center', lineHeight: 20 },
   sectionLabel: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -727,7 +755,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 14,
   },
-  roundBadgeText: { fontSize: 12, fontWeight: '700', color: COLORS.text2, letterSpacing: 1.5 },
+  roundBadgeText: { fontSize: 12, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 1.5 },
   promptLabel: { fontSize: 14, color: COLORS.text2, marginTop: 4 },
   promptBox: {
     backgroundColor: COLORS.surface,
@@ -741,14 +769,14 @@ const styles = StyleSheet.create({
   },
   promptText: {
     fontSize: 26,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     textAlign: 'center',
     letterSpacing: -0.4,
     lineHeight: 34,
   },
   timerInstruction: { fontSize: 14, color: COLORS.text2 },
-  difficultyTag: { fontSize: 10, fontWeight: '700', color: COLORS.text3, letterSpacing: 2 },
+  difficultyTag: { fontSize: 10, fontFamily: FONTS.bold, color: COLORS.text3, letterSpacing: 2 },
   enterInstruction: { fontSize: 14, color: COLORS.text2, alignSelf: 'flex-start', width: '100%' },
   textInput: {
     width: '100%',
@@ -759,15 +787,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
   },
   playerProgress: { fontSize: 13, color: COLORS.text3, marginTop: 8 },
-  enteringTimerNum: { fontSize: 80, fontWeight: '900', letterSpacing: -3 },
-  enteringTimerLabel: { fontSize: 12, color: COLORS.text3, fontWeight: '500', marginTop: -8 },
-  revealTitle: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: COLORS.text },
+  enteringTimerNum: { fontSize: 80, fontFamily: FONTS.extrabold, letterSpacing: -3 },
+  enteringTimerLabel: { fontSize: 12, color: COLORS.text3, fontFamily: FONTS.medium, marginTop: -8 },
+  revealTitle: { fontSize: 28, fontFamily: FONTS.extrabold, letterSpacing: -0.5, color: COLORS.text },
   promptQuoteBox: { borderLeftWidth: 2, borderLeftColor: COLORS.text3, paddingLeft: 12 },
-  promptQuoteText: { fontSize: 15, fontWeight: '500', color: COLORS.text2, lineHeight: 22 },
+  promptQuoteText: { fontSize: 15, fontFamily: FONTS.medium, color: COLORS.text2, lineHeight: 22 },
   answersBlock: { gap: 4 },
   answerRow: {
     flexDirection: 'row',
@@ -781,13 +809,13 @@ const styles = StyleSheet.create({
   answerRowDup: { backgroundColor: '#1d0710', borderColor: COLORS.danger },
   answerRowInvalidated: { backgroundColor: COLORS.surface2, borderColor: COLORS.border },
   answerLeft: { flex: 1, gap: 2 },
-  answerName: { fontSize: 12, fontWeight: '600', color: COLORS.text2 },
-  answerText: { fontSize: 18, fontWeight: '800' },
+  answerName: { fontSize: 12, fontFamily: FONTS.semibold, color: COLORS.text2 },
+  answerText: { fontSize: 18, fontFamily: FONTS.extrabold },
   strikethrough: { textDecorationLine: 'line-through' },
   deltaCol: { alignItems: 'flex-end', gap: 2 },
-  deltaNum: { fontSize: 20, fontWeight: '900' },
-  dupTag: { fontSize: 10, color: COLORS.danger, fontWeight: '600' },
-  invalidatedTag: { fontSize: 11, color: COLORS.text3, fontWeight: '600' },
+  deltaNum: { fontSize: 20, fontFamily: FONTS.extrabold },
+  dupTag: { fontSize: 10, color: COLORS.danger, fontFamily: FONTS.semibold },
+  invalidatedTag: { fontSize: 11, color: COLORS.text3, fontFamily: FONTS.semibold },
   // Challenge UI
   challengeBtn: {
     alignSelf: 'flex-start',
@@ -799,7 +827,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  challengeBtnText: { fontSize: 12, color: COLORS.text3, fontWeight: '600' },
+  challengeBtnText: { fontSize: 12, color: COLORS.text3, fontFamily: FONTS.semibold },
   challengePending: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
@@ -811,7 +839,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 8,
   },
-  challengePendingLabel: { fontSize: 13, color: COLORS.text2, fontWeight: '500' },
+  challengePendingLabel: { fontSize: 13, color: COLORS.text2, fontFamily: FONTS.medium },
   voteRow: { flexDirection: 'row', gap: 8 },
   voteBtn: {
     flex: 1,
@@ -821,7 +849,7 @@ const styles = StyleSheet.create({
   },
   voteBtnApprove: { backgroundColor: '#071d0f', borderWidth: 1, borderColor: COLORS.success },
   voteBtnReject: { backgroundColor: '#1d0710', borderWidth: 1, borderColor: COLORS.danger },
-  voteBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  voteBtnText: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text },
   votedLabel: { fontSize: 12, color: COLORS.text3 },
   challengeResolved: {
     marginTop: 4,
@@ -840,14 +868,14 @@ const styles = StyleSheet.create({
   },
   raceLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
     marginBottom: 4,
   },
   raceRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  raceName: { fontSize: 13, fontWeight: '600', color: COLORS.text, width: 70 },
+  raceName: { fontSize: 13, fontFamily: FONTS.semibold, color: COLORS.text, width: 70 },
   raceBarTrack: {
     flex: 1,
     height: 8,
@@ -856,8 +884,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   raceBarFill: { height: '100%', borderRadius: RADIUS.full },
-  raceScore: { fontSize: 13, fontWeight: '700', color: COLORS.text, width: 30, textAlign: 'right' },
+  raceScore: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text, width: 30, textAlign: 'right' },
   gameOverEmoji: { fontSize: 64, textAlign: 'center' },
-  gameOverTitle: { fontSize: 36, fontWeight: '900', color: COLORS.text, letterSpacing: -1, textAlign: 'center' },
+  gameOverTitle: { fontSize: 36, fontFamily: FONTS.extrabold, color: COLORS.text, letterSpacing: -1, textAlign: 'center' },
   gameOverSub: { fontSize: 14, color: COLORS.text2, textAlign: 'center' },
 });

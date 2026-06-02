@@ -2,7 +2,7 @@ import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { navigateTo } from '../navigation/navigationRef';
 import { useNotifications } from '../context/NotificationsContext';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 
 /**
  * Bell icon with unread-count badge.
@@ -49,7 +49,7 @@ const s = StyleSheet.create({
   badgeText: {
     color:      '#fff',
     fontSize:   9,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     lineHeight: 16,
   },
 });

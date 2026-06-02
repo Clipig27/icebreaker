@@ -14,9 +14,10 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { getFriends, type Friend } from '../storage/friendStorage';
 import { sendGameInvite } from '../storage/inviteStorage';
-import { COLORS, RADIUS, SPACING } from '../constants/theme';
+import { COLORS, FONTS, RADIUS, SPACING, SHADOWS } from '../constants/theme';
 
 type Props = {
   visible: boolean;
@@ -56,7 +57,7 @@ export default function FriendsInviteModal({ visible, roomCode, onClose }: Props
   return (
     <Modal transparent animationType="slide" visible={visible} statusBarTranslucent onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity activeOpacity={1} style={s.sheet}>
+        <BlurView intensity={60} tint="dark" style={s.sheet}>
           <View style={s.handle} />
           <Text style={s.title}>Invite Friends</Text>
           <Text style={s.subtitle}>Room code: <Text style={s.code}>{roomCode}</Text></Text>
@@ -100,7 +101,7 @@ export default function FriendsInviteModal({ visible, roomCode, onClose }: Props
           <TouchableOpacity style={s.closeBtn} onPress={onClose}>
             <Text style={s.closeBtnText}>Done</Text>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </BlurView>
       </TouchableOpacity>
     </Modal>
   );
@@ -109,16 +110,19 @@ export default function FriendsInviteModal({ visible, roomCode, onClose }: Props
 const s = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: 'rgba(22, 22, 28, 0.85)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: SPACING.lg,
     paddingBottom: 40,
     maxHeight: '70%',
+    overflow: 'hidden',
+    borderTopWidth: 1,
+    borderColor: COLORS.borderHi,
   },
   handle: {
     width: 40,
@@ -130,7 +134,7 @@ const s = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     marginBottom: 4,
   },
@@ -141,7 +145,7 @@ const s = StyleSheet.create({
   },
   code: {
     color: COLORS.accent,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 2,
   },
   list: {
@@ -173,7 +177,7 @@ const s = StyleSheet.create({
   friendName: {
     fontSize: 16,
     color: COLORS.text,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
   inviteBtn: {
     backgroundColor: COLORS.accent,
@@ -191,7 +195,7 @@ const s = StyleSheet.create({
   inviteBtnText: {
     color: '#fff',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
   inviteBtnTextSent: {
     color: COLORS.text2,
@@ -213,6 +217,6 @@ const s = StyleSheet.create({
   closeBtnText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
 });

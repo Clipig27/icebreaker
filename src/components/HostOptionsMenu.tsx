@@ -11,7 +11,7 @@ import {
   Pressable,
   Alert,
 } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { useGame } from '../context/GameContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -186,7 +186,7 @@ const s = StyleSheet.create({
   triggerText: {
     color: COLORS.accentHi,
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 1.5,
   },
 
@@ -215,14 +215,14 @@ const s = StyleSheet.create({
   },
   codeLabel: {
     fontSize: 9,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
   code: {
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.accentHi,
     letterSpacing: 4,
   },
@@ -236,7 +236,7 @@ const s = StyleSheet.create({
 
   sectionLabel: {
     fontSize: 9,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
@@ -259,7 +259,7 @@ const s = StyleSheet.create({
   },
   hostBadgeText: {
     fontSize: 8,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.accentHi,
     letterSpacing: 0.5,
   },
@@ -276,13 +276,13 @@ const s = StyleSheet.create({
   kickText: {
     color: COLORS.danger,
     fontSize: 9,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     lineHeight: 12,
   },
   playerName: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text,
   },
 
@@ -299,7 +299,7 @@ const s = StyleSheet.create({
   actionIcon: { fontSize: 14 },
   actionText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text,
   },
   dangerText: {

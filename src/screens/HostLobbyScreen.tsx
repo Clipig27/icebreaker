@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useGame } from '../context/GameContext';
-import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
 import FriendsInviteModal from '../components/FriendsInviteModal';
 
 const CREATE_TIMEOUT_MS = 10_000;
@@ -190,7 +190,7 @@ export default function HostLobbyScreen({ navigation }: any) {
         <SafeAreaView style={s.safe}>
           <View style={s.centerWrap}>
             <ActivityIndicator color={COLORS.accent} size="large" />
-            <Text style={s.subtitle} style={{ marginTop: 20 }}>
+            <Text style={[s.subtitle, { marginTop: 20 }]}>
               {isConnected ? 'Creating room…' : 'Connecting…'}
             </Text>
             <Pressable style={s.ghostBtn} onPress={() => navigation.goBack()}>
@@ -305,7 +305,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
   },
-  title:    { fontSize: 30, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
+  title:    { fontSize: 30, fontFamily: FONTS.extrabold, color: COLORS.text, textAlign: 'center' },
   subtitle: { fontSize: 14, color: COLORS.text2, textAlign: 'center', lineHeight: 20 },
   inputWrap: {
     width: '100%',
@@ -336,7 +336,7 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
   },
-  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  primaryBtnText: { color: '#fff', fontSize: 16, fontFamily: FONTS.bold },
 
   secondaryBtn: {
     width: '100%',
@@ -350,17 +350,17 @@ const s = StyleSheet.create({
     paddingVertical: 14,
     marginTop: 10,
   },
-  secondaryBtnText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  secondaryBtnText: { color: COLORS.text, fontSize: 15, fontFamily: FONTS.semibold },
 
   ghostBtn: { marginTop: 16, paddingVertical: 10 },
   ghostBtnText: { color: COLORS.text2, fontSize: 14, textDecorationLine: 'underline', textAlign: 'center' },
 
   dangerBtn: { marginTop: 16, paddingVertical: 10, alignItems: 'center' },
-  dangerBtnText: { color: COLORS.danger, fontSize: 14, fontWeight: '600' },
+  dangerBtnText: { color: COLORS.danger, fontSize: 14, fontFamily: FONTS.semibold },
 
   // Center states (loading / error)
   centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  errorTitle: { fontSize: 22, fontWeight: '700', color: COLORS.danger, textAlign: 'center', marginTop: 12 },
+  errorTitle: { fontSize: 22, fontFamily: FONTS.bold, color: COLORS.danger, textAlign: 'center', marginTop: 12 },
 
   // Room code card
   codeCard: {
@@ -388,14 +388,14 @@ const s = StyleSheet.create({
   },
   codeLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     letterSpacing: 2.5,
     color: COLORS.text2,
     marginBottom: 8,
   },
   code: {
     fontSize: 60,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.accent,
     letterSpacing: 10,
   },
@@ -409,14 +409,14 @@ const s = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase' },
+  sectionLabel: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase' },
   playerCount: {
     backgroundColor: COLORS.accent + '22',
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  playerCountText: { color: COLORS.accent, fontWeight: '700', fontSize: 13 },
+  playerCountText: { color: COLORS.accent, fontFamily: FONTS.bold, fontSize: 13 },
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -425,8 +425,13 @@ const s = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderHi,
     gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   playerAvatar: {
     width: 36,
@@ -437,8 +442,8 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   playerAvatarHost: { backgroundColor: COLORS.accent + '22', borderWidth: 1, borderColor: COLORS.accent + '55' },
-  playerAvatarText: { color: COLORS.text, fontWeight: '700', fontSize: 14 },
-  playerName: { color: COLORS.text, fontSize: 15, flex: 1, fontWeight: '500' },
+  playerAvatarText: { color: COLORS.text, fontFamily: FONTS.bold, fontSize: 14 },
+  playerName: { color: COLORS.text, fontSize: 15, flex: 1, fontFamily: FONTS.medium },
   hostBadge: {
     backgroundColor: COLORS.accent + '1A',
     borderRadius: 6,
@@ -447,7 +452,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.accent + '40',
   },
-  hostBadgeText: { color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  hostBadgeText: { color: COLORS.accent, fontSize: 10, fontFamily: FONTS.extrabold, letterSpacing: 1 },
   waitingHint: { color: COLORS.text2, fontSize: 13, textAlign: 'center', marginTop: 8, fontStyle: 'italic' },
 
   actions: { width: '100%', paddingBottom: 12, paddingTop: 4 },

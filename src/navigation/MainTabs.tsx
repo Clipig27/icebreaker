@@ -1,7 +1,9 @@
-import React, { useRef, useEffect } from 'react';
-import { Pressable, Animated } from 'react-native';
+import React, { useEffect } from 'react';
+import { Pressable } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen        from '../screens/HomeScreen';
@@ -28,26 +30,26 @@ const ICONS: Record<string, [React.ComponentProps<typeof Ionicons>['name'], Reac
 
 // Icon that bounces + lifts when the tab becomes focused
 function AnimatedTabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const scale     = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
+  const scale     = useSharedValue(1);
+  const translateY = useSharedValue(0);
 
   useEffect(() => {
     if (focused) {
-      Animated.parallel([
-        Animated.spring(scale,      { toValue: 1.25, useNativeDriver: true, speed: 30, bounciness: 14 }),
-        Animated.spring(translateY, { toValue: -3,   useNativeDriver: true, speed: 30, bounciness: 10 }),
-      ]).start();
+      scale.value     = withSpring(1.25, { damping: 8, stiffness: 180 });
+      translateY.value = withSpring(-3, { damping: 10, stiffness: 180 });
     } else {
-      Animated.parallel([
-        Animated.spring(scale,      { toValue: 1, useNativeDriver: true, speed: 25, bounciness: 6 }),
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, speed: 25, bounciness: 6 }),
-      ]).start();
+      scale.value     = withSpring(1, { damping: 14, stiffness: 200 });
+      translateY.value = withSpring(0, { damping: 14, stiffness: 200 });
     }
   }, [focused]);
 
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }, { translateY: translateY.value }],
+  }));
+
   const [activeIcon, inactiveIcon] = ICONS[label];
   return (
-    <Animated.View style={{ transform: [{ scale }, { translateY }] }}>
+    <Animated.View style={animatedStyle}>
       <Ionicons
         name={focused ? activeIcon : inactiveIcon}
         size={22}
@@ -59,19 +61,25 @@ function AnimatedTabIcon({ label, focused }: { label: string; focused: boolean }
 
 // Tab button that squishes on press then bounces back
 function AnimatedTabButton({ onPress, onLongPress, children, style }: any) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    flex: 1,
+    transform: [{ scale: scale.value }],
+  }));
 
   const handlePress = () => {
-    Animated.sequence([
-      Animated.spring(scale, { toValue: 0.82, useNativeDriver: true, speed: 80, bounciness: 0 }),
-      Animated.spring(scale, { toValue: 1,    useNativeDriver: true, speed: 18, bounciness: 20 }),
-    ]).start();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    scale.value = withSequence(
+      withSpring(0.82, { damping: 20, stiffness: 500 }),
+      withSpring(1,    { damping: 6,  stiffness: 200 }),
+    );
     onPress?.();
   };
 
   return (
     <Pressable style={[style, { flex: 1 }]} onPress={handlePress} onLongPress={onLongPress}>
-      <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
+      <Animated.View style={animatedStyle}>
         {children}
       </Animated.View>
     </Pressable>
@@ -97,7 +105,7 @@ export default function MainTabs() {
         },
         tabBarLabelStyle: {
           fontSize:   11,
-          fontWeight: '600',
+          fontFamily: FONTS.semibold,
           marginBottom: 2,
         },
 
@@ -105,7 +113,7 @@ export default function MainTabs() {
         headerTitle:         route.name,
         headerTitleStyle: {
           fontSize:   18,
-          fontWeight: '800',
+          fontFamily: FONTS.extrabold,
           color:      COLORS.text,
         },
         headerStyle: {

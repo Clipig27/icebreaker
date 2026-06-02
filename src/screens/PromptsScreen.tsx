@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { PotLuckQuestion } from '../prompts/potLuck';
 import { loadQuestions, saveQuestions, resetQuestions } from '../storage/promptsStorage';
 
@@ -34,7 +34,7 @@ function DiffBadge({ diff }: { diff: Difficulty }) {
 }
 const badge = StyleSheet.create({
   wrap: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start' },
-  text: { fontSize: 11, fontWeight: '700' },
+  text: { fontSize: 11, fontFamily: FONTS.bold },
 });
 
 // ── QuestionRow ──────────────────────────────────────────────────────────────
@@ -116,14 +116,14 @@ const row = StyleSheet.create({
     borderRadius: 6, backgroundColor: COLORS.accent + '22',
     borderWidth: 1, borderColor: COLORS.accent + '55',
   },
-  customText: { fontSize: 10, fontWeight: '700', color: COLORS.accent },
-  question: { fontSize: 15, fontWeight: '600', color: COLORS.text, lineHeight: 21 },
+  customText: { fontSize: 10, fontFamily: FONTS.bold, color: COLORS.accent },
+  question: { fontSize: 15, fontFamily: FONTS.semibold, color: COLORS.text, lineHeight: 21 },
   choices: { gap: 3 },
   choice: { fontSize: 13, color: COLORS.text2 },
-  correctChoice: { color: '#22C55E', fontWeight: '700' },
+  correctChoice: { color: '#22C55E', fontFamily: FONTS.bold },
   actions: { flexDirection: 'row', gap: 16, paddingTop: 2 },
   btn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  btnText: { fontSize: 13, fontWeight: '600' },
+  btnText: { fontSize: 13, fontFamily: FONTS.semibold },
 });
 
 // ── EditModal ────────────────────────────────────────────────────────────────
@@ -257,14 +257,14 @@ const em = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 16,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  title: { fontSize: 20, fontWeight: '800', color: COLORS.text },
+  title: { fontSize: 20, fontFamily: FONTS.extrabold, color: COLORS.text },
   closeBtn: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: COLORS.surface2, alignItems: 'center', justifyContent: 'center',
   },
   body: { padding: 20, gap: 12 },
   label: {
-    fontSize: 10, fontWeight: '700', color: COLORS.text3,
+    fontSize: 10, fontFamily: FONTS.bold, color: COLORS.text3,
     textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: -4,
   },
   diffRow: { flexDirection: 'row', gap: 8 },
@@ -273,7 +273,7 @@ const em = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
     alignItems: 'center',
   },
-  diffBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.text2 },
+  diffBtnText: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2 },
   input: {
     backgroundColor: COLORS.surface2, borderRadius: 10, borderWidth: 1,
     borderColor: COLORS.border, padding: 12,
@@ -299,7 +299,7 @@ const em = StyleSheet.create({
     backgroundColor: COLORS.accent, borderRadius: 14,
     paddingVertical: 16, alignItems: 'center',
   },
-  saveBtnText: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  saveBtnText: { fontSize: 16, fontFamily: FONTS.extrabold, color: '#fff' },
 });
 
 // ── SectionHeader ────────────────────────────────────────────────────────────
@@ -322,9 +322,9 @@ const sh = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  title: { fontSize: 13, fontWeight: '800', color: COLORS.text, flex: 1 },
+  title: { fontSize: 13, fontFamily: FONTS.extrabold, color: COLORS.text, flex: 1 },
   countBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
-  countText: { fontSize: 12, fontWeight: '700' },
+  countText: { fontSize: 12, fontFamily: FONTS.bold },
 });
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
@@ -491,21 +491,21 @@ const s = StyleSheet.create({
     flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 1,
     borderColor: COLORS.border, alignItems: 'center',
   },
-  filterText: { fontSize: 12, fontWeight: '700', color: COLORS.text2 },
+  filterText: { fontSize: 12, fontFamily: FONTS.bold, color: COLORS.text2 },
   actionRow: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'flex-end' },
   resetBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  resetText: { fontSize: 13, fontWeight: '600', color: COLORS.text2 },
+  resetText: { fontSize: 13, fontFamily: FONTS.semibold, color: COLORS.text2 },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: COLORS.accent, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
   },
-  addText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  addText: { fontSize: 13, fontFamily: FONTS.bold, color: '#fff' },
   count: {
-    fontSize: 12, color: COLORS.text3, fontWeight: '500',
+    fontSize: 12, color: COLORS.text3, fontFamily: FONTS.medium,
     paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4,
   },
   list: { paddingBottom: 40 },

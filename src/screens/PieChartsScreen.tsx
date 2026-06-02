@@ -19,12 +19,14 @@ import { useGame } from '../context/GameContext';
 import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
-import { COLORS, RADIUS } from '../constants/theme';
+import { COLORS, RADIUS, FONTS } from '../constants/theme';
 import { buildPieChartSession, PIE_CHARTS_DEFAULT_COUNT } from '../utils/promptUtils';
 import { PieChartPrompt } from '../constants/gamePrompts';
 import { Player } from '../types';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import GameIntro from '../components/GameIntro';
+import PromptCard from '../components/PromptCard';
+import PhaseTransition from '../components/PhaseTransition';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PieCharts'>;
@@ -302,7 +304,7 @@ const r = StyleSheet.create({
     paddingHorizontal: 14,
     alignSelf: 'flex-start',
   },
-  badgeText: { fontSize: 11, fontWeight: '800', color: COLORS.accentHi, letterSpacing: 2 },
+  badgeText: { fontSize: 11, fontFamily: FONTS.extrabold, color: COLORS.accentHi, letterSpacing: 2 },
   questionWrap: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
@@ -312,8 +314,8 @@ const r = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  setupLine:    { fontSize: 14, fontWeight: '500', color: COLORS.text2, textAlign: 'center' },
-  questionText: { fontSize: 20, fontWeight: '800', color: COLORS.text,  textAlign: 'center', lineHeight: 28, letterSpacing: -0.3 },
+  setupLine:    { fontSize: 14, fontFamily: FONTS.medium, color: COLORS.text2, textAlign: 'center' },
+  questionText: { fontSize: 20, fontFamily: FONTS.extrabold, color: COLORS.text,  textAlign: 'center', lineHeight: 28, letterSpacing: -0.3 },
   dotsRow:      { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
   dot: {
     width: 10, height: 10, borderRadius: 5,
@@ -325,23 +327,23 @@ const r = StyleSheet.create({
     paddingVertical: 8,
   },
   tieLabel: {
-    fontSize: 13, fontWeight: '900', color: COLORS.warning,
+    fontSize: 13, fontFamily: FONTS.extrabold, color: COLORS.warning,
     letterSpacing: 3, marginBottom: 4,
   },
   winnerName: {
-    fontSize: 42, fontWeight: '900',
+    fontSize: 42, fontFamily: FONTS.extrabold,
     letterSpacing: -1,
     textShadowColor: 'rgba(124,92,246,0.5)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 16,
   },
-  votesSub: { fontSize: 14, color: COLORS.text2, fontWeight: '500' },
+  votesSub: { fontSize: 14, color: COLORS.text2, fontFamily: FONTS.medium },
   chartWrap: { alignItems: 'center', gap: 20 },
   legend: { width: '100%', gap: 6 },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   legendDot:   { width: 10, height: 10, borderRadius: 5 },
-  legendName:  { flex: 1, fontSize: 14, fontWeight: '700', color: COLORS.text },
-  legendPct:   { fontSize: 13, fontWeight: '700', color: COLORS.text, width: 38, textAlign: 'right' },
+  legendName:  { flex: 1, fontSize: 14, fontFamily: FONTS.bold, color: COLORS.text },
+  legendPct:   { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text, width: 38, textAlign: 'right' },
   legendCount: { fontSize: 12, color: COLORS.text2, width: 28, textAlign: 'right' },
   controls:  { gap: 10, marginTop: 4, alignItems: 'center' },
   waitText:  { fontSize: 14, color: COLORS.text2, textAlign: 'center' },
@@ -490,6 +492,7 @@ export default function PieChartsScreen({ navigation }: Props) {
   if (!gs?.phase) {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey="loading">
         <View style={styles.centered}>
           {setupTimedOut ? (
             <>
@@ -502,6 +505,7 @@ export default function PieChartsScreen({ navigation }: Props) {
             <Text style={styles.waitTitle}>Setting up...</Text>
           )}
         </View>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -511,16 +515,19 @@ export default function PieChartsScreen({ navigation }: Props) {
     if (!isHost) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
           <View style={styles.centered}>
             <Text style={styles.waitEmoji}>🥧</Text>
             <Text style={styles.waitTitle}>Pie Charts</Text>
             <Text style={styles.waitSub}>Host is setting up...</Text>
           </View>
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.scroll}>
             <Text style={styles.title}>Pie Charts</Text>
@@ -586,6 +593,7 @@ export default function PieChartsScreen({ navigation }: Props) {
           </ScrollView>
         </KeyboardAvoidingView>
         <KeyboardDoneBar />
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -598,13 +606,12 @@ export default function PieChartsScreen({ navigation }: Props) {
     const qTotal = (gs.questions ?? []).length;
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <View style={styles.centeredContainer}>
           <View style={styles.questionBadge}>
             <Text style={styles.questionBadgeText}>QUESTION {qNum} / {qTotal}</Text>
           </View>
-          <View style={styles.questionBox}>
-            <Text style={styles.questionText}>{currentQuestion?.text}</Text>
-          </View>
+          <PromptCard text={currentQuestion?.text ?? ''} size="md" accentColor="#10B981" />
           <Text style={styles.questionSub}>Everyone votes on their own phone — including yourself!</Text>
           {isHost ? (
             <PrimaryButton title="Start Voting →" onPress={handleStartVoting} style={{ marginTop: 8 }} />
@@ -612,6 +619,7 @@ export default function PieChartsScreen({ navigation }: Props) {
             <Text style={styles.waitSub}>Waiting for host to open voting...</Text>
           )}
         </View>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -624,24 +632,25 @@ export default function PieChartsScreen({ navigation }: Props) {
     if (iHaveVoted) {
       return (
         <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
           <View style={styles.centered}>
             <Text style={styles.waitEmoji}>✅</Text>
             <Text style={styles.waitTitle}>You voted!</Text>
             <Text style={styles.waitSub}>{votesIn} / {allPlayers.length} players have voted</Text>
           </View>
+          </PhaseTransition>
         </SafeAreaView>
       );
     }
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>🗳️  Vote now</Text>
           </View>
-          <View style={styles.questionBox}>
-            <Text style={styles.questionText}>{currentQuestion?.text}</Text>
-          </View>
+          <PromptCard text={currentQuestion?.text ?? ''} size="md" accentColor="#10B981" />
           <Text style={styles.sectionLabel}>Who are you voting for?</Text>
           {allPlayers.map(p => (
             <TouchableOpacity
@@ -658,6 +667,7 @@ export default function PieChartsScreen({ navigation }: Props) {
           ))}
           <Text style={styles.voteProgress}>{votesIn} / {allPlayers.length} voted</Text>
         </ScrollView>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -672,20 +682,22 @@ export default function PieChartsScreen({ navigation }: Props) {
     const isLast   = rIdx >= (gs.questions?.length ?? 1) - 1;
 
     return (
-      <RevealScreen
-        question={revQ}
-        players={allPlayers}
-        counts={counts}
-        colorFor={colorFor}
-        stage={rStage}
-        totalVotes={total}
-        questionNum={rIdx + 1}
-        totalQuestions={(gs.questions ?? []).length}
-        isHost={isHost}
-        onReveal={handleReveal}
-        onNext={handleNextReveal}
-        isLast={isLast}
-      />
+      <PhaseTransition phaseKey={gs.phase}>
+        <RevealScreen
+          question={revQ}
+          players={allPlayers}
+          counts={counts}
+          colorFor={colorFor}
+          stage={rStage}
+          totalVotes={total}
+          questionNum={rIdx + 1}
+          totalQuestions={(gs.questions ?? []).length}
+          isHost={isHost}
+          onReveal={handleReveal}
+          onNext={handleNextReveal}
+          isLast={isLast}
+        />
+      </PhaseTransition>
     );
   }
 
@@ -693,6 +705,7 @@ export default function PieChartsScreen({ navigation }: Props) {
   if (gs.phase === 'final-results') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.finalTitle}>All Done!</Text>
           <Text style={styles.finalSub}>{(gs.questions ?? []).length} questions · {allPlayers.length} voters</Text>
@@ -726,6 +739,7 @@ export default function PieChartsScreen({ navigation }: Props) {
             )}
           </View>
         </ScrollView>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -745,15 +759,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24, gap: 12,
   },
   waitEmoji: { fontSize: 52 },
-  waitTitle: { fontSize: 22, fontWeight: '700', color: COLORS.text, textAlign: 'center' },
+  waitTitle: { fontSize: 22, fontFamily: FONTS.bold, color: COLORS.text, textAlign: 'center' },
   waitSub:   { fontSize: 14, color: COLORS.text2, textAlign: 'center', lineHeight: 20 },
   sectionLabel: {
-    fontSize: 12, fontWeight: '700', color: COLORS.text2,
+    fontSize: 12, fontFamily: FONTS.bold, color: COLORS.text2,
     textTransform: 'uppercase', letterSpacing: 1.5,
   },
   divider: { height: 1, backgroundColor: COLORS.border },
   actions: { gap: 10, marginTop: 8, alignItems: 'center' },
-  title:   { fontSize: 30, fontWeight: '800', letterSpacing: -0.5, color: COLORS.text },
+  title:   { fontSize: 30, fontFamily: FONTS.extrabold, letterSpacing: -0.5, color: COLORS.text },
   subtitle: { fontSize: 14, color: COLORS.text2, lineHeight: 22 },
   customInputRow: { flexDirection: 'row', gap: 10 },
   customInput: {
@@ -764,7 +778,7 @@ const styles = StyleSheet.create({
   },
   addBtn:         { backgroundColor: COLORS.accent, borderRadius: RADIUS.md, paddingHorizontal: 16, justifyContent: 'center' },
   addBtnDisabled: { opacity: 0.4 },
-  addBtnText:     { color: COLORS.text, fontWeight: '700', fontSize: 14 },
+  addBtnText:     { color: COLORS.text, fontFamily: FONTS.bold, fontSize: 14 },
   customList:     { gap: 8 },
   customChip: {
     flexDirection: 'row', alignItems: 'center',
@@ -773,7 +787,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 10, gap: 8,
   },
   customChipText: { flex: 1, fontSize: 14, color: COLORS.text },
-  removeChip:     { fontSize: 14, color: COLORS.text2, fontWeight: '700' },
+  removeChip:     { fontSize: 14, color: COLORS.text2, fontFamily: FONTS.bold },
   infoBox:        { gap: 6 },
   infoText:       { fontSize: 14, color: COLORS.text2 },
   questionBadge: {
@@ -781,7 +795,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.borderHi,
     paddingVertical: 5, paddingHorizontal: 14, alignSelf: 'flex-start',
   },
-  questionBadgeText: { fontSize: 12, fontWeight: '700', color: COLORS.text2, letterSpacing: 1.5 },
+  questionBadgeText: { fontSize: 12, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 1.5 },
   questionBox: {
     backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
     borderWidth: 1, borderColor: COLORS.borderHi,
@@ -789,7 +803,7 @@ const styles = StyleSheet.create({
     width: '100%', alignItems: 'center',
   },
   questionText: {
-    fontSize: 22, fontWeight: '800', color: COLORS.text,
+    fontSize: 22, fontFamily: FONTS.extrabold, color: COLORS.text,
     textAlign: 'center', letterSpacing: -0.3, lineHeight: 30,
   },
   questionSub: { fontSize: 13, color: COLORS.text2, textAlign: 'center' },
@@ -798,27 +812,27 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.borderHi,
     paddingVertical: 6, paddingHorizontal: 14, alignSelf: 'flex-start',
   },
-  badgeText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  badgeText: { color: COLORS.text, fontSize: 13, fontFamily: FONTS.bold },
   playerVoteBtn: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.surface, borderRadius: RADIUS.md,
     borderWidth: 1, paddingHorizontal: 16, paddingVertical: 16, gap: 12,
   },
   playerColorDot: { width: 12, height: 12, borderRadius: RADIUS.full },
-  playerVoteName: { flex: 1, fontSize: 17, fontWeight: '700', color: COLORS.text },
+  playerVoteName: { flex: 1, fontSize: 17, fontFamily: FONTS.bold, color: COLORS.text },
   playerVoteArrow: { fontSize: 16, color: COLORS.text2 },
-  selfLabel: { fontSize: 11, color: COLORS.accentHi, fontWeight: '700', letterSpacing: 0.5 },
+  selfLabel: { fontSize: 11, color: COLORS.accentHi, fontFamily: FONTS.bold, letterSpacing: 0.5 },
   voteProgress: { fontSize: 13, color: COLORS.text3, textAlign: 'center' },
-  finalTitle: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: COLORS.text },
+  finalTitle: { fontSize: 28, fontFamily: FONTS.extrabold, letterSpacing: -0.5, color: COLORS.text },
   finalSub:   { fontSize: 14, color: COLORS.text2 },
   finalBlock: {
     backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
     borderWidth: 1, borderColor: COLORS.border,
     padding: 16, gap: 10, alignItems: 'center',
   },
-  finalQNum:  { fontSize: 11, fontWeight: '700', color: COLORS.text3, textTransform: 'uppercase', letterSpacing: 1.5, alignSelf: 'flex-start' },
-  finalQText: { fontSize: 15, fontWeight: '700', color: COLORS.text, lineHeight: 22, alignSelf: 'flex-start' },
+  finalQNum:  { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text3, textTransform: 'uppercase', letterSpacing: 1.5, alignSelf: 'flex-start' },
+  finalQText: { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text, lineHeight: 22, alignSelf: 'flex-start' },
   finalWinnersRow: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap', alignSelf: 'flex-start' },
-  finalWinner: { fontSize: 18, fontWeight: '800' },
+  finalWinner: { fontSize: 18, fontFamily: FONTS.extrabold },
   finalTie:   { fontSize: 12, color: COLORS.text2 },
 });

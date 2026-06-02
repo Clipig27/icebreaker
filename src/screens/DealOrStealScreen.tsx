@@ -17,8 +17,9 @@ import { useGame } from '../context/GameContext';
 import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
-import { COLORS, RADIUS } from '../constants/theme';
+import { COLORS, RADIUS, FONTS } from '../constants/theme';
 import GameIntro from '../components/GameIntro';
+import PhaseTransition from '../components/PhaseTransition';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1076,15 +1077,17 @@ export default function DealOrStealScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe}>
       {renderRulesModal()}
-      {gs.phase === 'setup' && (
-        isHost ? renderSetup() : renderWaitingSetup()
-      )}
-      {gs.phase === 'round-intro'   && renderRoundIntro()}
-      {gs.phase === 'discussion'    && renderDiscussion()}
-      {gs.phase === 'action'        && renderAction()}
-      {gs.phase === 'round-results' && renderRoundResults()}
-      {gs.phase === 'round-end'     && renderRoundEnd()}
-      {gs.phase === 'game-over'     && renderGameOver()}
+      <PhaseTransition phaseKey={gs.phase}>
+        {gs.phase === 'setup' && (
+          isHost ? renderSetup() : renderWaitingSetup()
+        )}
+        {gs.phase === 'round-intro'   && renderRoundIntro()}
+        {gs.phase === 'discussion'    && renderDiscussion()}
+        {gs.phase === 'action'        && renderAction()}
+        {gs.phase === 'round-results' && renderRoundResults()}
+        {gs.phase === 'round-end'     && renderRoundEnd()}
+        {gs.phase === 'game-over'     && renderGameOver()}
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -1118,14 +1121,14 @@ const styles = StyleSheet.create({
 
   // Waiting
   waitEmoji:  { fontSize: 52, textAlign: 'center' },
-  waitTitle:  { fontSize: 22, fontWeight: '700', color: COLORS.text, textAlign: 'center' },
+  waitTitle:  { fontSize: 22, fontFamily: FONTS.bold, color: COLORS.text, textAlign: 'center' },
   waitSub:    { fontSize: 14, color: COLORS.text2, textAlign: 'center', lineHeight: 20 },
   linkText:   { color: COLORS.text2, textDecorationLine: 'underline', fontSize: 14 },
 
   // Setup
   setupTitle: {
     fontSize: 30,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
     textAlign: 'center',
@@ -1148,8 +1151,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 80,
   },
-  setupOptionNum:   { fontSize: 36, fontWeight: '900', color: COLORS.text, letterSpacing: -1 },
-  setupOptionLabel: { fontSize: 12, color: COLORS.text2, fontWeight: '600', marginTop: 2 },
+  setupOptionNum:   { fontSize: 36, fontFamily: FONTS.extrabold, color: COLORS.text, letterSpacing: -1 },
+  setupOptionLabel: { fontSize: 12, color: COLORS.text2, fontFamily: FONTS.semibold, marginTop: 2 },
   rulesChip: {
     borderRadius: RADIUS.full,
     borderWidth: 1,
@@ -1158,7 +1161,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginTop: 4,
   },
-  rulesChipText: { fontSize: 13, color: COLORS.text2, fontWeight: '600' },
+  rulesChipText: { fontSize: 13, color: COLORS.text2, fontFamily: FONTS.semibold },
 
   // Round badge row
   roundBadgeRow: {
@@ -1176,7 +1179,7 @@ const styles = StyleSheet.create({
   },
   roundBadgeText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     letterSpacing: 1.5,
   },
@@ -1190,15 +1193,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: COLORS.surface2,
   },
-  helpBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.text2 },
+  helpBtnText: { fontSize: 14, fontFamily: FONTS.bold, color: COLORS.text2 },
 
   // Phase labels
-  phaseLabel: { fontSize: 26, fontWeight: '800', color: COLORS.text, letterSpacing: -0.4 },
+  phaseLabel: { fontSize: 26, fontFamily: FONTS.extrabold, color: COLORS.text, letterSpacing: -0.4 },
   phaseSub:   { fontSize: 14, color: COLORS.text2, lineHeight: 20 },
 
   sectionLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -1216,14 +1219,14 @@ const styles = StyleSheet.create({
   },
   firstSpeakerLabel: {
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.warning,
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
   firstSpeakerName: {
     fontSize: 28,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
     textAlign: 'center',
@@ -1255,16 +1258,16 @@ const styles = StyleSheet.create({
   },
   speakingOrderNum: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     width: 20,
   },
   speakingOrderNumFirst: { color: COLORS.warning },
-  speakingOrderName: { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.text },
+  speakingOrderName: { flex: 1, fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text },
   speakingOrderNameFirst: { color: COLORS.warning },
   speakingOrderTag: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.warning,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -1280,8 +1283,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  balanceLabel: { fontSize: 11, fontWeight: '700', color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
-  balanceValue: { fontSize: 42, fontWeight: '900', color: COLORS.text, letterSpacing: -1 },
+  balanceLabel: { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
+  balanceValue: { fontSize: 42, fontFamily: FONTS.extrabold, color: COLORS.text, letterSpacing: -1 },
   potLabel:     { fontSize: 12, color: COLORS.text3 },
 
   // Action options
@@ -1299,7 +1302,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
     backgroundColor: '#130e2a',
   },
-  actionOptionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  actionOptionTitle: { fontSize: 16, fontFamily: FONTS.bold, color: COLORS.text },
   actionOptionDesc:  { fontSize: 13, color: COLORS.text2, lineHeight: 18 },
   guesserProgress:   { fontSize: 12, color: COLORS.text3, textAlign: 'center', letterSpacing: 1 },
   forceText:         { fontSize: 13, color: COLORS.text3, textDecorationLine: 'underline' },
@@ -1328,8 +1331,8 @@ const styles = StyleSheet.create({
   },
   publicResultCell:    { alignItems: 'center', flex: 1, gap: 4 },
   publicResultDivider: { width: 1, height: 36, backgroundColor: COLORS.border },
-  publicResultNum:     { fontSize: 24, fontWeight: '900', color: COLORS.text },
-  publicResultLabel:   { fontSize: 10, color: COLORS.text2, textAlign: 'center', fontWeight: '600', lineHeight: 14 },
+  publicResultNum:     { fontSize: 24, fontFamily: FONTS.extrabold, color: COLORS.text },
+  publicResultLabel:   { fontSize: 10, color: COLORS.text2, textAlign: 'center', fontFamily: FONTS.semibold, lineHeight: 14 },
 
   // My result card
   myResultCard: {
@@ -1341,9 +1344,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  myResultLabel:   { fontSize: 11, fontWeight: '700', color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
-  myResultBalance: { fontSize: 38, fontWeight: '900', color: COLORS.text, letterSpacing: -1 },
-  myResultDelta:   { fontSize: 18, fontWeight: '700' },
+  myResultLabel:   { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
+  myResultBalance: { fontSize: 38, fontFamily: FONTS.extrabold, color: COLORS.text, letterSpacing: -1 },
+  myResultDelta:   { fontSize: 18, fontFamily: FONTS.bold },
   myResultRole:    { fontSize: 12, color: COLORS.text2, marginTop: 4, textAlign: 'center' },
 
   // Reveal note
@@ -1367,15 +1370,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   standingRowFirst: { borderColor: COLORS.success, backgroundColor: '#071d0f' },
-  standingRank:  { fontSize: 13, fontWeight: '700', color: COLORS.text2, width: 28 },
-  standingName:  { flex: 1, fontSize: 16, fontWeight: '700', color: COLORS.text },
-  standingScore: { fontSize: 15, fontWeight: '700', color: COLORS.text2 },
+  standingRank:  { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2, width: 28 },
+  standingName:  { flex: 1, fontSize: 16, fontFamily: FONTS.bold, color: COLORS.text },
+  standingScore: { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text2 },
 
   // Game over
   gameOverEmoji: { fontSize: 64, textAlign: 'center' },
   gameOverTitle: {
     fontSize: 36,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -1,
     textAlign: 'center',
@@ -1392,7 +1395,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 6,
   },
-  historyRound:   { fontSize: 13, fontWeight: '800', color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
+  historyRound:   { fontSize: 13, fontFamily: FONTS.extrabold, color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5 },
   historyPublic:  { fontSize: 12, color: COLORS.text3, fontStyle: 'italic', lineHeight: 17 },
   historyRow: {
     flexDirection: 'row',
@@ -1400,9 +1403,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     gap: 8,
   },
-  historyPlayerName: { flex: 1, fontSize: 14, fontWeight: '700', color: COLORS.text },
+  historyPlayerName: { flex: 1, fontSize: 14, fontFamily: FONTS.bold, color: COLORS.text },
   historyAction:     { fontSize: 13, color: COLORS.text2, flex: 1 },
-  historyDelta:      { fontSize: 13, fontWeight: '700', minWidth: 60, textAlign: 'right' },
+  historyDelta:      { fontSize: 13, fontFamily: FONTS.bold, minWidth: 60, textAlign: 'right' },
 
   // Actions container
   actions: { gap: 10, marginTop: 4, alignItems: 'center' },
@@ -1427,7 +1430,7 @@ const styles = StyleSheet.create({
   },
   compactLBPotLabel: {
     fontSize: 9,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
@@ -1435,7 +1438,7 @@ const styles = StyleSheet.create({
   },
   compactLBPotBig: {
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
   },
@@ -1456,7 +1459,7 @@ const styles = StyleSheet.create({
   compactLBBal: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
     textAlign: 'right',
   },
@@ -1472,11 +1475,11 @@ const styles = StyleSheet.create({
   },
   compactLBMeText: {
     color: COLORS.accentHi,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
   },
   compactYouBadge: {
     fontSize: 9,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.accentHi,
     borderWidth: 1,
     borderColor: COLORS.accentHi,
@@ -1495,7 +1498,7 @@ const styles = StyleSheet.create({
   },
   expandedLBPotLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
   },
   expandedLB: { gap: 6 },
@@ -1521,7 +1524,7 @@ const styles = StyleSheet.create({
   expandedLBLabel: {
     width: 64,
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text2,
   },
   expandedLBLabelMe: {
@@ -1530,12 +1533,12 @@ const styles = StyleSheet.create({
   expandedLBBal: {
     flex: 1,
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
   },
   expandedLBDelta: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     minWidth: 60,
     textAlign: 'right',
   },
@@ -1561,9 +1564,9 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderHi,
   },
   modalScroll:   { padding: 24, gap: 12, paddingBottom: 8 },
-  modalTitle:    { fontSize: 24, fontWeight: '900', color: COLORS.text, letterSpacing: -0.5 },
+  modalTitle:    { fontSize: 24, fontFamily: FONTS.extrabold, color: COLORS.text, letterSpacing: -0.5 },
   modalSubtitle: { fontSize: 14, color: COLORS.text2, marginBottom: 4 },
-  ruleSection:   { fontSize: 15, fontWeight: '700', color: COLORS.text, marginTop: 8 },
+  ruleSection:   { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text, marginTop: 8 },
   ruleText:      { fontSize: 14, color: COLORS.text2, lineHeight: 21 },
   modalClose: {
     margin: 16,
@@ -1572,5 +1575,5 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  modalCloseText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  modalCloseText: { fontSize: 16, fontFamily: FONTS.bold, color: '#fff' },
 });

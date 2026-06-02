@@ -16,8 +16,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import socket from '../socket';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import GameIntro from '../components/GameIntro';
+import PhaseTransition from '../components/PhaseTransition';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'PlotTwist'>;
@@ -233,10 +234,12 @@ export default function PlotTwistScreen({ navigation }: Props) {
   if (gs.phase === 'dealing' || !gs.turnOrder || gs.turnOrder.length === 0) {
     return (
       <SafeAreaView style={s.safe}>
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={s.dealMsg}>Generating secret words…</Text>
-        </View>
+        <PhaseTransition phaseKey={gs.phase}>
+          <View style={s.center}>
+            <ActivityIndicator size="large" color={COLORS.accent} />
+            <Text style={s.dealMsg}>Generating secret words…</Text>
+          </View>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -251,6 +254,7 @@ export default function PlotTwistScreen({ navigation }: Props) {
 
     return (
       <SafeAreaView style={s.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
         <ScrollView contentContainerStyle={s.overScroll} showsVerticalScrollIndicator={false}>
           {/* Winner stamp */}
           <View style={s.stamp}>
@@ -278,6 +282,7 @@ export default function PlotTwistScreen({ navigation }: Props) {
             ))}
           </View>
         </ScrollView>
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -285,6 +290,7 @@ export default function PlotTwistScreen({ navigation }: Props) {
   // ── Play phase ──
   return (
     <SafeAreaView style={s.safe}>
+      <PhaseTransition phaseKey={gs.phase}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -486,6 +492,7 @@ export default function PlotTwistScreen({ navigation }: Props) {
           )}
         </View>
       </KeyboardAvoidingView>
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -494,7 +501,7 @@ export default function PlotTwistScreen({ navigation }: Props) {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  dealMsg: { color: COLORS.text2, fontSize: 14, fontWeight: '500' },
+  dealMsg: { color: COLORS.text2, fontSize: 14, fontFamily: FONTS.medium },
 
   // Scoreboard
   scoreBar: { flexGrow: 0, paddingHorizontal: 12, paddingVertical: 8 },
@@ -509,8 +516,8 @@ const s = StyleSheet.create({
     marginRight: 6,
     minWidth: 60,
   },
-  scoreName: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  scoreNum: { fontSize: 18, fontWeight: '900', color: COLORS.text, marginTop: 1 },
+  scoreName: { fontSize: 10, fontFamily: FONTS.bold, letterSpacing: 0.5 },
+  scoreNum: { fontSize: 18, fontFamily: FONTS.extrabold, color: COLORS.text, marginTop: 1 },
 
   // Secret words
   secretCard: {
@@ -523,7 +530,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  secretLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 2, color: COLORS.text2 },
+  secretLabel: { fontSize: 9, fontFamily: FONTS.bold, letterSpacing: 2, color: COLORS.text2 },
   secretRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 4 },
   secretChip: {
     backgroundColor: 'rgba(240,193,75,0.12)',
@@ -533,7 +540,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  secretChipText: { fontSize: 14, fontWeight: '700', color: '#F0C14B' },
+  secretChipText: { fontSize: 14, fontFamily: FONTS.bold, color: '#F0C14B' },
   secretChipHard: {
     backgroundColor: 'rgba(167,139,250,0.15)',
     borderColor: 'rgba(167,139,250,0.5)',
@@ -541,7 +548,7 @@ const s = StyleSheet.create({
   secretChipTextHard: { color: '#C4B5FD' },
   secretChipBadge: {
     fontSize: 9,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: '#C4B5FD',
     marginLeft: 4,
   },
@@ -558,12 +565,12 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  msPrompt: { fontSize: 13, fontWeight: '500', color: COLORS.text2, fontStyle: 'italic', marginBottom: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  msPrompt: { fontSize: 13, fontFamily: FONTS.medium, color: COLORS.text2, fontStyle: 'italic', marginBottom: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   msLine: { marginBottom: 10 },
-  msByline: { fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 },
-  msText: { fontSize: 14, fontWeight: '500', color: COLORS.text, lineHeight: 20 },
-  hlWord: { backgroundColor: 'rgba(240,193,75,0.3)', color: '#F0C14B', fontWeight: '700', borderRadius: 2 },
-  msHitTag: { fontSize: 10, fontWeight: '700', color: COLORS.danger, marginTop: 2 },
+  msByline: { fontSize: 9, fontFamily: FONTS.bold, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 },
+  msText: { fontSize: 14, fontFamily: FONTS.medium, color: COLORS.text, lineHeight: 20 },
+  hlWord: { backgroundColor: 'rgba(240,193,75,0.3)', color: '#F0C14B', fontFamily: FONTS.bold, borderRadius: 2 },
+  msHitTag: { fontSize: 10, fontFamily: FONTS.bold, color: COLORS.danger, marginTop: 2 },
 
   // Hit notification banner
   hitBanner: {
@@ -574,7 +581,7 @@ const s = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  hitHead: { fontSize: 14, fontWeight: '700', color: '#fff', textAlign: 'center' },
+  hitHead: { fontSize: 14, fontFamily: FONTS.bold, color: '#fff', textAlign: 'center' },
   hitRow: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderRadius: 8,
@@ -582,12 +589,12 @@ const s = StyleSheet.create({
     borderLeftWidth: 3,
     gap: 3,
   },
-  hitWord: { fontSize: 16, fontWeight: '900', color: '#F0C14B' },
-  hitOwner: { fontSize: 12, fontWeight: '500' },
+  hitWord: { fontSize: 16, fontFamily: FONTS.extrabold, color: '#F0C14B' },
+  hitOwner: { fontSize: 12, fontFamily: FONTS.medium },
   hitSwap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  hitOld: { fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.5)', textDecorationLine: 'line-through' },
+  hitOld: { fontSize: 11, fontFamily: FONTS.medium, color: 'rgba(255,255,255,0.5)', textDecorationLine: 'line-through' },
   hitArrow: { fontSize: 11, color: '#F0C14B' },
-  hitNew: { fontSize: 11, fontWeight: '700', color: '#9FE09F' },
+  hitNew: { fontSize: 11, fontFamily: FONTS.bold, color: '#9FE09F' },
 
   // Veto
   vetoPanel: {
@@ -602,9 +609,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  vetoWriter: { fontSize: 11, fontWeight: '600', color: COLORS.text2 },
-  vetoText: { fontSize: 14, fontWeight: '500', color: COLORS.text, fontStyle: 'italic', textAlign: 'center' },
-  vetoAsk: { fontSize: 12, fontWeight: '600', color: COLORS.danger },
+  vetoWriter: { fontSize: 11, fontFamily: FONTS.semibold, color: COLORS.text2 },
+  vetoText: { fontSize: 14, fontFamily: FONTS.medium, color: COLORS.text, fontStyle: 'italic', textAlign: 'center' },
+  vetoAsk: { fontSize: 12, fontFamily: FONTS.semibold, color: COLORS.danger },
   vetoButtons: { flexDirection: 'row', gap: 10 },
   vetoAllow: {
     paddingHorizontal: 20,
@@ -613,7 +620,7 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.success,
   },
-  vetoAllowText: { color: COLORS.success, fontSize: 13, fontWeight: '700' },
+  vetoAllowText: { color: COLORS.success, fontSize: 13, fontFamily: FONTS.bold },
   vetoDeny: {
     paddingHorizontal: 20,
     paddingVertical: 10,
@@ -621,7 +628,7 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.danger,
   },
-  vetoDenyText: { color: COLORS.danger, fontSize: 13, fontWeight: '700' },
+  vetoDenyText: { color: COLORS.danger, fontSize: 13, fontFamily: FONTS.bold },
 
   // Status
   statusBar: {
@@ -631,7 +638,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
-  statusText: { fontSize: 13, fontWeight: '500', color: COLORS.text2, fontStyle: 'italic' },
+  statusText: { fontSize: 13, fontFamily: FONTS.medium, color: COLORS.text2, fontStyle: 'italic' },
 
   // Composer
   composer: { paddingHorizontal: 12, paddingBottom: 8, gap: 8 },
@@ -650,7 +657,7 @@ const s = StyleSheet.create({
     top: 0,
     lineHeight: 20,
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     color: COLORS.text,
   },
   input: {
@@ -661,7 +668,7 @@ const s = StyleSheet.create({
     padding: 12,
     color: COLORS.text,
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
     lineHeight: 20,
     minHeight: 56,
     textAlignVertical: 'top',
@@ -674,10 +681,10 @@ const s = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
   },
-  selfWarnText: { fontSize: 12, fontWeight: '500', color: COLORS.danger },
-  selfWarnWord: { fontWeight: '800' },
+  selfWarnText: { fontSize: 12, fontFamily: FONTS.medium, color: COLORS.danger },
+  selfWarnWord: { fontFamily: FONTS.extrabold },
   composeFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  wordCount: { fontSize: 11, fontWeight: '600' },
+  wordCount: { fontSize: 11, fontFamily: FONTS.semibold },
   wcOk: { color: COLORS.success },
   wcBad: { color: COLORS.text3 },
   composeButtons: { flexDirection: 'row', gap: 8 },
@@ -688,7 +695,7 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   addBtnDisabled: { opacity: 0.4 },
-  addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  addBtnText: { color: '#fff', fontSize: 13, fontFamily: FONTS.bold },
   skipBtn: {
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -696,7 +703,7 @@ const s = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.border,
   },
-  skipBtnText: { color: COLORS.text2, fontSize: 12, fontWeight: '600' },
+  skipBtnText: { color: COLORS.text2, fontSize: 12, fontFamily: FONTS.semibold },
 
   // Game over
   overScroll: { padding: 20, alignItems: 'center', gap: 16 },
@@ -708,8 +715,8 @@ const s = StyleSheet.create({
     paddingVertical: 14,
     transform: [{ rotate: '-3deg' }],
   },
-  stampText: { fontSize: 28, fontWeight: '900', color: COLORS.danger, letterSpacing: 2 },
-  sectionLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2, color: COLORS.text2, alignSelf: 'flex-start', width: '100%' },
+  stampText: { fontSize: 28, fontFamily: FONTS.extrabold, color: COLORS.danger, letterSpacing: 2 },
+  sectionLabel: { fontSize: 10, fontFamily: FONTS.bold, letterSpacing: 2, color: COLORS.text2, alignSelf: 'flex-start', width: '100%' },
   revealRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -721,9 +728,9 @@ const s = StyleSheet.create({
     gap: 10,
     width: '100%',
   },
-  revealName: { fontSize: 12, fontWeight: '700', width: 60 },
-  revealWords: { flex: 1, fontSize: 13, fontWeight: '600', color: COLORS.text, lineHeight: 18 },
-  revealScore: { fontSize: 12, fontWeight: '600', color: COLORS.text2 },
+  revealName: { fontSize: 12, fontFamily: FONTS.bold, width: 60 },
+  revealWords: { flex: 1, fontSize: 13, fontFamily: FONTS.semibold, color: COLORS.text, lineHeight: 18 },
+  revealScore: { fontSize: 12, fontFamily: FONTS.semibold, color: COLORS.text2 },
   recapCard: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -732,6 +739,6 @@ const s = StyleSheet.create({
     padding: 14,
     width: '100%',
   },
-  recapPrompt: { fontSize: 13, fontWeight: '500', color: COLORS.text2, fontStyle: 'italic' },
-  recapLine: { fontSize: 13, fontWeight: '500', color: COLORS.text, lineHeight: 20 },
+  recapPrompt: { fontSize: 13, fontFamily: FONTS.medium, color: COLORS.text2, fontStyle: 'italic' },
+  recapLine: { fontSize: 13, fontFamily: FONTS.medium, color: COLORS.text, lineHeight: 20 },
 });

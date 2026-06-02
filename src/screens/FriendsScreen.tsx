@@ -21,7 +21,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { TabParamList } from '../navigation/MainTabs';
 import type { RootStackParamList } from '../../App';
-import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
 import {
   sendFriendRequest,
   getIncomingRequests,
@@ -624,12 +624,12 @@ const s = StyleSheet.create({
   },
   tabText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text2,
   },
   tabTextActive: {
     color: COLORS.accent,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
   tabDot: {
     width: 6,
@@ -649,7 +649,7 @@ const s = StyleSheet.create({
   // Section titles
   sectionTitle: {
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 2,
     color: COLORS.text2,
     marginBottom: SPACING.sm,
@@ -685,7 +685,7 @@ const s = StyleSheet.create({
   },
   sendBtnText: {
     color: '#fff',
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     fontSize: 14,
   },
 
@@ -711,7 +711,7 @@ const s = StyleSheet.create({
   reqUsername: {
     color: COLORS.text,
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
   requestActions: {
     flexDirection: 'row',
@@ -727,7 +727,7 @@ const s = StyleSheet.create({
   },
   acceptBtnText: {
     color: '#fff',
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     fontSize: 13,
   },
   declineBtn: {
@@ -741,7 +741,7 @@ const s = StyleSheet.create({
   },
   declineBtnText: {
     color: COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     fontSize: 13,
   },
   cancelBtn: {
@@ -751,7 +751,7 @@ const s = StyleSheet.create({
     color: COLORS.text2,
     fontSize: 12,
     marginTop: 2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     letterSpacing: 1,
   },
 
@@ -773,7 +773,7 @@ const s = StyleSheet.create({
   avatarText: {
     color: COLORS.text,
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
 
   // Friends list
@@ -783,11 +783,16 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderHi,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: 12,
     marginBottom: SPACING.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
   },
   friendLeft: {
     flexDirection: 'row',
@@ -798,11 +803,11 @@ const s = StyleSheet.create({
   friendUsername: {
     color: COLORS.text,
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
   friendStatus: {
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     marginTop: 1,
   },
   friendActions: {
@@ -821,7 +826,7 @@ const s = StyleSheet.create({
   inviteBtnText: {
     color: '#fff',
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
 
   // Empty states
@@ -834,7 +839,7 @@ const s = StyleSheet.create({
   emptyTitle: {
     color: COLORS.text,
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     marginTop: 4,
   },
   emptySubtitle: {
@@ -850,7 +855,7 @@ const s = StyleSheet.create({
   },
   emptyBtnText: {
     color: '#fff',
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     fontSize: 14,
   },
 
@@ -869,21 +874,21 @@ const s = StyleSheet.create({
   },
   roomBannerLabel: {
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 2,
     color: COLORS.accent,
     marginBottom: 2,
   },
   roomBannerCode: {
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: 3,
   },
   roomBannerHint: {
     fontSize: 12,
     color: COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
 
   // Badges & banners
@@ -898,7 +903,7 @@ const s = StyleSheet.create({
   pendingBadgeText: {
     color: '#fbbf24',
     fontSize: 9,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 1,
   },
   successBanner: {
@@ -916,7 +921,7 @@ const s = StyleSheet.create({
   successText: {
     color: '#4ade80',
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
   btnDisabled: {
     opacity: 0.5,

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Animated, Text, StyleSheet, ViewStyle, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, RADIUS, SPACING } from '../constants/theme';
+import { COLORS, FONTS, RADIUS, SPACING } from '../constants/theme';
 
 // ── Imperative API (works outside React tree) ────────────────────────────────
 
@@ -114,12 +114,17 @@ const styles = StyleSheet.create({
   toast: {
     backgroundColor: 'rgba(30, 30, 39, 0.92)',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderHi,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm + 2,
     marginBottom: SPACING.xs,
     maxWidth: 300,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
   toastWithAction: {
     flexDirection: 'row',
@@ -130,7 +135,7 @@ const styles = StyleSheet.create({
   text: {
     color: COLORS.text,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     flexShrink: 1,
   },
   actionBtn: {
@@ -142,6 +147,6 @@ const styles = StyleSheet.create({
   actionText: {
     color: '#fff',
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
 });

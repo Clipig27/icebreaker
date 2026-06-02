@@ -12,12 +12,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
-import { COLORS, RADIUS, SPACING } from '../constants/theme';
+import { COLORS, RADIUS, SPACING, FONTS } from '../constants/theme';
 import socket from '../socket';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import GameIntro from '../components/GameIntro';
+import PhaseTransition from '../components/PhaseTransition';
+
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -114,6 +116,7 @@ function useCountdown(phaseEndsAt: number | undefined): number {
 
 export default function ShadowProtocolScreen({ navigation }: any) {
   const { room, players, currentUser, isHost, sendPlayerAction, startGame } = useGame();
+
 
   const [priv, setPriv]         = useState<PrivateState | null>(null);
   const [scan, setScan]         = useState<ScanResult | null>(null);
@@ -236,9 +239,13 @@ export default function ShadowProtocolScreen({ navigation }: any) {
   if (gs.phase === 'loading' || !priv) {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs?.phase ?? 'loading'}>
+
         <View style={styles.center}>
           <Text style={styles.dim}>Waiting for game to start…</Text>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -252,6 +259,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
   if (gs.phase === 'role-reveal') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.center}>
           <Text style={[styles.bigEmoji]}>{ROLE_EMOJI[role]}</Text>
           <Text style={[styles.roleTitle, { color: rc }]}>{ROLE_LABEL[role]}</Text>
@@ -268,6 +277,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
 
           <Text style={styles.timerSmall}>Night begins in {timeLeft}s</Text>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -286,6 +297,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
 
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.phaseLabel}>NIGHT — Round {gs.round}</Text>
           <Text style={styles.timerSmall}>⏱ {timeLeft}s</Text>
@@ -354,6 +367,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
             ))}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -364,6 +379,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
     const elim = gs.eliminatedThisRound;
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <View style={styles.center}>
           <Text style={styles.phaseLabel}>DAWN — Round {gs.round}</Text>
 
@@ -391,6 +408,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
 
           <Text style={styles.timerSmall}>Discussion begins in {timeLeft}s</Text>
         </View>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -401,6 +420,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
     const ghostLabel = !isAlive ? ' (Ghost)' : '';
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
           <View style={styles.discussHeader}>
             <Text style={styles.phaseLabel}>DISCUSSION — Round {gs.round}</Text>
@@ -452,6 +473,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
           </View>
         </KeyboardAvoidingView>
         <KeyboardDoneBar />
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -462,6 +485,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
     const totalVotes = Object.values(gs.votes ?? {}).reduce((s, c) => s + c, 0);
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.phaseLabel}>VOTE — Round {gs.round}</Text>
           <Text style={styles.instruction}>Who is the Shadow? Vote to eliminate.</Text>
@@ -513,6 +538,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
             </View>
           )}
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -522,6 +549,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
   if (gs.phase === 'runoff-voting') {
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.phaseLabel}>RUNOFF — Round {gs.round}</Text>
           <Text style={styles.instruction}>Tie! Vote again between these two.</Text>
@@ -552,6 +581,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
             </View>
           ) : null}
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -562,6 +593,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
     const agentsWon = gs.winner === 'AGENTS';
     return (
       <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey={gs.phase}>
+
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.phaseLabel}>GAME OVER</Text>
           <Text style={[styles.winnerText, { color: agentsWon ? COLORS.success : COLORS.danger }]}>
@@ -598,6 +631,8 @@ export default function ShadowProtocolScreen({ navigation }: any) {
             )}
           </View>
         </ScrollView>
+
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -605,9 +640,13 @@ export default function ShadowProtocolScreen({ navigation }: any) {
   // ── Fallback ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
+      <PhaseTransition phaseKey={gs.phase}>
+
       <View style={styles.center}>
         <Text style={styles.dim}>Round {gs.round} · {gs.phase}</Text>
       </View>
+
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -619,19 +658,19 @@ const styles = StyleSheet.create({
   scroll:  { padding: SPACING.md, paddingBottom: SPACING.xl },
   center:  { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
 
-  phaseLabel: { fontSize: 11, fontWeight: '700', color: COLORS.text2, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 },
+  phaseLabel: { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 },
   timerSmall: { fontSize: 13, color: COLORS.text2, marginBottom: SPACING.md },
   dim:        { fontSize: 13, color: COLORS.text2, textAlign: 'center' },
   instruction:{ fontSize: 15, color: COLORS.text, marginBottom: SPACING.md },
-  sectionLabel:{ fontSize: 11, fontWeight: '700', color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, marginTop: SPACING.md },
+  sectionLabel:{ fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, marginTop: SPACING.md },
 
   bigEmoji:   { fontSize: 64, marginBottom: SPACING.sm },
-  roleTitle:  { fontSize: 28, fontWeight: '800', marginBottom: 8 },
+  roleTitle:  { fontSize: 28, fontFamily: FONTS.extrabold, marginBottom: 8 },
   roleDesc:   { fontSize: 15, color: COLORS.text2, textAlign: 'center', lineHeight: 22, marginHorizontal: SPACING.lg },
 
   allyBox:    { marginTop: SPACING.lg, alignItems: 'center', padding: SPACING.md, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.danger },
-  allyLabel:  { fontSize: 11, fontWeight: '700', color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
-  allyName:   { fontSize: 16, fontWeight: '700' },
+  allyLabel:  { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
+  allyName:   { fontSize: 16, fontFamily: FONTS.bold },
 
   ghostBanner:{ backgroundColor: COLORS.surface2, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
   ghostText:  { fontSize: 14, color: COLORS.text2, textAlign: 'center' },
@@ -643,28 +682,28 @@ const styles = StyleSheet.create({
   targetList: { gap: 10, marginTop: SPACING.sm },
   targetBtn:  { backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   targetBtnSelected: { borderColor: COLORS.accent, backgroundColor: COLORS.surface2 },
-  targetName: { fontSize: 16, fontWeight: '600', color: COLORS.text },
+  targetName: { fontSize: 16, fontFamily: FONTS.semibold, color: COLORS.text },
   voteCount:  { fontSize: 13, color: COLORS.text2 },
 
   submittedBox: { backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center', gap: 4 },
-  submittedText:{ fontSize: 15, color: COLORS.success, fontWeight: '600' },
+  submittedText:{ fontSize: 15, color: COLORS.success, fontFamily: FONTS.semibold },
 
   scanBox:        { marginTop: SPACING.md, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.accent },
   scanBoxGlitched:{ borderColor: COLORS.warning },
-  scanTitle:      { fontSize: 13, fontWeight: '700', color: COLORS.text2, marginBottom: 4 },
-  scanText:       { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  scanTitle:      { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2, marginBottom: 4 },
+  scanText:       { fontSize: 16, fontFamily: FONTS.bold, color: COLORS.text },
   glitchNote:     { fontSize: 12, color: COLORS.warning, marginTop: 4 },
 
   aliveList:  { marginTop: SPACING.lg },
   aliveItem:  { fontSize: 14, color: COLORS.text2, paddingVertical: 3 },
 
   glitchBanner:     { backgroundColor: '#2A1010', borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.danger },
-  glitchBannerText: { fontSize: 14, fontWeight: '800', color: COLORS.danger, letterSpacing: 1 },
+  glitchBannerText: { fontSize: 14, fontFamily: FONTS.extrabold, color: COLORS.danger, letterSpacing: 1 },
   glitchSub:        { fontSize: 12, color: COLORS.text2, marginTop: 2 },
 
   elimBox:    { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, alignItems: 'center', marginVertical: SPACING.md, minWidth: 240 },
   elimLabel:  { fontSize: 12, color: COLORS.text2, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 },
-  elimName:   { fontSize: 26, fontWeight: '800', color: COLORS.danger },
+  elimName:   { fontSize: 26, fontFamily: FONTS.extrabold, color: COLORS.danger },
 
   discussHeader: { paddingHorizontal: SPACING.md, paddingTop: SPACING.sm, paddingBottom: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dayEliminBanner:{ backgroundColor: COLORS.surface2, padding: SPACING.sm, marginHorizontal: SPACING.md, borderRadius: RADIUS.sm, marginBottom: 4 },
@@ -673,21 +712,21 @@ const styles = StyleSheet.create({
   chatList:   { flex: 1, backgroundColor: COLORS.surface },
   chatBubble: { backgroundColor: COLORS.surface2, borderRadius: RADIUS.sm, padding: 10, marginBottom: 6 },
   chatGhost:  { opacity: 0.6, borderStyle: 'dashed', borderWidth: 1, borderColor: COLORS.border },
-  chatName:   { fontSize: 11, fontWeight: '700', color: COLORS.text2, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
+  chatName:   { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.text2, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
   chatText:   { fontSize: 14, color: COLORS.text },
   chatInput:  { flexDirection: 'row', padding: SPACING.sm, gap: 8, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface },
   chatField:  { flex: 1, backgroundColor: COLORS.surface2, borderRadius: RADIUS.sm, paddingHorizontal: 12, paddingVertical: 8, color: COLORS.text, fontSize: 14 },
   chatSend:   { backgroundColor: COLORS.accent, borderRadius: RADIUS.sm, paddingHorizontal: 16, justifyContent: 'center' },
-  chatSendText: { color: COLORS.text, fontSize: 18, fontWeight: '700' },
+  chatSendText: { color: COLORS.text, fontSize: 18, fontFamily: FONTS.bold },
 
   voteTally:  { marginTop: SPACING.md },
   tallyItem:  { fontSize: 14, color: COLORS.text, paddingVertical: 4 },
 
-  winnerText:   { fontSize: 32, fontWeight: '800', marginVertical: SPACING.sm },
+  winnerText:   { fontSize: 32, fontFamily: FONTS.extrabold, marginVertical: SPACING.sm },
   roleRevealList: { marginTop: SPACING.lg, gap: 8 },
   roleRevealItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACING.md },
-  roleRevealName: { fontSize: 16, fontWeight: '600', color: COLORS.text },
-  roleRevealRole: { fontSize: 14, fontWeight: '700' },
+  roleRevealName: { fontSize: 16, fontFamily: FONTS.semibold, color: COLORS.text },
+  roleRevealRole: { fontSize: 14, fontFamily: FONTS.bold },
 
   actions: { marginTop: SPACING.lg, gap: 10 },
   waitSub: { fontSize: 14, color: COLORS.text2, textAlign: 'center', marginTop: SPACING.md },

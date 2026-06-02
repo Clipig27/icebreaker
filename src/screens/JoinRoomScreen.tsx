@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useGame } from '../context/GameContext';
-import { COLORS, RADIUS } from '../constants/theme';
+import { COLORS, RADIUS, FONTS } from '../constants/theme';
 
 export default function JoinRoomScreen({ navigation, route }: any) {
   const { joinRoom, leaveRoom, room, currentUser } = useGame();
@@ -267,7 +267,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
   },
-  title:    { fontSize: 30, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
+  title:    { fontSize: 30, fontFamily: FONTS.extrabold, color: COLORS.text, textAlign: 'center' },
   subtitle: { fontSize: 14, color: COLORS.text2, textAlign: 'center', lineHeight: 20 },
 
   inputWrap: {
@@ -293,10 +293,10 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
   },
-  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  primaryBtnText: { color: '#fff', fontSize: 16, fontFamily: FONTS.bold },
 
   dangerBtn: { paddingVertical: 12, alignItems: 'center' },
-  dangerBtnText: { color: COLORS.danger, fontSize: 14, fontWeight: '600' },
+  dangerBtnText: { color: COLORS.danger, fontSize: 14, fontFamily: FONTS.semibold },
 
   codeCard: { width: '100%', borderRadius: 20, overflow: 'hidden', marginTop: 12, marginBottom: 20 },
   codeCardGradient: {
@@ -315,31 +315,32 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.surface2,
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
-  statusTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text2, marginBottom: 6 },
-  code: { fontSize: 58, fontWeight: '900', color: COLORS.accent, letterSpacing: 10 },
+  statusTitle: { fontSize: 15, fontFamily: FONTS.bold, color: COLORS.text2, marginBottom: 6 },
+  code: { fontSize: 58, fontFamily: FONTS.extrabold, color: COLORS.accent, letterSpacing: 10 },
   codeHint: { fontSize: 13, color: COLORS.text2, marginTop: 6, textAlign: 'center' },
 
   section: { width: '100%', flex: 1 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase' },
+  sectionLabel: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase' },
   playerCount: { backgroundColor: COLORS.accent + '22', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  playerCountText: { color: COLORS.accent, fontWeight: '700', fontSize: 13 },
+  playerCountText: { color: COLORS.accent, fontFamily: FONTS.bold, fontSize: 13 },
   playerRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.surface, borderRadius: RADIUS.md,
-    padding: 12, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border, gap: 12,
+    padding: 12, marginBottom: 8, borderWidth: 1, borderColor: COLORS.borderHi, gap: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 3,
   },
   playerAvatar: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: COLORS.surface2, alignItems: 'center', justifyContent: 'center',
   },
   playerAvatarHost: { backgroundColor: COLORS.accent + '22', borderWidth: 1, borderColor: COLORS.accent + '55' },
-  playerAvatarText: { color: COLORS.text, fontWeight: '700', fontSize: 14 },
-  playerName: { color: COLORS.text, fontSize: 15, flex: 1, fontWeight: '500' },
+  playerAvatarText: { color: COLORS.text, fontFamily: FONTS.bold, fontSize: 14 },
+  playerName: { color: COLORS.text, fontSize: 15, flex: 1, fontFamily: FONTS.medium },
   hostBadge: {
     backgroundColor: COLORS.accent + '1A', borderRadius: 6,
     paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: COLORS.accent + '40',
   },
-  hostBadgeText: { color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  hostBadgeText: { color: COLORS.accent, fontSize: 10, fontFamily: FONTS.extrabold, letterSpacing: 1 },
   actions: { width: '100%', paddingBottom: 12 },
 });

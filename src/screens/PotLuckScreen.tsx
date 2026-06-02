@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
-import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
 import GameIntro from '../components/GameIntro';
+import PromptCard from '../components/PromptCard';
+import PhaseTransition from '../components/PhaseTransition';
 
 const GOLD   = '#FBBF24';
 const GOLD_D = '#D97706';
@@ -118,7 +120,9 @@ export default function PotLuckScreen() {
   if (gs.phase === 'rolling') {
     return (
       <SafeAreaView style={s.safe}>
-        <RollingPhase gs={gs} room={room} myId={myId} />
+        <PhaseTransition phaseKey={gs.phase}>
+          <RollingPhase gs={gs} room={room} myId={myId} />
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -126,19 +130,21 @@ export default function PotLuckScreen() {
   if (gs.phase === 'live') {
     return (
       <SafeAreaView style={s.safe}>
-        <LivePhase
-          gs={gs}
-          room={room}
-          myId={myId}
-          myPlayer={myPlayer}
-          isMyTurn={isMyTurn}
-          actionSent={actionSent}
-          feed={feed}
-          plan={plan}
-          setPlan={setPlan}
-          onAnswer={handleAnswer}
-          onSkip={handleSkip}
-        />
+        <PhaseTransition phaseKey={gs.phase}>
+          <LivePhase
+            gs={gs}
+            room={room}
+            myId={myId}
+            myPlayer={myPlayer}
+            isMyTurn={isMyTurn}
+            actionSent={actionSent}
+            feed={feed}
+            plan={plan}
+            setPlan={setPlan}
+            onAnswer={handleAnswer}
+            onSkip={handleSkip}
+          />
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -146,7 +152,9 @@ export default function PotLuckScreen() {
   if (gs.phase === 'reveal') {
     return (
       <SafeAreaView style={s.safe}>
-        <RevealPhase gs={gs} room={room} isHost={isHost} onNext={handleNextQuestion} />
+        <PhaseTransition phaseKey={gs.phase}>
+          <RevealPhase gs={gs} room={room} isHost={isHost} onNext={handleNextQuestion} />
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
@@ -154,21 +162,25 @@ export default function PotLuckScreen() {
   if (gs.phase === 'gameover') {
     return (
       <SafeAreaView style={s.safe}>
-        <GameOverPhase
-          gs={gs}
-          room={room}
-          myId={myId}
-          isHost={isHost}
-          onRestart={restartGame}
-          onEnd={endGame}
-        />
+        <PhaseTransition phaseKey={gs.phase}>
+          <GameOverPhase
+            gs={gs}
+            room={room}
+            myId={myId}
+            isHost={isHost}
+            onRestart={restartGame}
+            onEnd={endGame}
+          />
+        </PhaseTransition>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={s.safe}>
-      <View style={s.center}><Text style={s.muted}>Waiting…</Text></View>
+      <PhaseTransition phaseKey={gs.phase}>
+        <View style={s.center}><Text style={s.muted}>Waiting…</Text></View>
+      </PhaseTransition>
     </SafeAreaView>
   );
 }
@@ -443,7 +455,7 @@ function LivePhase({ gs, room, myId, myPlayer, isMyTurn, actionSent, feed, plan,
             </Text>
           </View>
 
-          <Text style={s.qText}>{gs.currentQuestion?.text}</Text>
+          <PromptCard text={gs.currentQuestion?.text ?? ''} size="md" accentColor="#FBBF24" />
 
           {isMyTurn ? (
             <>
@@ -706,11 +718,11 @@ const banner = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarLetter: {
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     fontSize: 17,
   },
   name: {
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     fontSize: 15,
     color: COLORS.text,
     letterSpacing: 0.2,
@@ -731,12 +743,12 @@ const banner = StyleSheet.create({
     gap: 1,
   },
   timerNum: {
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     fontSize: 22,
     lineHeight: 26,
   },
   timerSec: {
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     fontSize: 11,
   },
 });
@@ -748,8 +760,8 @@ const s = StyleSheet.create({
 
   // Rolling
   rolling:      { flex: 1, paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl },
-  rollHeader:   { fontWeight: '900', fontSize: 22, color: GOLD, letterSpacing: 2, textAlign: 'center', marginBottom: 2 },
-  rollSubHeader:{ fontWeight: '700', fontSize: 12, color: COLORS.text3, letterSpacing: 3, textAlign: 'center', marginBottom: SPACING.xl },
+  rollHeader:   { fontFamily: FONTS.extrabold, fontSize: 22, color: GOLD, letterSpacing: 2, textAlign: 'center', marginBottom: 2 },
+  rollSubHeader:{ fontFamily: FONTS.bold, fontSize: 12, color: COLORS.text3, letterSpacing: 3, textAlign: 'center', marginBottom: SPACING.xl },
   rollList:     { gap: SPACING.sm },
   rollItem:     {
     flexDirection: 'row',
@@ -764,10 +776,10 @@ const s = StyleSheet.create({
   },
   rollItemMe:      { borderColor: GOLD, backgroundColor: '#1A1600' },
   rollAvatarWrap:  { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surface2 },
-  rollAvatarLetter:{ fontWeight: '900', fontSize: 14, color: COLORS.text2 },
-  rollSeat:        { fontWeight: '800', fontSize: 16, color: COLORS.text3, width: 22, textAlign: 'center' },
-  rollName:        { flex: 1, fontWeight: '700', fontSize: 15, color: COLORS.text2 },
-  rollYouTag:      { fontSize: 9, fontWeight: '900', color: GOLD, letterSpacing: 1.5, borderWidth: 1, borderColor: GOLD, borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 2 },
+  rollAvatarLetter:{ fontFamily: FONTS.extrabold, fontSize: 14, color: COLORS.text2 },
+  rollSeat:        { fontFamily: FONTS.extrabold, fontSize: 16, color: COLORS.text3, width: 22, textAlign: 'center' },
+  rollName:        { flex: 1, fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text2 },
+  rollYouTag:      { fontSize: 9, fontFamily: FONTS.extrabold, color: GOLD, letterSpacing: 1.5, borderWidth: 1, borderColor: GOLD, borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 2 },
   rollHint:        { textAlign: 'center', color: COLORS.text3, fontSize: 12, marginTop: SPACING.xl },
 
   // Live
@@ -776,17 +788,17 @@ const s = StyleSheet.create({
 
   // Score bar
   meBar:      { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.borderHi, paddingHorizontal: SPACING.md, paddingVertical: 10 },
-  meLabel:    { fontWeight: '800', fontSize: 11, color: GOLD, letterSpacing: 1.5 },
-  meScore:    { fontWeight: '900', fontSize: 20, color: COLORS.text },
-  meTarget:   { fontSize: 12, fontWeight: '600', color: COLORS.text3 },
+  meLabel:    { fontFamily: FONTS.extrabold, fontSize: 11, color: GOLD, letterSpacing: 1.5 },
+  meScore:    { fontFamily: FONTS.extrabold, fontSize: 20, color: COLORS.text },
+  meTarget:   { fontSize: 12, fontFamily: FONTS.semibold, color: COLORS.text3 },
   meProgBg:   { flex: 1, height: 5, backgroundColor: COLORS.surface2, borderRadius: 3, overflow: 'hidden' },
   meProgFill: { height: '100%', backgroundColor: GOLD, borderRadius: 3 },
 
   // Pot
   pot:       { alignSelf: 'center', alignItems: 'center', gap: 5, paddingHorizontal: 28, paddingVertical: 12, borderRadius: RADIUS.lg, borderWidth: 2, borderColor: GOLD_D, backgroundColor: 'rgba(251,191,36,0.07)' },
   potMax:    { borderColor: COLORS.danger, backgroundColor: 'rgba(244,63,94,0.10)' },
-  potLabel:  { fontWeight: '800', fontSize: 10, letterSpacing: 4, color: GOLD },
-  potNum:    { fontWeight: '900', fontSize: 52, color: GOLD, lineHeight: 56 },
+  potLabel:  { fontFamily: FONTS.extrabold, fontSize: 10, letterSpacing: 4, color: GOLD },
+  potNum:    { fontFamily: FONTS.extrabold, fontSize: 52, color: GOLD, lineHeight: 56 },
   potTrack:  { flexDirection: 'row', gap: 5 },
   potDot:    { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.surface2 },
   potDotOn:  { backgroundColor: GOLD },
@@ -796,81 +808,81 @@ const s = StyleSheet.create({
   // Difficulty badge
   diffBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderWidth: 1, borderRadius: RADIUS.sm, paddingHorizontal: 9, paddingVertical: 5 },
   diffDot:   { width: 7, height: 7, borderRadius: 4 },
-  diffText:  { fontWeight: '800', fontSize: 11, letterSpacing: 1 },
-  diffPots:  { fontWeight: '600', fontSize: 10 },
+  diffText:  { fontFamily: FONTS.extrabold, fontSize: 11, letterSpacing: 1 },
+  diffPots:  { fontFamily: FONTS.semibold, fontSize: 10 },
 
   // Question card
   qCard:      { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.borderHi, padding: SPACING.md, gap: SPACING.md },
-  qText:      { fontWeight: '800', fontSize: 24, color: COLORS.text, textAlign: 'center', lineHeight: 33 },
+  qText:      { fontFamily: FONTS.extrabold, fontSize: 24, color: COLORS.text, textAlign: 'center', lineHeight: 33 },
 
   // Acting
-  yourTurnTag: { textAlign: 'center', fontWeight: '800', fontSize: 11, color: GOLD, letterSpacing: 1.5 },
+  yourTurnTag: { textAlign: 'center', fontFamily: FONTS.extrabold, fontSize: 11, color: GOLD, letterSpacing: 1.5 },
   choicesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'space-between' },
   choice:      { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.sm, paddingVertical: 13, backgroundColor: COLORS.surface2, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.borderHi },
   choiceDisabled: { opacity: 0.35 },
   choiceLetterWrap: { width: 26, height: 26, borderRadius: 13, backgroundColor: GOLD + '22', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  choiceLetter: { fontWeight: '900', fontSize: 12, color: GOLD },
-  choiceText:   { flex: 1, fontWeight: '600', fontSize: 13, color: COLORS.text },
+  choiceLetter: { fontFamily: FONTS.extrabold, fontSize: 12, color: GOLD },
+  choiceText:   { flex: 1, fontFamily: FONTS.semibold, fontSize: 13, color: COLORS.text },
 
   skipBtn:      { marginTop: 2, paddingVertical: 12, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.borderHi, borderStyle: 'dashed', alignItems: 'center' },
-  skipBtnText:  { fontSize: 11, color: COLORS.text2, fontWeight: '700', letterSpacing: 0.3 },
+  skipBtnText:  { fontSize: 11, color: COLORS.text2, fontFamily: FONTS.bold, letterSpacing: 0.3 },
 
   // Spectating
   spectate:    { gap: SPACING.sm, alignItems: 'center', paddingTop: 4 },
   waitingRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
   waitDot:     { width: 9, height: 9, borderRadius: 5, backgroundColor: GOLD },
-  waitingText: { fontSize: 15, color: COLORS.text2, fontWeight: '600' },
-  upNext:      { fontWeight: '900', fontSize: 12, color: GOLD, letterSpacing: 1.5 },
+  waitingText: { fontSize: 15, color: COLORS.text2, fontFamily: FONTS.semibold },
+  upNext:      { fontFamily: FONTS.extrabold, fontSize: 12, color: GOLD, letterSpacing: 1.5 },
   planRow:     { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surface2, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm, width: '100%' },
-  planLabel:   { flex: 1, fontSize: 10, color: COLORS.text2, fontWeight: '600' },
+  planLabel:   { flex: 1, fontSize: 10, color: COLORS.text2, fontFamily: FONTS.semibold },
   planBtn:     { paddingHorizontal: 11, paddingVertical: 7, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.borderHi, backgroundColor: 'transparent' },
   planBtnOn:   { backgroundColor: GOLD, borderColor: GOLD },
-  planBtnText: { fontWeight: '800', fontSize: 10, color: COLORS.text2 },
+  planBtnText: { fontFamily: FONTS.extrabold, fontSize: 10, color: COLORS.text2 },
   planBtnTextOn: { color: '#1A1300' },
 
   // Feed
   feed:       { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.borderHi, padding: SPACING.md, gap: SPACING.sm },
-  feedHeader: { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: COLORS.text3 },
+  feedHeader: { fontSize: 10, fontFamily: FONTS.extrabold, letterSpacing: 2, color: COLORS.text3 },
   feedEmpty:  { fontSize: 11, color: COLORS.text2, textAlign: 'center', paddingVertical: SPACING.sm },
   feedRow:    { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.surface2, borderRadius: RADIUS.sm, padding: SPACING.sm, borderLeftWidth: 3, borderLeftColor: GOLD_D },
-  feedName:   { flex: 1, fontWeight: '700', fontSize: 12, color: COLORS.text },
-  feedVerdict:{ fontWeight: '800', fontSize: 10 },
-  feedDelta:  { fontSize: 10, color: COLORS.text2, minWidth: 44, textAlign: 'right', fontWeight: '600' },
-  feedTotal:  { fontWeight: '800', fontSize: 11, color: GOLD, minWidth: 40, textAlign: 'right' },
+  feedName:   { flex: 1, fontFamily: FONTS.bold, fontSize: 12, color: COLORS.text },
+  feedVerdict:{ fontFamily: FONTS.extrabold, fontSize: 10 },
+  feedDelta:  { fontSize: 10, color: COLORS.text2, minWidth: 44, textAlign: 'right', fontFamily: FONTS.semibold },
+  feedTotal:  { fontFamily: FONTS.extrabold, fontSize: 11, color: GOLD, minWidth: 40, textAlign: 'right' },
 
   // Reveal
   revealScroll:   { flex: 1 },
   revealContent:  { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl, paddingBottom: 40, gap: SPACING.lg, alignItems: 'center' },
   revealCard:     { width: '100%', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.borderHi, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm },
-  revealAnswerLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 3, color: COLORS.text2 },
-  revealAnswer:   { fontSize: 26, fontWeight: '900', color: GOLD, textAlign: 'center' },
+  revealAnswerLabel: { fontSize: 10, fontFamily: FONTS.extrabold, letterSpacing: 3, color: COLORS.text2 },
+  revealAnswer:   { fontSize: 26, fontFamily: FONTS.extrabold, color: GOLD, textAlign: 'center' },
   revealNote:     { fontSize: 13, color: COLORS.text2, textAlign: 'center' },
   standingsCard:  { width: '100%', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.borderHi, padding: SPACING.md, gap: SPACING.sm },
-  standingsHeader:{ fontSize: 10, fontWeight: '800', letterSpacing: 3, color: COLORS.text2, marginBottom: 4 },
+  standingsHeader:{ fontSize: 10, fontFamily: FONTS.extrabold, letterSpacing: 3, color: COLORS.text2, marginBottom: 4 },
   standingRow:    { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 8, paddingHorizontal: SPACING.sm, backgroundColor: COLORS.surface2, borderRadius: RADIUS.sm },
   standingRowFirst: { borderWidth: 1, borderColor: GOLD },
-  standingRank:   { fontWeight: '800', fontSize: 13, color: COLORS.text2, width: 28 },
-  standingName:   { flex: 1, fontWeight: '700', fontSize: 14, color: COLORS.text },
-  standingScore:  { fontWeight: '800', fontSize: 16, color: COLORS.text },
+  standingRank:   { fontFamily: FONTS.extrabold, fontSize: 13, color: COLORS.text2, width: 28 },
+  standingName:   { flex: 1, fontFamily: FONTS.bold, fontSize: 14, color: COLORS.text },
+  standingScore:  { fontFamily: FONTS.extrabold, fontSize: 16, color: COLORS.text },
   targetNote:     { fontSize: 11, color: COLORS.text2, textAlign: 'center', marginTop: 4 },
   nextBtn:        { backgroundColor: GOLD, borderRadius: RADIUS.md, paddingVertical: 15, paddingHorizontal: 32, alignItems: 'center' },
-  nextBtnText:    { fontWeight: '900', fontSize: 15, color: '#1A1300', letterSpacing: 1 },
+  nextBtnText:    { fontFamily: FONTS.extrabold, fontSize: 15, color: '#1A1300', letterSpacing: 1 },
   waitingForHost: { fontSize: 13, color: COLORS.text2, textAlign: 'center' },
 
   // Game over
   overScroll:   { flex: 1 },
   overContent:  { paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl, paddingBottom: 40, gap: SPACING.lg, alignItems: 'center' },
   overEmoji:    { fontSize: 60, textAlign: 'center' },
-  overTitle:    { fontWeight: '900', fontSize: 30, color: GOLD, textAlign: 'center' },
+  overTitle:    { fontFamily: FONTS.extrabold, fontSize: 30, color: GOLD, textAlign: 'center' },
   overBoard:    { width: '100%', gap: SPACING.sm },
   overRow:      { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.borderHi, paddingHorizontal: SPACING.md, paddingVertical: 12 },
   overRowFirst: { borderColor: GOLD },
-  overRank:     { fontWeight: '900', fontSize: 16, color: COLORS.text2, width: 24 },
-  overName:     { flex: 1, fontWeight: '700', fontSize: 15, color: COLORS.text },
-  overScore:    { fontWeight: '900', fontSize: 20, color: COLORS.text },
+  overRank:     { fontFamily: FONTS.extrabold, fontSize: 16, color: COLORS.text2, width: 24 },
+  overName:     { flex: 1, fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text },
+  overScore:    { fontFamily: FONTS.extrabold, fontSize: 20, color: COLORS.text },
   overActions:  { width: '100%', gap: SPACING.sm },
   restartBtn:   { backgroundColor: GOLD, borderRadius: RADIUS.md, paddingVertical: 15, alignItems: 'center' },
-  restartBtnText: { fontWeight: '900', fontSize: 15, color: '#1A1300', letterSpacing: 1 },
+  restartBtnText: { fontFamily: FONTS.extrabold, fontSize: 15, color: '#1A1300', letterSpacing: 1 },
   endBtn:       { backgroundColor: COLORS.surface, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.borderHi, paddingVertical: 14, alignItems: 'center' },
-  endBtnText:   { fontWeight: '600', fontSize: 15, color: COLORS.text2 },
+  endBtnText:   { fontFamily: FONTS.semibold, fontSize: 15, color: COLORS.text2 },
 });

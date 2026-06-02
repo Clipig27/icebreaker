@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 
 interface Props {
   name: string;
@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
   index: {
     color: COLORS.text3,
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     width: 20,
     marginRight: 8,
   },
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: COLORS.text,
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
   removeHit: {
     padding: 4,
@@ -58,6 +58,6 @@ const styles = StyleSheet.create({
   remove: {
     color: COLORS.text2,
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
 });

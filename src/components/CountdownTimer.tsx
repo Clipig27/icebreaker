@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 
 interface Props {
   seconds: number;
@@ -42,6 +42,6 @@ export default function CountdownTimer({ seconds, onComplete }: Props) {
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center' },
-  number: { fontSize: 80, fontWeight: '900', letterSpacing: -3 },
-  label: { fontSize: 12, color: COLORS.text3, fontWeight: '500', marginTop: -8 },
+  number: { fontSize: 80, fontFamily: FONTS.extrabold, letterSpacing: -3 },
+  label: { fontSize: 12, color: COLORS.text3, fontFamily: FONTS.medium, marginTop: -8 },
 });

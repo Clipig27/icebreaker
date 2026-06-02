@@ -14,6 +14,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { supabase } from '../lib/supabase';
 import {
   acceptInvite,
@@ -21,7 +22,7 @@ import {
   getIncomingInvites,
   type GameInvite,
 } from '../storage/inviteStorage';
-import { COLORS, RADIUS, SPACING } from '../constants/theme';
+import { COLORS, FONTS, RADIUS, SPACING, SHADOWS } from '../constants/theme';
 import { navigationRef } from '../navigation/navigationRef';
 
 type Props = {
@@ -84,7 +85,7 @@ export default function InviteModal({ userId }: Props) {
 
   return (
     <Modal transparent animationType="fade" visible statusBarTranslucent>
-      <View style={s.overlay}>
+      <BlurView intensity={40} tint="dark" style={s.overlay}>
         <View style={s.card}>
           <Text style={s.emoji}>🎮</Text>
           <Text style={s.title}>Game Invite</Text>
@@ -110,7 +111,7 @@ export default function InviteModal({ userId }: Props) {
             <Text style={s.declineText}>Decline</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </BlurView>
     </Modal>
   );
 }
@@ -118,25 +119,27 @@ export default function InviteModal({ userId }: Props) {
 const s = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
   },
   card: {
     width: '100%',
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surface2,
     borderRadius: RADIUS.xl ?? 20,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: 'rgba(124, 92, 246, 0.35)',
     padding: 28,
     alignItems: 'center',
     gap: 12,
+    ...SHADOWS.modal,
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.3,
   },
   emoji: { fontSize: 48 },
   title: {
     fontSize: 24,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
   },
@@ -148,7 +151,7 @@ const s = StyleSheet.create({
   },
   fromName: {
     color: COLORS.text,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
   },
   codeBox: {
     backgroundColor: COLORS.surface2 ?? COLORS.bg,
@@ -160,14 +163,14 @@ const s = StyleSheet.create({
   },
   codeLabel: {
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     letterSpacing: 2,
     color: COLORS.text2,
     marginBottom: 2,
   },
   codeText: {
     fontSize: 32,
-    fontWeight: '900',
+    fontFamily: FONTS.extrabold,
     color: COLORS.accent,
     letterSpacing: 6,
   },
@@ -182,7 +185,7 @@ const s = StyleSheet.create({
   acceptText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
   },
   declineBtn: {
     paddingVertical: 10,
@@ -190,7 +193,7 @@ const s = StyleSheet.create({
   declineText: {
     color: COLORS.text2,
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
   disabled: { opacity: 0.5 },
 });

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, StyleSheet, View } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { useGame } from '../context/GameContext';
 
 /**
@@ -76,7 +76,7 @@ const s = StyleSheet.create({
   },
   text: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color: COLORS.text,
     letterSpacing: 0.2,
   },

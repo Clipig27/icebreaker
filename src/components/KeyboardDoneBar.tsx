@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, InputAccessoryView, Keyboard, Platform } from 'react-native';
+import { FONTS } from '../constants/theme';
 
 export const KB_DONE_ID = 'ib-keyboard-done';
 
@@ -42,6 +43,6 @@ const s = StyleSheet.create({
   label: {
     color: '#A78BFA',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
 });

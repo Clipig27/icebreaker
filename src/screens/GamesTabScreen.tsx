@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { fetchEnabledGames, checkIsAdmin } from '../storage/gameConfigStorage';
 
 type Game = {
@@ -310,7 +310,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   info:      { flex: 1 },
-  gameTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  gameTitle: { fontSize: 17, fontFamily: FONTS.bold, color: COLORS.text },
   gameDesc:  { fontSize: 13, color: COLORS.text2, marginTop: 2 },
 
   // Modal
@@ -333,8 +333,8 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   modalTitleBlock: { flex: 1 },
-  modalTitle:   { fontSize: 22, fontWeight: '800', color: COLORS.text },
-  modalPlayers: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  modalTitle:   { fontSize: 22, fontFamily: FONTS.extrabold, color: COLORS.text },
+  modalPlayers: { fontSize: 13, fontFamily: FONTS.semibold, marginTop: 2 },
   closeBtn: {
     width: 34,
     height: 34,
@@ -349,7 +349,7 @@ const s = StyleSheet.create({
 
   howToPlay: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     marginTop: 4,
   },
@@ -367,6 +367,6 @@ const s = StyleSheet.create({
     marginTop: 1,
     flexShrink: 0,
   },
-  stepNumText: { fontSize: 13, fontWeight: '800' },
+  stepNumText: { fontSize: 13, fontFamily: FONTS.extrabold },
   stepText:    { flex: 1, fontSize: 15, color: COLORS.text2, lineHeight: 22 },
 });

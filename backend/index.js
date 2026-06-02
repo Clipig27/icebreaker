@@ -2712,15 +2712,17 @@ io.on('connection', (socket) => {
       };
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
+      console.log('[chainLink] %s played "%s" in room %s — discussion open', actorId, card, code);
+      return;
+    }
 
-      // 5-second auto-accept timer
-      const d = chainLinkRoomData[code] ?? {};
-      if (d.challengeTimer) clearTimeout(d.challengeTimer);
-      d.challengeTimer = setTimeout(() => {
-        clAcceptLink(code);
-      }, 3000);
-      chainLinkRoomData[code] = d;
-      console.log('[chainLink] %s played "%s" in room %s — challenge window open', actorId, card, code);
+    // ── Chain Link: host accepts link (no referee needed) ─────────────────────
+    if (room.gameState?.game === 'chainLink' && action === 'cl-accept') {
+      const gs = room.gameState;
+      if (gs.phase !== 'playing' || !gs.pending) return;
+      // Only host can accept
+      if (room.hostId !== stableId(socket.id)) return;
+      clAcceptLink(code);
       return;
     }
 

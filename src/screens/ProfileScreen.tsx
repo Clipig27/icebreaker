@@ -19,8 +19,9 @@ import type { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import { getFriends } from '../storage/friendStorage';
 import { checkUsernameAvailable, patchUser } from '../storage/userStorage';
-import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { parseError } from '../utils/errorUtils';
 
@@ -49,6 +50,17 @@ export default function ProfileScreen({ navigation }: Props) {
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
+
+  const enterOpacity = useSharedValue(0);
+  const enterSlide = useSharedValue(14);
+  useEffect(() => {
+    enterOpacity.value = withTiming(1, { duration: 350 });
+    enterSlide.value = withTiming(0, { duration: 350 });
+  }, []);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enterOpacity.value,
+    transform: [{ translateY: enterSlide.value }],
+  }));
 
   useFocusEffect(
     useCallback(() => {
@@ -107,6 +119,7 @@ export default function ProfileScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={s.safe}>
+      <Animated.View style={[{ flex: 1 }, enterStyle]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -208,6 +221,7 @@ export default function ProfileScreen({ navigation }: Props) {
         </View>
       </KeyboardAvoidingView>
       <KeyboardDoneBar />
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -227,7 +241,7 @@ const s = StyleSheet.create({
 
   screenLabel: {
     fontSize:      11,
-    fontWeight:    '800',
+    fontFamily:    FONTS.extrabold,
     letterSpacing: 2,
     color:         COLORS.text2,
     marginBottom:  SPACING.xl,
@@ -245,7 +259,7 @@ const s = StyleSheet.create({
   },
   avatarInitials: {
     fontSize:   28,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color:      '#fff',
   },
 
@@ -258,7 +272,7 @@ const s = StyleSheet.create({
   },
   username: {
     fontSize:   28,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color:      COLORS.text,
   },
   editPencil: { fontSize: 16 },
@@ -270,7 +284,7 @@ const s = StyleSheet.create({
   },
   proBadgeText: {
     fontSize:      10,
-    fontWeight:    '800',
+    fontFamily:    FONTS.extrabold,
     color:         '#000',
     letterSpacing: 1,
   },
@@ -288,7 +302,7 @@ const s = StyleSheet.create({
     borderColor:     COLORS.accent,
     color:           COLORS.text,
     fontSize:        22,
-    fontWeight:      '700',
+    fontFamily:      FONTS.bold,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     letterSpacing:   0.3,
@@ -306,7 +320,7 @@ const s = StyleSheet.create({
     alignItems:        'center',
   },
   btnDisabled:  { opacity: 0.4 },
-  saveBtnText:  { color: '#fff', fontSize: 15, fontWeight: '700' },
+  saveBtnText:  { color: '#fff', fontSize: 15, fontFamily: FONTS.bold },
   cancelBtn: {
     flex:            1,
     backgroundColor: COLORS.surface,
@@ -316,7 +330,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     alignItems:      'center',
   },
-  cancelBtnText: { color: COLORS.text2, fontSize: 15, fontWeight: '600' },
+  cancelBtnText: { color: COLORS.text2, fontSize: 15, fontFamily: FONTS.semibold },
 
   // Stats row
   stats: {
@@ -335,14 +349,14 @@ const s = StyleSheet.create({
   },
   statValue: {
     fontSize:   20,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color:      COLORS.accent,
   },
   statLabel: {
     fontSize:   10,
     color:      COLORS.text2,
     marginTop:  3,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
   },
 
   // Entry-point links
@@ -362,7 +376,7 @@ const s = StyleSheet.create({
   linkLabel: {
     flex:       1,
     fontSize:   15,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     color:      COLORS.text,
   },
   linkLabelMuted: { color: COLORS.text2 },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,8 +16,9 @@ import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import PrimaryButton from '../components/PrimaryButton';
 import PlayerTag from '../components/PlayerTag';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONTS } from '../constants/theme';
 import { Player } from '../types';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 type Props = {
@@ -59,8 +60,20 @@ export default function PlayerSetupScreen({ navigation }: Props) {
   const canContinue = players.length >= 3;
   const need = 3 - players.length;
 
+  const enterOpacity = useSharedValue(0);
+  const enterSlide = useSharedValue(14);
+  useEffect(() => {
+    enterOpacity.value = withTiming(1, { duration: 350 });
+    enterSlide.value = withTiming(0, { duration: 350 });
+  }, []);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enterOpacity.value,
+    transform: [{ translateY: enterSlide.value }],
+  }));
+
   return (
     <SafeAreaView style={styles.safe}>
+      <Animated.View style={[styles.flex, enterStyle]}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -129,6 +142,7 @@ export default function PlayerSetupScreen({ navigation }: Props) {
         </View>
       </KeyboardAvoidingView>
       <KeyboardDoneBar />
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -142,7 +156,7 @@ const styles = StyleSheet.create({
     paddingTop: 28,
     paddingBottom: 20,
   },
-  title: { fontSize: 30, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
+  title: { fontSize: 30, fontFamily: FONTS.extrabold, color: COLORS.text, letterSpacing: -0.5 },
   subtitle: { fontSize: 13, color: COLORS.text2, marginTop: 4, marginBottom: 20 },
   inputRow: {
     flexDirection: 'row',
@@ -154,7 +168,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     color: COLORS.text,
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 12,
@@ -170,7 +184,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtnDim: { backgroundColor: COLORS.border },
-  addBtnText: { color: '#FFFFFF', fontSize: 26, fontWeight: '700', lineHeight: 32 },
+  addBtnText: { color: '#FFFFFF', fontSize: 26, fontFamily: FONTS.bold, lineHeight: 32 },
   divider: {
     height: 1,
     backgroundColor: COLORS.border,

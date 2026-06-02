@@ -22,7 +22,9 @@ export default class GameErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.warn('[GameErrorBoundary] caught error:', error.message);
+    console.error('[GameErrorBoundary] caught error:', error.message);
+    console.error('[GameErrorBoundary] stack:', error.stack);
+    console.error('[GameErrorBoundary] component stack:', info.componentStack);
     // Navigate home
     this.props.onError?.();
     resetToMain();

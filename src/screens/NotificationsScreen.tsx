@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
 import {
   getNotifications,
   markAllAsRead,
   type AppNotification,
 } from '../storage/notificationStorage';
 import { acceptFriendRequest, declineFriendRequest } from '../storage/friendStorage';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useNotifications } from '../context/NotificationsContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -42,6 +43,17 @@ function notificationMessage(n: AppNotification): string {
 
 export default function NotificationsScreen() {
   const { refreshUnreadCount } = useNotifications();
+
+  const enterOpacity = useSharedValue(0);
+  const enterSlide = useSharedValue(14);
+  useEffect(() => {
+    enterOpacity.value = withTiming(1, { duration: 350 });
+    enterSlide.value = withTiming(0, { duration: 350 });
+  }, []);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enterOpacity.value,
+    transform: [{ translateY: enterSlide.value }],
+  }));
 
   const [items, setItems]             = useState<AppNotification[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -117,6 +129,7 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <Animated.View style={[{ flex: 1 }, enterStyle]}>
       <FlatList
         data={items}
         keyExtractor={item => item.id}
@@ -173,6 +186,7 @@ export default function NotificationsScreen() {
           );
         }}
       />
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -218,14 +232,14 @@ const s = StyleSheet.create({
   message: {
     color:      COLORS.text,
     fontSize:   15,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     lineHeight: 21,
   },
   time: {
     color:      COLORS.text2,
     fontSize:   12,
     marginTop:  4,
-    fontWeight: '500',
+    fontFamily: FONTS.medium,
   },
 
   // Accept / Decline buttons
@@ -243,7 +257,7 @@ const s = StyleSheet.create({
   },
   acceptBtnText: {
     color:      '#fff',
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     fontSize:   13,
   },
   declineBtn: {
@@ -257,7 +271,7 @@ const s = StyleSheet.create({
   },
   declineBtnText: {
     color:      COLORS.text2,
-    fontWeight: '600',
+    fontFamily: FONTS.semibold,
     fontSize:   13,
   },
   btnDisabled: { opacity: 0.5 },
@@ -265,6 +279,6 @@ const s = StyleSheet.create({
   processedLabel: {
     color:      COLORS.success,
     fontSize:   13,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
   },
 });

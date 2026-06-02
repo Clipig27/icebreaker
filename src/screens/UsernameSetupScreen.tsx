@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { checkUsernameAvailable, upsertProfile } from '../storage/userStorage';
 import { useGame } from '../context/GameContext';
-import { COLORS, SPACING, RADIUS } from '../constants/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
 import { supabase } from '../lib/supabase';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { parseError } from '../utils/errorUtils';
 
@@ -37,6 +38,17 @@ export default function UsernameSetupScreen({ navigation }: Props) {
   const [error, setError]       = useState('');
   const [saving, setSaving]     = useState(false);
   const { setCurrentUser }      = useGame();
+
+  const enterOpacity = useSharedValue(0);
+  const enterSlide = useSharedValue(14);
+  useEffect(() => {
+    enterOpacity.value = withTiming(1, { duration: 350 });
+    enterSlide.value = withTiming(0, { duration: 350 });
+  }, []);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enterOpacity.value,
+    transform: [{ translateY: enterSlide.value }],
+  }));
 
   const handleChange = (val: string) => {
     setUsername(val);
@@ -82,6 +94,7 @@ export default function UsernameSetupScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <Animated.View style={[styles.kav, enterStyle]}>
       <KeyboardAvoidingView
         style={styles.kav}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -123,6 +136,7 @@ export default function UsernameSetupScreen({ navigation }: Props) {
         </View>
       </KeyboardAvoidingView>
       <KeyboardDoneBar />
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -140,7 +154,7 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 52, marginBottom: 8 },
   title: {
     fontSize: 28,
-    fontWeight: '800',
+    fontFamily: FONTS.extrabold,
     color: COLORS.text,
     letterSpacing: -0.5,
   },
@@ -159,7 +173,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderHi,
     color: COLORS.text,
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: FONTS.bold,
     padding: SPACING.md,
     textAlign: 'center',
     letterSpacing: 0.5,
@@ -174,5 +188,5 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   btnDisabled: { opacity: 0.4 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  btnText: { color: '#fff', fontSize: 16, fontFamily: FONTS.bold },
 });
