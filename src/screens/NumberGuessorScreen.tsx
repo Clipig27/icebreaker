@@ -33,6 +33,13 @@ type NGPhase = 'intro' | 'guessing' | 'reveal' | 'round-end' | 'game-over';
 const ROUND_OPTIONS = [5, 10, 20] as const;
 const GUESS_TIMER_SECS = 20;
 
+interface NGGuess {
+  playerId: string;
+  value?: number;
+  timedOut?: boolean;
+  timeTaken?: number;
+}
+
 interface NGGameState {
   game: 'numberGuessor';
   phase: NGPhase;
@@ -44,6 +51,7 @@ interface NGGameState {
   roundScores?: Record<string, number>;
   targetNumber?: number;
   results?: GuessResult[];
+  guesses?: NGGuess[];
   streaks?: Record<string, number>;
   timerStartedAt?: number | null;
 }

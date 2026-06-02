@@ -157,11 +157,11 @@ export interface GuessResult {
 }
 
 export function calculateGuessResults(
-  guesses: { playerId: string; playerName: string; guess: number }[],
+  guesses: { playerId: string; playerName: string; guess: number; timeTaken?: number }[],
   target: number
 ): GuessResult[] {
   return guesses
-    .map(g => ({ ...g, distance: Math.abs(g.guess - target) }))
+    .map(g => ({ ...g, distance: Math.abs(g.guess - target), timeTaken: g.timeTaken ?? 20 }))
     .sort((a, b) => a.distance - b.distance); // closest first
 }
 
