@@ -1080,7 +1080,7 @@ export default function TalentShowScreen({ navigation }: Props) {
   }
 
   // Derived state helpers
-  const currentPerformerId = gs.performerQueue[gs.currentPerformerIdx] ?? null;
+  const currentPerformerId = (gs.performerQueue ?? [])[gs.currentPerformerIdx] ?? null;
   const currentPerformer = players.find(p => p.id === currentPerformerId) ?? null;
   const iAmPerformer = myId === currentPerformerId;
 
@@ -1408,7 +1408,7 @@ export default function TalentShowScreen({ navigation }: Props) {
 
   // ── Phase: r1-result ───────────────────────────────────────────────────────
   if (gs.phase === 'r1-result') {
-    const lastResult = gs.r1Results[gs.r1Results.length - 1];
+    const lastResult = (gs.r1Results ?? [])[((gs.r1Results ?? []).length) - 1];
     const outcome = lastResult?.outcome;
     const emoji =
       outcome === 'eliminated' ? '❌' : outcome === 'golden' ? '⭐' : '✅';
@@ -1420,7 +1420,7 @@ export default function TalentShowScreen({ navigation }: Props) {
         : outcome === 'golden'
         ? COLORS.warning
         : COLORS.success;
-    const totalPerformed = gs.r1Results.length;
+    const totalPerformed = (gs.r1Results ?? []).length;
     const totalPerformers = gs.performerQueue.length;
     const nextPerformerIdx = gs.currentPerformerIdx + 1;
     const nextPerformer = players.find(p => p.id === gs.performerQueue[nextPerformerIdx]);
@@ -1482,10 +1482,10 @@ export default function TalentShowScreen({ navigation }: Props) {
   // ── Phase: r1-neutral-vote ─────────────────────────────────────────────────
   if (gs.phase === 'r1-neutral-vote') {
     const performer = players.find(p => p.id === gs.performerQueue[gs.currentPerformerIdx]);
-    const amINeutralVoter = gs.r1NeutralVoterIds.includes(myId ?? '');
-    const iHaveVotedNeutral = gs.r1NeutralSubmittedIds.includes(myId ?? '');
-    const votesIn = gs.r1NeutralSubmittedIds.length;
-    const totalNeutral = gs.r1NeutralVoterIds.length;
+    const amINeutralVoter = (gs.r1NeutralVoterIds ?? []).includes(myId ?? '');
+    const iHaveVotedNeutral = (gs.r1NeutralSubmittedIds ?? []).includes(myId ?? '');
+    const votesIn = (gs.r1NeutralSubmittedIds ?? []).length;
+    const totalNeutral = (gs.r1NeutralVoterIds ?? []).length;
 
     if (iAmPerformer || !amINeutralVoter || iHaveVotedNeutral) {
       return (
@@ -1559,10 +1559,10 @@ export default function TalentShowScreen({ navigation }: Props) {
 
   // ── Phase: r2-voting ───────────────────────────────────────────────────────
   if (gs.phase === 'r2-voting') {
-    const amIVoter = gs.r2VoterIds.includes(myId ?? '');
-    const iHaveSubmitted = gs.r2SubmittedVoterIds.includes(myId ?? '');
-    const votesIn = gs.r2SubmittedVoterIds.length;
-    const totalVotersR2 = gs.r2VoterIds.length;
+    const amIVoter = (gs.r2VoterIds ?? []).includes(myId ?? '');
+    const iHaveSubmitted = (gs.r2SubmittedVoterIds ?? []).includes(myId ?? '');
+    const votesIn = (gs.r2SubmittedVoterIds ?? []).length;
+    const totalVotersR2 = (gs.r2VoterIds ?? []).length;
 
     if (!amIVoter || iHaveSubmitted) {
       return (
@@ -1593,7 +1593,7 @@ export default function TalentShowScreen({ navigation }: Props) {
 
     // Performers can't vote for themselves, so in a 2-performer R2 they can only pick 1
     const isR2Performer = gs.r2Results.some(r => r.playerId === myId);
-    const requiredR2Votes = Math.min(2, gs.r2Results.length - (isR2Performer ? 1 : 0));
+    const requiredR2Votes = Math.min(2, (gs.r2Results ?? []).length - (isR2Performer ? 1 : 0));
 
     const toggleR2Vote = (id: string) => {
       setR2Selected(prev => {
@@ -1788,10 +1788,10 @@ export default function TalentShowScreen({ navigation }: Props) {
 
   // ── Phase: r3-voting ───────────────────────────────────────────────────────
   if (gs.phase === 'r3-voting') {
-    const iAmFinalist = gs.r3FinalistIds.includes(myId ?? '');
-    const amIR3Voter = gs.r3VoterIds.includes(myId ?? '');
-    const iHaveSubmittedR3 = gs.r3SubmittedVoterIds.includes(myId ?? '');
-    const r3VotesIn = gs.r3SubmittedVoterIds.length;
+    const iAmFinalist = (gs.r3FinalistIds ?? []).includes(myId ?? '');
+    const amIR3Voter = (gs.r3VoterIds ?? []).includes(myId ?? '');
+    const iHaveSubmittedR3 = (gs.r3SubmittedVoterIds ?? []).includes(myId ?? '');
+    const r3VotesIn = (gs.r3SubmittedVoterIds ?? []).length;
 
     if (iAmFinalist || !amIR3Voter || iHaveSubmittedR3) {
       return (
@@ -1806,7 +1806,7 @@ export default function TalentShowScreen({ navigation }: Props) {
             ) : (
               <><Text style={styles.waitEmoji}>🏆</Text><Text style={styles.waitTitle}>Final vote in progress</Text></>
             )}
-            <Text style={styles.waitSub}>{r3VotesIn} / {gs.r3VoterIds.length} voted</Text>
+            <Text style={styles.waitSub}>{r3VotesIn} / {(gs.r3VoterIds ?? []).length} voted</Text>
           </View>
   
           </PhaseTransition>
@@ -1823,7 +1823,7 @@ export default function TalentShowScreen({ navigation }: Props) {
             <Text style={styles.badgeText}>🏆 Final Vote</Text>
           </View>
           <Text style={styles.votingTitle}>Cast your final vote!</Text>
-          <Text style={styles.votingSubtitle}>{r3VotesIn} / {gs.r3VoterIds.length} voted</Text>
+          <Text style={styles.votingSubtitle}>{r3VotesIn} / {(gs.r3VoterIds ?? []).length} voted</Text>
           <Text style={styles.votingHint}>Who should win the Talent Show?</Text>
 
           <View style={styles.candidateList}>
@@ -1883,7 +1883,7 @@ export default function TalentShowScreen({ navigation }: Props) {
             )}
           </View>
 
-          {gs.r1Results.length > 0 && (
+          {(gs.r1Results ?? []).length > 0 && (
             <>
               <Text style={styles.sectionLabel}>Round 1 Results</Text>
               <View style={styles.resultTable}>
