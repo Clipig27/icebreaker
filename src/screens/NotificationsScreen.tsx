@@ -19,6 +19,7 @@ import {
 import { acceptFriendRequest, declineFriendRequest } from '../storage/friendStorage';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useNotifications } from '../context/NotificationsContext';
+import { showToast } from '../components/Toast';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ export default function NotificationsScreen() {
       setItems(data);
     } catch (err: any) {
       console.warn('[NotificationsScreen] load failed:', err?.message ?? err);
+      showToast('Failed to load notifications');
     }
   }, []);
 
@@ -77,7 +79,7 @@ export default function NotificationsScreen() {
       setLoading(true);
       Promise.all([
         load(),
-        markAllAsRead().catch(() => {}),
+        markAllAsRead().catch(() => showToast('Failed to mark as read')),
       ])
         .finally(() => {
           setLoading(false);

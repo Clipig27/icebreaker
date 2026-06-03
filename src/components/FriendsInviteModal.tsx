@@ -18,6 +18,7 @@ import { BlurView } from 'expo-blur';
 import { getFriends, type Friend } from '../storage/friendStorage';
 import { sendGameInvite } from '../storage/inviteStorage';
 import { COLORS, FONTS, RADIUS, SPACING, SHADOWS } from '../constants/theme';
+import { showToast } from './Toast';
 
 type Props = {
   visible: boolean;
@@ -47,8 +48,7 @@ export default function FriendsInviteModal({ visible, roomCode, onClose }: Props
       await sendGameInvite(friend.friendId, roomCode);
       setSent(prev => ({ ...prev, [friend.friendId]: true }));
     } catch {
-      // silently ignore — duplicate invite or network error
-      setSent(prev => ({ ...prev, [friend.friendId]: true }));
+      showToast('Failed to send invite');
     } finally {
       setInviting(null);
     }

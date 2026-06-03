@@ -149,7 +149,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       .eq('status', 'pending')
       .then(({ data }) => {
         (data ?? []).forEach((r: any) => seenRequestIds.current.add(r.id));
-      });
+      })
+      .then(() => {}, () => {});
 
     const showRequestAlert = async (row: { id: string; sender_id: string; status: string }) => {
       if (row.status !== 'pending') return;
@@ -186,12 +187,16 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     // Polling fallback — check every 5 seconds for new requests
     const poll = setInterval(async () => {
-      const { data } = await supabase
-        .from('friend_requests')
-        .select('id, sender_id, status')
-        .eq('receiver_id', userId)
-        .eq('status', 'pending');
-      (data ?? []).forEach((r: any) => showRequestAlert(r));
+      try {
+        const { data } = await supabase
+          .from('friend_requests')
+          .select('id, sender_id, status')
+          .eq('receiver_id', userId)
+          .eq('status', 'pending');
+        (data ?? []).forEach((r: any) => showRequestAlert(r));
+      } catch (e) {
+        console.warn('[poll] error:', e);
+      }
     }, 5000);
 
     return () => {
@@ -215,54 +220,59 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       .eq('status', 'pending')
       .then(({ data }) => {
         (data ?? []).forEach((r: any) => seenInviteIds.current.add(r.id));
-      });
+      })
+      .then(() => {}, () => {});
 
     const pollInvites = setInterval(async () => {
-      const { data } = await supabase
-        .from('game_invites')
-        .select('id, sender_id, room_code, status')
-        .eq('receiver_id', userId)
-        .eq('status', 'pending');
+      try {
+        const { data } = await supabase
+          .from('game_invites')
+          .select('id, sender_id, room_code, status')
+          .eq('receiver_id', userId)
+          .eq('status', 'pending');
 
-      for (const inv of data ?? []) {
-        if (seenInviteIds.current.has(inv.id)) continue;
-        seenInviteIds.current.add(inv.id);
+        for (const inv of data ?? []) {
+          if (seenInviteIds.current.has(inv.id)) continue;
+          seenInviteIds.current.add(inv.id);
 
-        const { data: sender } = await supabase
-          .from('users')
-          .select('username')
-          .eq('id', inv.sender_id)
-          .maybeSingle();
+          const { data: sender } = await supabase
+            .from('users')
+            .select('username')
+            .eq('id', inv.sender_id)
+            .maybeSingle();
 
-        const senderName = sender?.username ?? 'Someone';
-        const roomCode = inv.room_code;
-        const inviteId = inv.id;
+          const senderName = sender?.username ?? 'Someone';
+          const roomCode = inv.room_code;
+          const inviteId = inv.id;
 
-        showToast(`${senderName} invited you to room ${roomCode}`, {
-          action: {
-            label: 'Join',
-            onPress: () => {
-              // Accept the invite
-              supabase
-                .from('game_invites')
-                .update({ status: 'accepted' })
-                .eq('id', inviteId)
-                .then(() => {});
-              // Join the room directly via socket
-              const user = currentUserRef.current;
-              if (user?.username) {
-                const persistentId = user.id ?? socket.id;
-                ensureSocketConnected()
-                  .then(() => {
-                    socket.emit('joinRoom', { code: roomCode, playerName: user.username, persistentId });
-                    navigateTo('JoinRoom', { roomCode });
-                  })
-                  .catch(() => showToast('Could not connect to server'));
-              }
+          showToast(`${senderName} invited you to room ${roomCode}`, {
+            action: {
+              label: 'Join',
+              onPress: () => {
+                // Accept the invite
+                supabase
+                  .from('game_invites')
+                  .update({ status: 'accepted' })
+                  .eq('id', inviteId)
+                  .then(() => {});
+                // Join the room directly via socket
+                const user = currentUserRef.current;
+                if (user?.username) {
+                  const persistentId = user.id ?? socket.id;
+                  ensureSocketConnected()
+                    .then(() => {
+                      socket.emit('joinRoom', { code: roomCode, playerName: user.username, persistentId });
+                      navigateTo('JoinRoom', { roomCode });
+                    })
+                    .catch(() => showToast('Could not connect to server'));
+                }
+              },
             },
-          },
-          durationMs: 8000,
-        });
+            durationMs: 8000,
+          });
+        }
+      } catch (e) {
+        console.warn('[poll] error:', e);
       }
     }, 3000);
 
@@ -313,6 +323,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     socket.on('connect', () => {
       console.log('[Socket] connected id=', socket.id);
       setIsConnected(true);
+      showToast('Reconnected!');
       // Re-register persistentId so stableId() works after a reconnect
       const pid = currentUserRef.current?.id;
       if (pid) {
@@ -322,6 +333,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     socket.on('disconnect', (reason) => {
       console.log('[Socket] disconnected reason=', reason);
       setIsConnected(false);
+      showToast('Connection lost. Reconnecting...');
     });
     socket.on('connect_error', (err) => {
       console.error('[Socket] connect_error:', err.message);

@@ -44,6 +44,7 @@ function validateUsername(val: string): string {
 export default function ProfileScreen({ navigation }: Props) {
   const { currentUser, setCurrentUser } = useGame();
   const [friendsCount, setFriendsCount] = useState<number | null>(null);
+  const [friendsLoading, setFriendsLoading] = useState(false);
 
   // Username edit state
   const [editingUsername, setEditingUsername] = useState(false);
@@ -65,9 +66,11 @@ export default function ProfileScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       if (!currentUser) return;
+      setFriendsLoading(true);
       getFriends()
         .then(f => setFriendsCount(f.length))
-        .catch(() => setFriendsCount(null));
+        .catch(() => setFriendsCount(null))
+        .finally(() => setFriendsLoading(false));
     }, [currentUser?.id])
   );
 
@@ -189,7 +192,7 @@ export default function ProfileScreen({ navigation }: Props) {
             <StatBox label="Trophies" value={currentUser.trophies} />
             <StatBox label="Wins"     value={currentUser.wins} />
             <StatBox label="Played"   value={currentUser.gamesPlayed} />
-            <StatBox label="Friends"  value={friendsCount ?? '—'} />
+            <StatBox label="Friends"  value={friendsLoading ? '...' : (friendsCount ?? '—')} />
           </View>
 
           {/* Navigation entry points */}

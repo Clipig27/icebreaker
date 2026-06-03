@@ -47,7 +47,7 @@ export function startPresence(userId: string, username: string): void {
               user_id: pendingTrack.userId,
               username: pendingTrack.username,
               online_at: new Date().toISOString(),
-            }).catch(() => {});
+            }).catch((e) => console.warn('[presence]', e));
             pendingTrack = null;
           }
         }
@@ -64,7 +64,7 @@ export function startPresence(userId: string, username: string): void {
       user_id: userId,
       username,
       online_at: new Date().toISOString(),
-    }).catch(() => {});
+    }).catch((e) => console.warn('[presence]', e));
   } else {
     pendingTrack = { userId, username };
   }
@@ -76,7 +76,7 @@ export function startPresence(userId: string, username: string): void {
 export function stopPresence(userId: string): void {
   pendingTrack = null;
   if (channel && isSubscribed) {
-    channel.untrack().catch(() => {});
+    channel.untrack().catch((e) => console.warn('[presence]', e));
   }
   // Write is_online = false to the users table
   supabase

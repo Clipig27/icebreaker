@@ -45,6 +45,7 @@ import { useGame } from '../context/GameContext';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { parseError } from '../utils/errorUtils';
+import { showToast } from '../components/Toast';
 
 type Props = {
   navigation: CompositeNavigationProp<
@@ -107,7 +108,7 @@ export default function FriendsScreen({ navigation }: Props) {
       setOutgoing(o);
       setInvites(i);
     } catch (e: any) {
-      // silently fail on background refresh
+      showToast('Failed to load friends data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -138,7 +139,7 @@ export default function FriendsScreen({ navigation }: Props) {
       await sendFriendRequest(trimmed);
       setUsername('');
       playSuccessAnim(trimmed);
-      getOutgoingRequests().then(setOutgoing).catch(() => {});
+      getOutgoingRequests().then(setOutgoing).catch(() => showToast('Failed to refresh requests'));
     } catch (e: any) {
       const msg = (e as any)?.message ?? '';
       if (msg.toLowerCase().includes('not found')) {

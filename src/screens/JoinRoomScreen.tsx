@@ -64,7 +64,7 @@ export default function JoinRoomScreen({ navigation, route }: any) {
         numberGuessor: 'NumberGuessor',
         pieCharts:     'PieCharts',
       };
-      const screen = screenMap[room.gameState.game];
+      const screen = room?.gameState ? screenMap[room.gameState.game] : undefined;
       if (screen) navigation.navigate(screen as any);
     }
   }, [room?.phase, room?.gameState?.game]);

@@ -36,7 +36,7 @@ type FeedEntry = {
 
 export default function PotLuckScreen() {
   const { room, currentUser, isHost, sendPlayerAction, endGame, restartGame } = useGame();
-  const gs = room?.gameState;
+  const gs = room?.gameState?.game === 'potLuck' ? room.gameState : null;
 
   const [feed, setFeed]             = useState<FeedEntry[]>([]);
   const [plan, setPlan]             = useState<'risk' | 'skip' | null>(null);
@@ -48,6 +48,24 @@ export default function PotLuckScreen() {
   const myId     = currentUser?.id ?? '';
   const myPlayer = room?.players?.find(p => p.id === myId);
   const isMyTurn = gs?.phase === 'live' && gs?.order?.[gs.seatPtr] === myId;
+
+  if (!gs || !room) {
+    return (
+      <GameIntro
+        emoji="🧠"
+        title="Smarty Pot"
+        tagline="Risk the growing pot or pass it on."
+        rules={[
+          { emoji: '📚', text: 'Each question has a difficulty: Easy, Medium, or Hard. Harder = bigger starting pot.' },
+          { emoji: '⏱️', text: 'On your turn you have 15 seconds — answer or skip.' },
+          { emoji: '✅', text: 'Answer correctly = win the pot. Wrong = lose points equal to the pot.' },
+          { emoji: '⏭️', text: 'Skip = pot grows by 1 and passes on. First to the target score wins!' },
+        ]}
+        isHost={isHost}
+        onStart={() => sendPlayerAction('advanceFromIntro', {})}
+      />
+    );
+  }
 
   useEffect(() => {
     if (!gs?.lastResult) return;
