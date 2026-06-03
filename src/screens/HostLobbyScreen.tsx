@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
   FlatList, ActivityIndicator, Animated, Pressable, Platform,
+  KeyboardAvoidingView, Keyboard,
 } from 'react-native';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -110,6 +111,11 @@ export default function HostLobbyScreen({ navigation }: any) {
     return (
       <View style={s.root}>
         <SafeAreaView style={s.safe}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+          <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
           <Animated.View style={[s.formWrap, {
             opacity: formFade,
             transform: [{ translateY: formFade.interpolate({ inputRange: [0,1], outputRange: [24,0] }) }],
@@ -155,6 +161,8 @@ export default function HostLobbyScreen({ navigation }: any) {
               </Pressable>
             </Animated.View>
           </Animated.View>
+          </Pressable>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
     );
@@ -234,7 +242,7 @@ export default function HostLobbyScreen({ navigation }: any) {
                 <View style={[s.playerAvatar, index === 0 && s.playerAvatarHost]}>
                   <Text style={s.playerAvatarText}>{item.name[0].toUpperCase()}</Text>
                 </View>
-                <Text style={s.playerName}>{item.name}</Text>
+                <Text style={s.playerName} numberOfLines={1}>{item.name}</Text>
                 {index === 0 && (
                   <View style={s.hostBadge}>
                     <Text style={s.hostBadgeText}>HOST</Text>

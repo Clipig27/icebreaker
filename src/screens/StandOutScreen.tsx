@@ -539,7 +539,7 @@ export default function StandOutScreen({ navigation }: Props) {
                   invalidated ? styles.answerRowInvalidated : dup ? styles.answerRowDup : styles.answerRowUnique,
                 ]}>
                   <View style={styles.answerLeft}>
-                    <Text style={styles.answerName}>{ans.playerName}</Text>
+                    <Text style={styles.answerName} numberOfLines={1}>{ans.playerName}</Text>
                     <Text style={[
                       styles.answerText,
                       { color: invalidated ? COLORS.text3 : dup ? COLORS.danger : COLORS.success },
@@ -595,7 +595,7 @@ export default function StandOutScreen({ navigation }: Props) {
               : COLORS.borderHi;
             return (
               <View key={p.id} style={styles.raceRow}>
-                <Text style={styles.raceName}>{p.name}</Text>
+                <Text style={styles.raceName} numberOfLines={1}>{p.name}</Text>
                 <View style={styles.raceBarTrack}>
                   <View style={[styles.raceBarFill, { width: barWidth, backgroundColor: barColor }]} />
                 </View>

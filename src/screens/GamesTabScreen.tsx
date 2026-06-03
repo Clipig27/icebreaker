@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Animated,
-  ScrollView, Modal, Pressable,
+  ScrollView, Modal, Pressable, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -224,15 +224,26 @@ export default function GamesTabScreen() {
   const [selected, setSelected] = useState<Game | null>(null);
   const [enabledGames, setEnabledGames] = useState<Set<string> | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchEnabledGames().then(setEnabledGames);
-    checkIsAdmin().then(setIsAdmin);
+    Promise.all([
+      fetchEnabledGames().then(setEnabledGames),
+      checkIsAdmin().then(setIsAdmin),
+    ]).finally(() => setLoading(false));
   }, []);
 
   const visibleGames = enabledGames
     ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
     : GAMES;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <ActivityIndicator size="large" color={COLORS.accent} style={{ marginTop: 80 }} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe}>

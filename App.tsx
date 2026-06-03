@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Exo2_500Medium, Exo2_600SemiBold, Exo2_700Bold, Exo2_800ExtraBold } from '@expo-google-fonts/exo-2';
 import { ActivityIndicator, View as RNView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { GameProvider }           from './src/context/GameContext';
 import { NotificationsProvider }  from './src/context/NotificationsContext';
@@ -13,6 +14,7 @@ import { navigationRef, resetToMain } from './src/navigation/navigationRef';
 import MainTabs                   from './src/navigation/MainTabs';
 import NotificationsScreen        from './src/screens/NotificationsScreen';
 
+import OnboardingScreen    from './src/screens/OnboardingScreen';
 import UsernameSetupScreen from './src/screens/UsernameSetupScreen';
 import PlayerSetupScreen   from './src/screens/PlayerSetupScreen';
 import GameSelectScreen    from './src/screens/GameSelectScreen';
@@ -41,6 +43,7 @@ import { useGame } from './src/context/GameContext';
 import { TouchableOpacity, Text, View, Alert } from 'react-native';
 
 export type RootStackParamList = {
+  Onboarding:    undefined;
   MainTabs:      undefined;
   UsernameSetup: undefined;
   Notifications: undefined;
@@ -87,6 +90,11 @@ const GAME_SCREENS = new Set([
 
 function AppInner() {
   const { currentUser, room, isHost, leaveRoom } = useGame();
+
+  const [onboarded, setOnboarded] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    AsyncStorage.getItem('@icebreaker_onboarded').then((v) => setOnboarded(v === 'true'));
+  }, []);
 
   // If there's no room but we're stuck on a game screen, go home.
   // Only resets from game screens — NOT from lobby/join/setup screens where room may be temporarily null.
@@ -153,12 +161,20 @@ function AppInner() {
     );
   }
 
+  if (onboarded === null) {
+    return (
+      <RNView style={{ flex: 1, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={COLORS.accent} />
+      </RNView>
+    );
+  }
+
   return (
     <>
       <NavigationContainer ref={navigationRef}>
         <StatusBar style="light" />
         <Stack.Navigator
-          initialRouteName="MainTabs"
+          initialRouteName={onboarded ? 'MainTabs' : 'Onboarding'}
           screenOptions={({ navigation, route }) => {
             const isGameScreen = GAME_SCREENS.has(route.name);
             const isRoomScreen = isGameScreen || ['HostLobby', 'JoinRoom', 'GameSelect', 'PlayerSetup'].includes(route.name);
@@ -204,6 +220,7 @@ function AppInner() {
             };
           }}
         >
+          <Stack.Screen name="Onboarding"    component={OnboardingScreen}    options={{ headerShown: false, animation: 'fade' }} />
           <Stack.Screen name="MainTabs"      component={MainTabs}            options={{ headerShown: false }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
           <Stack.Screen name="UsernameSetup" component={UsernameSetupScreen} options={{ headerShown: false }} />

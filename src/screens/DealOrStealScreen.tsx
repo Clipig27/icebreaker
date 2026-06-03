@@ -718,7 +718,7 @@ export default function DealOrStealScreen({ navigation }: Props) {
                 style={[styles.actionOption, actionTarget === p.id && styles.actionOptionSelected]}
                 onPress={() => setActionTarget(p.id)}
               >
-                <Text style={styles.actionOptionTitle}>{p.name}</Text>
+                <Text style={styles.actionOptionTitle} numberOfLines={1}>{p.name}</Text>
               </TouchableOpacity>
             ))}
           </>
@@ -910,7 +910,7 @@ export default function DealOrStealScreen({ navigation }: Props) {
         {standings.map((p, i) => (
           <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst]}>
             <Text style={styles.standingRank}>#{i + 1}</Text>
-            <Text style={styles.standingName}>{p.name}{p.id === myId ? ' (you)' : ''}</Text>
+            <Text style={styles.standingName} numberOfLines={1}>{p.name}{p.id === myId ? ' (you)' : ''}</Text>
             <Text style={[styles.standingScore, i === 0 && { color: COLORS.success }]}>
               {fmt(bals[p.id] ?? STARTING_BALANCE)}
             </Text>
@@ -961,7 +961,7 @@ export default function DealOrStealScreen({ navigation }: Props) {
         }
         return (
           <View key={p.id} style={styles.historyRow}>
-            <Text style={styles.historyPlayerName}>
+            <Text style={styles.historyPlayerName} numberOfLines={1}>
               {p.name}{p.id === myId ? ' (you)' : ''}
             </Text>
             <Text style={styles.historyAction}>{actionText}</Text>

@@ -1634,7 +1634,7 @@ export default function TalentShowScreen({ navigation }: Props) {
                   <View style={[styles.voteCheckbox, isSelected && styles.voteCheckboxSelected]}>
                     {isSelected && <Text style={styles.voteCheckmark}>✓</Text>}
                   </View>
-                  <Text style={styles.voteRowName}>{r.playerName}</Text>
+                  <Text style={styles.voteRowName} numberOfLines={1}>{r.playerName}</Text>
                   {isSelf && <Text style={styles.voteRowSelfLabel}>you</Text>}
                 </TouchableOpacity>
               );
@@ -1898,7 +1898,7 @@ export default function TalentShowScreen({ navigation }: Props) {
                     r.outcome === 'eliminated' ? 'ELIM' : r.outcome === 'golden' ? 'GOLDEN' : 'ADV';
                   return (
                     <View key={r.playerId} style={styles.resultTableRow}>
-                      <Text style={styles.resultTableName}>{r.playerName}</Text>
+                      <Text style={styles.resultTableName} numberOfLines={1}>{r.playerName}</Text>
                       <Text style={styles.resultTableStats}>
                         🔴{r.buzzCount} ⭐{r.goldenCount}
                       </Text>

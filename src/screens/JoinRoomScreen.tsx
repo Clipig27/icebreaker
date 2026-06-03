@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, StyleSheet, FlatList,
   Animated, Pressable, Platform, Keyboard,
-  KeyboardAvoidingView, ScrollView,
+  KeyboardAvoidingView, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +19,8 @@ export default function JoinRoomScreen({ navigation, route }: any) {
   const [name, setName]     = useState(currentUser?.username ?? '');
   const [code, setCode]     = useState(autoRoomCode ?? '');
   const [joined, setJoined] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const joinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── All hooks at top ───────────────────────────────────────────────────────
   const joinBtnScale = useRef(new Animated.Value(1)).current;
@@ -42,7 +44,11 @@ export default function JoinRoomScreen({ navigation, route }: any) {
   }, [autoRoomCode, currentUser?.username]);
 
   useEffect(() => {
-    if (room && !joined) setJoined(true);
+    if (room && !joined) {
+      setJoined(true);
+      setJoining(false);
+      if (joinTimeoutRef.current) { clearTimeout(joinTimeoutRef.current); joinTimeoutRef.current = null; }
+    }
   }, [room]);
 
   useEffect(() => {
@@ -83,13 +89,20 @@ export default function JoinRoomScreen({ navigation, route }: any) {
     transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) }],
   });
 
+  // Clean up join timeout on unmount
+  useEffect(() => {
+    return () => { if (joinTimeoutRef.current) clearTimeout(joinTimeoutRef.current); };
+  }, []);
+
   const handleJoin = () => {
-    if (!name.trim() || !code.trim()) return;
+    if (!name.trim() || !code.trim() || joining) return;
     Animated.sequence([
       Animated.spring(joinBtnScale, { toValue: 0.93, useNativeDriver: true, speed: 80, bounciness: 0 }),
       Animated.spring(joinBtnScale, { toValue: 1,    useNativeDriver: true, speed: 18, bounciness: 16 }),
     ]).start();
+    setJoining(true);
     joinRoom(code.trim().toUpperCase(), name.trim());
+    joinTimeoutRef.current = setTimeout(() => setJoining(false), 8000);
   };
 
   // ── Join form ─────────────────────────────────────────────────────────────
@@ -154,17 +167,22 @@ export default function JoinRoomScreen({ navigation, route }: any) {
 
             <Animated.View style={{ width: '100%', transform: [{ scale: joinBtnScale }] }}>
               <Pressable
-                style={[s.primaryBtn, (!name.trim() || !code.trim()) && s.primaryBtnDisabled]}
+                style={[s.primaryBtn, (!name.trim() || !code.trim() || joining) && s.primaryBtnDisabled]}
                 onPress={handleJoin}
-                disabled={!name.trim() || !code.trim()}
+                disabled={!name.trim() || !code.trim() || joining}
               >
                 <LinearGradient
                   colors={['#0891B2', '#0E7490']}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                   style={s.primaryBtnGradient}
                 >
-                  <Text style={s.primaryBtnText}>Join Room</Text>
-                  <Ionicons name="arrow-forward" size={18} color="#fff" />
+                  {joining
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <>
+                        <Text style={s.primaryBtnText}>Join Room</Text>
+                        <Ionicons name="arrow-forward" size={18} color="#fff" />
+                      </>
+                  }
                 </LinearGradient>
               </Pressable>
             </Animated.View>
@@ -223,7 +241,7 @@ export default function JoinRoomScreen({ navigation, route }: any) {
                 <View style={[s.playerAvatar, index === 0 && s.playerAvatarHost]}>
                   <Text style={s.playerAvatarText}>{item.name[0].toUpperCase()}</Text>
                 </View>
-                <Text style={s.playerName}>{item.name}</Text>
+                <Text style={s.playerName} numberOfLines={1}>{item.name}</Text>
                 {index === 0 && (
                   <View style={s.hostBadge}>
                     <Text style={s.hostBadgeText}>HOST</Text>

@@ -660,7 +660,7 @@ export default function PieChartsScreen({ navigation }: Props) {
               activeOpacity={0.75}
             >
               <View style={[styles.playerColorDot, { backgroundColor: colorFor(p) }]} />
-              <Text style={styles.playerVoteName}>{p.name}</Text>
+              <Text style={styles.playerVoteName} numberOfLines={1}>{p.name}</Text>
               {myId === p.id && <Text style={styles.selfLabel}>you</Text>}
               <Text style={styles.playerVoteArrow}>→</Text>
             </TouchableOpacity>

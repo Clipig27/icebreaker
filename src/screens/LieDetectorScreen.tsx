@@ -679,7 +679,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
               return (
                 <View key={r.playerId} style={styles.pointRow}>
                   <Text style={styles.pointPlus}>+{r.points}</Text>
-                  <Text style={styles.pointName}>{r.playerName}</Text>
+                  <Text style={styles.pointName} numberOfLines={1}>{r.playerName}</Text>
                   <Text style={styles.pointTag}>
                     {isSpeakerRow
                       ? `fooled ${r.points} guess${r.points !== 1 ? 'es' : ''}`

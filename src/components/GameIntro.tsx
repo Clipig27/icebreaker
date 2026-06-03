@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,8 @@ function StaggerIn({ delay, children, style }: {
 }
 
 export default function GameIntro({ emoji, title, tagline, rules, isHost, onStart, buttonLabel = 'START GAME' }: Props) {
+  const [starting, setStarting] = useState(false);
+
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -84,8 +86,12 @@ export default function GameIntro({ emoji, title, tagline, rules, isHost, onStar
 
         <StaggerIn delay={360} style={{ width: '100%' }}>
           {isHost ? (
-            <TouchableOpacity style={s.startBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onStart(); }}>
-              <Text style={s.startBtnText}>{buttonLabel}</Text>
+            <TouchableOpacity
+              style={[s.startBtn, starting && s.startBtnDisabled]}
+              disabled={starting}
+              onPress={() => { setStarting(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onStart(); }}
+            >
+              <Text style={s.startBtnText}>{starting ? 'Starting...' : buttonLabel}</Text>
             </TouchableOpacity>
           ) : (
             <Text style={s.waiting}>Waiting for the host to start…</Text>
@@ -123,6 +129,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
+  startBtnDisabled: { opacity: 0.5 },
   startBtnText: { color: '#fff', fontSize: 16, fontFamily: FONTS.bold, letterSpacing: 1 },
   waiting: { color: COLORS.text2, fontSize: 14, fontFamily: FONTS.medium, fontStyle: 'italic', marginTop: 8 },
 });

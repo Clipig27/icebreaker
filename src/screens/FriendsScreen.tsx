@@ -375,7 +375,7 @@ export default function FriendsScreen({ navigation }: Props) {
                   <Text style={s.avatarText}>{item.friendUsername[0]?.toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.friendUsername}>{item.friendUsername}</Text>
+                  <Text style={s.friendUsername} numberOfLines={1}>{item.friendUsername}</Text>
                   <Text style={[s.friendStatus, { color: item.friendIsOnline ? COLORS.success : COLORS.text2 }]}>
                     {item.friendIsOnline ? 'Online' : 'Offline'}
                   </Text>
@@ -479,7 +479,7 @@ export default function FriendsScreen({ navigation }: Props) {
                     <View style={s.avatarCircle}>
                       <Text style={s.avatarText}>{req.senderUsername[0]?.toUpperCase()}</Text>
                     </View>
-                    <Text style={s.reqUsername}>{req.senderUsername}</Text>
+                    <Text style={s.reqUsername} numberOfLines={1}>{req.senderUsername}</Text>
                   </View>
                   <View style={s.requestActions}>
                     <TouchableOpacity
@@ -521,7 +521,7 @@ export default function FriendsScreen({ navigation }: Props) {
                       <Text style={s.avatarText}>{req.receiverUsername[0]?.toUpperCase()}</Text>
                     </View>
                     <View>
-                      <Text style={s.reqUsername}>{req.receiverUsername}</Text>
+                      <Text style={s.reqUsername} numberOfLines={1}>{req.receiverUsername}</Text>
                       <View style={s.pendingBadge}>
                         <Text style={s.pendingBadgeText}>PENDING</Text>
                       </View>
@@ -552,7 +552,7 @@ export default function FriendsScreen({ navigation }: Props) {
               {invites.map(inv => (
                 <View key={inv.id} style={s.requestRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.reqUsername}>{inv.senderUsername}</Text>
+                    <Text style={s.reqUsername} numberOfLines={1}>{inv.senderUsername}</Text>
                     <Text style={s.inviteCode}>Room: {inv.roomCode}</Text>
                   </View>
                   <View style={s.requestActions}>

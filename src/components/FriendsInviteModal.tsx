@@ -78,7 +78,7 @@ export default function FriendsInviteModal({ visible, roomCode, onClose }: Props
                   <View style={s.row}>
                     <View style={s.rowLeft}>
                       <View style={[s.dot, item.friendIsOnline && s.dotOnline]} />
-                      <Text style={s.friendName}>{item.friendUsername}</Text>
+                      <Text style={s.friendName} numberOfLines={1}>{item.friendUsername}</Text>
                     </View>
                     <TouchableOpacity
                       style={[s.inviteBtn, isSent && s.inviteBtnSent]}

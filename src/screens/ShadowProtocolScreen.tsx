@@ -339,7 +339,7 @@ export default function ShadowProtocolScreen({ navigation }: any) {
                       onPress={() => submitNightAction(p.id)}
                       activeOpacity={0.75}
                     >
-                      <Text style={styles.targetName}>{p.name}</Text>
+                      <Text style={styles.targetName} numberOfLines={1}>{p.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -515,7 +515,7 @@ export default function ShadowProtocolScreen({ navigation }: any) {
                       onPress={() => submitDayVote(p.id)}
                       activeOpacity={0.75}
                     >
-                      <Text style={styles.targetName}>{p.name}</Text>
+                      <Text style={styles.targetName} numberOfLines={1}>{p.name}</Text>
                       {voteCount > 0 && <Text style={styles.voteCount}>{voteCount} vote{voteCount !== 1 ? 's' : ''}</Text>}
                     </TouchableOpacity>
                   );
@@ -611,7 +611,7 @@ export default function ShadowProtocolScreen({ navigation }: any) {
               <Text style={styles.sectionLabel}>ROLES REVEALED</Text>
               {gs.finalRoles.map(p => (
                 <View key={p.id} style={styles.roleRevealItem}>
-                  <Text style={styles.roleRevealName}>{p.name}</Text>
+                  <Text style={styles.roleRevealName} numberOfLines={1}>{p.name}</Text>
                   <Text style={[styles.roleRevealRole, { color: ROLE_COLOR[p.role] }]}>
                     {ROLE_EMOJI[p.role]} {ROLE_LABEL[p.role]}
                   </Text>

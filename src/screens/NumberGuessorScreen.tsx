@@ -357,7 +357,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
               <View key={p.id} style={[styles.standingRow, i === 0 && styles.standingRowFirst, isMe && styles.standingRowMe]}>
                 <Text style={[styles.standingRank, isMe && styles.standingRankMe]}>#{i + 1}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                  <Text style={[styles.standingName, isMe && styles.standingNameMe]}>{p.name}</Text>
+                  <Text style={[styles.standingName, isMe && styles.standingNameMe]} numberOfLines={1}>{p.name}</Text>
                   {isMe && <Text style={styles.standingYouBadge}>YOU</Text>}
                 </View>
                 <Text style={[styles.standingScore, { color: scoreColor }]}>
@@ -527,7 +527,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
                   <Text style={styles.guessRank}>{r.timedOut ? '⏰' : isBest ? '🎯' : '·'}</Text>
                   <View style={styles.guessInfo}>
                     <View style={styles.guessNameRow}>
-                      <Text style={[styles.guessName, isMe && styles.guessNameMe]}>{r.playerName}</Text>
+                      <Text style={[styles.guessName, isMe && styles.guessNameMe]} numberOfLines={1}>{r.playerName}</Text>
                       <View style={styles.timeBadge}>
                         <Text style={styles.timeBadgeText}>⏱ {r.timeTaken}s</Text>
                       </View>
@@ -586,7 +586,7 @@ export default function NumberGuessorScreen({ navigation }: Props) {
                 <Text style={[styles.standingRank, isMe && styles.standingRankMe]}>#{i + 1}</Text>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={[styles.standingName, isMe && styles.standingNameMe]}>{p.name}</Text>
+                    <Text style={[styles.standingName, isMe && styles.standingNameMe]} numberOfLines={1}>{p.name}</Text>
                     {isMe && <Text style={styles.standingYouBadge}>YOU</Text>}
                   </View>
                   {result && (
