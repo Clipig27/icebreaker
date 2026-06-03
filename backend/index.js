@@ -914,6 +914,7 @@ function startNextPotLuckQuestion(code) {
 // ── Chain Link ────────────────────────────────────────────────────────────────
 
 const CHAINLINK_NOUNS = [
+  // ── Original set ────────────────────────────────────────────────────────
   'car','road','ocean','guitar','mountain','coffee','library','rocket',
   'umbrella','river','castle','phone','garden','volcano','compass','piano',
   'jungle','telescope','anchor','lighthouse','lantern','clock','mirror',
@@ -936,6 +937,94 @@ const CHAINLINK_NOUNS = [
   'notebook','crayon','chalk','eraser','ruler','pencil',
   'bucket','barrel','crate','basket','bowl','jug',
   'saddle','bridle','stirrup','horseshoe','wagon','plow',
+  // ── Animals ─────────────────────────────────────────────────────────────
+  'dolphin','eagle','penguin','elephant','tiger','whale','panther','falcon',
+  'shark','turtle','octopus','parrot','cobra','wolf','bear','fox',
+  'owl','raven','flamingo','jellyfish','beetle','scorpion','chameleon',
+  'gorilla','cheetah','stallion','swan','crane','pelican','lobster',
+  'buffalo','gazelle','leopard','crocodile','salmon','moth','firefly',
+  'sparrow','pigeon','rooster','donkey','camel','seal','walrus','otter',
+  'rabbit','squirrel','hedgehog','bat','moose','deer','raccoon','badger',
+  // ── Food & drink ────────────────────────────────────────────────────────
+  'chocolate','cinnamon','vanilla','espresso','whiskey','ginger','olive',
+  'avocado','coconut','mango','cherry','grape','walnut','almond','peach',
+  'pumpkin','potato','carrot','onion','garlic','tomato','cucumber','celery',
+  'steak','bacon','sausage','pretzel','waffle','pancake','donut','cookie',
+  'butter','cream','cheese','yogurt','syrup','vinegar','mustard','ketchup',
+  'popcorn','noodle','dumpling','sushi','taco','burrito','pizza','sandwich',
+  // ── Nature & earth ──────────────────────────────────────────────────────
+  'volcano','earthquake','avalanche','tornado','blizzard','drought','tsunami',
+  'marsh','swamp','lagoon','reef','geyser','crater','boulder','pebble',
+  'moss','ivy','fern','cactus','bamboo','orchid','sunflower','tulip',
+  'oak','willow','maple','pine','birch','sequoia','palm','cypress',
+  'pond','creek','waterfall','rapids','delta','fjord','peninsula','plateau',
+  'sand','clay','gravel','limestone','granite','marble','obsidian','slate',
+  // ── Tools & objects ─────────────────────────────────────────────────────
+  'wrench','screwdriver','pliers','chisel','anvil','drill','saw','axe',
+  'shovel','rake','broom','mop','sponge','brush','comb','razor',
+  'zipper','velcro','clip','pin','chain','bolt','screw','nail',
+  'tape','wire','cable','hose','pipe','valve','faucet','drain',
+  'shelf','drawer','cabinet','closet','trunk','chest','suitcase','pouch',
+  'blanket','pillow','mattress','curtain','towel','apron','belt','scarf',
+  // ── Buildings & places ──────────────────────────────────────────────────
+  'factory','warehouse','theater','stadium','arena','museum','gallery',
+  'temple','mosque','chapel','monastery','shrine','pyramid','fortress',
+  'cabin','cottage','mansion','skyscraper','penthouse','bunker','igloo',
+  'airport','station','dock','pier','marina','wharf','terminal','hangar',
+  'prison','courtroom','hospital','pharmacy','clinic','laboratory','morgue',
+  'bakery','tavern','pub','diner','cafeteria','deli','brewery','vineyard',
+  // ── Transport ───────────────────────────────────────────────────────────
+  'motorcycle','scooter','skateboard','canoe','kayak','yacht','ferry',
+  'ambulance','firetruck','tractor','bulldozer','crane','forklift',
+  'chariot','sleigh','gondola','rickshaw','trolley','monorail','cable',
+  'parachute','glider','drone','jet','propeller','turbine','engine',
+  // ── Music & art ─────────────────────────────────────────────────────────
+  'cello','banjo','harmonica','xylophone','tambourine','mandolin','bagpipe',
+  'canvas','easel','palette','sculpture','mosaic','mural','sketch','collage',
+  'theater','ballet','opera','symphony','chorus','solo','duet','encore',
+  'rhythm','melody','chord','tempo','bass','treble','octave','harmony',
+  // ── Science & tech ──────────────────────────────────────────────────────
+  'satellite','antenna','radar','sonar','laser','fiber','circuit','chip',
+  'battery','generator','transformer','reactor','turbine','piston','cylinder',
+  'microscope','stethoscope','thermometer','barometer','syringe','scalpel',
+  'molecule','atom','neutron','proton','electron','plasma','ion','isotope',
+  'algorithm','database','server','router','modem','pixel','byte','cursor',
+  // ── Clothing & fabric ───────────────────────────────────────────────────
+  'silk','cotton','linen','denim','leather','wool','velvet','satin',
+  'jacket','vest','sweater','hoodie','blazer','cloak','cape','robe',
+  'sandal','sneaker','heel','slipper','moccasin','loafer','ankle','sole',
+  'pocket','collar','sleeve','cuff','hem','seam','stitch','patch',
+  // ── Sports & games ──────────────────────────────────────────────────────
+  'basketball','football','baseball','tennis','hockey','volleyball','cricket',
+  'racket','bat','puck','goal','hoop','net','whistle','jersey',
+  'surfboard','snowboard','trampoline','treadmill','dumbbell','barbell',
+  'chess','dice','domino','poker','joker','trophy','medal','podium',
+  // ── Kitchen & home ──────────────────────────────────────────────────────
+  'oven','stove','microwave','blender','toaster','kettle','grater','ladle',
+  'spatula','whisk','colander','skillet','wok','saucepan','lid','tray',
+  'plate','fork','spoon','knife','chopstick','napkin','coaster','placemat',
+  'vase','candelabra','chandelier','lampshade','rug','carpet','tile','plank',
+  // ── Weather & sky ───────────────────────────────────────────────────────
+  'sunrise','sunset','horizon','aurora','meteor','comet','constellation',
+  'breeze','gust','cyclone','monsoon','haze','frost','dew','mist',
+  'icicle','snowflake','hailstone','sleet','drizzle','downpour','puddle',
+  // ── War & adventure ─────────────────────────────────────────────────────
+  'shield','armor','helmet','spear','dagger','cannon','musket','grenade',
+  'fortress','trench','barricade','siege','ambush','scout','sentinel',
+  'treasure','compass','lantern','journal','riddle','cipher','rune','scroll',
+  // ── Misc everyday ───────────────────────────────────────────────────────
+  'calendar','alarm','battery','lightbulb','switch','outlet','socket','plug',
+  'mailbox','doorbell','knocker','hinge','latch','handle','knob','lever',
+  'sticker','poster','banner','billboard','neon','graffiti','tattoo','stamp',
+  'receipt','ticket','coupon','token','voucher','badge','wristband','lanyard',
+  'umbrella','raincoat','sunglasses','goggles','binoculars','periscope',
+  'whistle','siren','megaphone','microphone','speaker','headphones','earbuds',
+  'camera','tripod','flash','lens','shutter','film','reel','projector',
+  'backpack','lunchbox','thermos','flask','canteen','cooler','icebox',
+  'sandbox','swing','slide','seesaw','carousel','ferris','roller','bumper',
+  'puzzle','maze','crossword','sudoku','rubik','kaleidoscope','pinwheel',
+  'firework','sparkler','confetti','streamer','balloon','ribbon','wreath',
+  'hourglass','sundial','pendulum','metronome','compass','protractor',
 ];
 
 // De-duplicate
@@ -1055,15 +1144,18 @@ function clStartTurnTimer(code) {
     if (!room || room.gameState?.game !== 'chainLink') return;
     const gs = room.gameState;
     if (gs.phase !== 'playing' || gs.pending || gs.referee) return;
-    // Auto-skip current player
+    // Auto-skip current player — they draw a penalty card for timing out
     const actorId = gs.turnOrder[gs.turnIdx];
     const actor = room.players.find(p => p.id === actorId);
+    const { hands: newHands, drawPile: newDrawPile } = clDrawCard(gs, actorId);
     const newSkips = (gs.consecutiveSkips ?? 0) + 1;
 
-    // If everyone skipped, break the chain
+    // If everyone timed out / skipped / got invalid, break the chain
     if (newSkips >= gs.turnOrder.length) {
       gs.consecutiveSkips = newSkips;
-      gs.log = [...gs.log, { text: `${actor?.name ?? actorId} ran out of time`, type: 'skip', playerId: actorId }];
+      gs.hands = newHands;
+      gs.drawPile = newDrawPile;
+      gs.log = [...gs.log, { text: `${actor?.name ?? actorId} ran out of time — draws a card`, type: 'skip', playerId: actorId }];
       room.gameState = gs;
       clBreakChain(code);
       return;
@@ -1071,14 +1163,16 @@ function clStartTurnTimer(code) {
 
     const nextGs = {
       ...gs,
+      hands: newHands,
+      drawPile: newDrawPile,
       consecutiveSkips: newSkips,
       turnIdx: (gs.turnIdx + 1) % gs.turnOrder.length,
       turnStartedAt: Date.now(),
-      log: [...gs.log, { text: `${actor?.name ?? actorId} ran out of time`, type: 'skip', playerId: actorId }],
+      log: [...gs.log, { text: `${actor?.name ?? actorId} ran out of time — draws a card`, type: 'skip', playerId: actorId }],
     };
     room.gameState = nextGs;
     io.to(code).emit('gameStateUpdated', nextGs);
-    console.log('[chainLink] %s auto-skipped (timer) in room %s (consecutive: %d/%d)', actorId, code, newSkips, gs.turnOrder.length);
+    console.log('[chainLink] %s auto-skipped (timer) in room %s — draws penalty card (consecutive: %d/%d)', actorId, code, newSkips, gs.turnOrder.length);
     clStartTurnTimer(code);
   }, 15000);
   chainLinkRoomData[code] = d;
