@@ -422,7 +422,7 @@ function YourTurnBanner() {
 }
 
 // ── Chain broken splash ──────────────────────────────────────────────────────
-function ChainBrokenSplash({ chain }: { chain: CLChainEntry[] }) {
+function ChainBrokenSplash({ chain, newAnchor: newAnchorProp }: { chain: CLChainEntry[]; newAnchor?: string }) {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
@@ -443,15 +443,15 @@ function ChainBrokenSplash({ chain }: { chain: CLChainEntry[] }) {
     ).start();
   }, [scaleAnim, shakeAnim]);
 
-  // Get the new anchor (last item in chain)
-  const newAnchor = chain.length > 0 ? chain[chain.length - 1].word : '???';
+  // Use the newAnchor from game state (set by backend), fall back to last chain word
+  const newAnchor = newAnchorProp ?? (chain.length > 0 ? chain[chain.length - 1].word : '???');
 
   return (
     <View style={styles.chainBrokenContainer}>
       <Animated.View style={{ transform: [{ scale: scaleAnim }, { translateX: shakeAnim }] }}>
         <Text style={styles.chainBrokenEmoji}>💥</Text>
         <Text style={styles.chainBrokenTitle}>Chain Broken!</Text>
-        <Text style={styles.chainBrokenSub}>Everyone skipped — starting fresh</Text>
+        <Text style={styles.chainBrokenSub}>No valid links — starting fresh</Text>
       </Animated.View>
       <View style={styles.chainBrokenNewAnchor}>
         <Text style={styles.chainBrokenAnchorLabel}>NEW ANCHOR</Text>
@@ -589,7 +589,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
       <SafeAreaView style={styles.safe}>
         <PhaseTransition phaseKey={gs.phase}>
 
-        <ChainBrokenSplash chain={gs.chain} />
+        <ChainBrokenSplash chain={gs.chain} newAnchor={(gs as any).newAnchor} />
 
         </PhaseTransition>
       </SafeAreaView>
@@ -787,14 +787,14 @@ export default function ChainLinkScreen({ navigation }: Props) {
                 <Text style={styles.handLabel}>YOUR HAND</Text>
                 <Text style={styles.myCardCountText}>{myHand.length} card{myHand.length !== 1 ? 's' : ''} left</Text>
               </View>
-              <View style={styles.handFan}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.handFan}>
                 {myHand.map((word, i) => {
                   const total = myHand.length;
                   const mid = (total - 1) / 2;
-                  const maxAngle = Math.min(25, total * 3);
+                  const maxAngle = total <= 6 ? Math.min(20, total * 3) : 0;
                   const angle = total <= 1 ? 0 : ((i - mid) / (mid || 1)) * maxAngle;
-                  const arcY = Math.abs(i - mid) * (total > 6 ? 3 : 5);
-                  const overlap = total > 6 ? -18 : total > 4 ? -10 : 0;
+                  const arcY = total <= 6 ? Math.abs(i - mid) * 5 : 0;
+                  const overlap = total > 8 ? -6 : total > 6 ? -10 : total > 4 ? -10 : 0;
                   return (
                     <View
                       key={word}
@@ -817,7 +817,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
                 {myHand.length === 0 && (
                   <Text style={styles.emptyHand}>No cards — waiting for result...</Text>
                 )}
-              </View>
+              </ScrollView>
             </View>
           )}
 

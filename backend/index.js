@@ -1014,12 +1014,14 @@ function clBreakChain(code) {
   }
 
   // Show chain-broken phase briefly, then resume playing
+  // Store newAnchor in state so frontend can display it
   const brokenGs = {
     ...gs,
     phase: 'chainBroken',
     consecutiveSkips: 0,
     turnStartedAt: null,
-    log: [...gs.log, { text: `Everyone skipped — chain broken! New anchor: "${newAnchor}"`, type: 'system' }],
+    newAnchor,
+    log: [...gs.log, { text: `Chain broken! New anchor: "${newAnchor}"`, type: 'system' }],
   };
   room.gameState = brokenGs;
   io.to(code).emit('gameStateUpdated', brokenGs);
@@ -2785,11 +2787,13 @@ io.on('connection', (socket) => {
           io.to(code).emit('gameStateUpdated', nextGs);
           console.log('[chainLink] VALID ruling for "%s" in room %s — challenger %s draws', card, code, challengerId);
         } else {
-          // Link is invalid — remove card from chain, give it back + draw penalty
+          // Link is invalid — remove card from chain, give it back + draw ONE penalty card
           const revertedChain = currentGs.chain.filter(e => !(e.word === card && e.by === by));
           const revertedHands = { ...currentGs.hands, [by]: [...(currentGs.hands[by] ?? []), card] };
           const { hands: handsAfterDraw, drawPile: newDrawPile } = clDrawCard({ ...currentGs, hands: revertedHands }, by);
-          const logEntry = `"${card}" ruled INVALID — ${actor?.name ?? by} keeps it and draws a card.`;
+          const logEntry = `"${card}" ruled INVALID — ${actor?.name ?? by} gets it back + draws 1 card.`;
+          // Count invalid as a "failed turn" toward chain break (like a skip)
+          const newSkips = (currentGs.consecutiveSkips ?? 0) + 1;
           const nextGs = {
             ...currentGs,
             chain: revertedChain,
@@ -2799,6 +2803,7 @@ io.on('connection', (socket) => {
             challengeStartedAt: null,
             turnStartedAt: null, // timer resumes on dismiss
             turnIdx: (currentGs.turnIdx + 1) % currentGs.turnOrder.length,
+            consecutiveSkips: newSkips,
             referee: { state: 'done', verdict: 'INVALID', why, card, who: by, challenger: challengerId },
             log: [...currentGs.log, { text: logEntry, type: 'invalid', playerId: by }],
           };
@@ -2853,6 +2858,16 @@ io.on('connection', (socket) => {
       const gs = room.gameState;
       if (!gs.referee || gs.referee.state !== 'done') return;
       const isWin = gs.phase === 'win';
+
+      // If an INVALID verdict pushed consecutiveSkips to the limit, break the chain
+      if (!isWin && gs.referee.verdict === 'INVALID' && (gs.consecutiveSkips ?? 0) >= gs.turnOrder.length) {
+        gs.referee = null;
+        room.gameState = gs;
+        io.to(code).emit('gameStateUpdated', gs);
+        clBreakChain(code);
+        return;
+      }
+
       const nextGs = { ...gs, referee: null, turnStartedAt: isWin ? null : Date.now() };
       room.gameState = nextGs;
       io.to(code).emit('gameStateUpdated', nextGs);
