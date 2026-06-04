@@ -1065,7 +1065,7 @@ export default function TalentShowScreen({ navigation }: Props) {
     return (
       <GameIntro
         emoji="🎭"
-        title="Talent Show"
+        title="Silly Spotlight"
         tagline="Perform. Survive the buzz. Win the crowd."
         rules={[
           { emoji: '🎤', text: 'Round 1: Perform a 30-second act. Audience can BUZZ or GOLDEN BUZZ you.' },
@@ -1824,7 +1824,7 @@ export default function TalentShowScreen({ navigation }: Props) {
           </View>
           <Text style={styles.votingTitle}>Cast your final vote!</Text>
           <Text style={styles.votingSubtitle}>{r3VotesIn} / {(gs.r3VoterIds ?? []).length} voted</Text>
-          <Text style={styles.votingHint}>Who should win the Talent Show?</Text>
+          <Text style={styles.votingHint}>Who should win the Silly Spotlight?</Text>
 
           <View style={styles.candidateList}>
             {gs.r3FinalistIds.map(id => {
@@ -1865,7 +1865,7 @@ export default function TalentShowScreen({ navigation }: Props) {
         <PhaseTransition phaseKey={gs.phase}>
 
         <ScrollView contentContainerStyle={styles.scroll}>
-          <Text style={styles.winnerHeadline}>🎉 Talent Show Over!</Text>
+          <Text style={styles.winnerHeadline}>🎉 Silly Spotlight Over!</Text>
 
           <View style={styles.winnerPodium}>
             <View style={styles.winnerCard}>

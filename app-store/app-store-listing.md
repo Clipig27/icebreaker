@@ -26,11 +26,11 @@ No sign-ups. No ads. Just pick a username, make a room, and start playing in sec
 
 GAMES INCLUDED:
 
-- LIE DETECTOR — Each player shares a set of statements. One might be a lie. Can you spot it? Read the room, trust your gut, and call out the bluffs.
+- TRUST ME BRO — Each player shares a set of statements. One might be a lie. Can you spot it? Read the room, trust your gut, and call out the bluffs.
 
-- TALENT SHOW — Step into the spotlight. Players perform silly challenges and the audience votes across 3 rounds. Fame or flame-out — you decide.
+- SILLY SPOTLIGHT — Step into the spotlight. Players perform silly challenges and the audience votes across 3 rounds. Fame or flame-out — you decide.
 
-- STAND OUT — Everyone answers a prompt at the same time. Give a unique answer and score big. Give the same answer as someone else? You both lose points. Think different or think again.
+- COPYCAT — Everyone answers a prompt at the same time. Give a unique answer and score big. Give the same answer as someone else? You both lose points. Think different or think again.
 
 - NUMBER GUESSOR — How many bones are in the human body? How far is the moon? Guess the number closest to the real answer. No trivia knowledge required — just vibes and estimation.
 
@@ -42,7 +42,7 @@ GAMES INCLUDED:
 
 - SMARTY POT — Trivia with a twist. A shared prize pot grows each round, but only correct answers keep you in. Push your luck or play it safe — the pot doesn't wait.
 
-- CHAINLINK — Build a chain of linked words, one player at a time. Think a link is bogus? Challenge it and an AI referee makes the call. Keep the chain alive or watch it snap.
+- LINK OR SINK — Build a chain of linked words, one player at a time. Think a link is bogus? Challenge it and an AI referee makes the call. Keep the chain alive or watch it snap.
 
 - PLOT TWIST — Collaborative storytelling where everyone adds to a growing story. Bait others into using your secret words to score points. The best twists win.
 

@@ -288,7 +288,7 @@ export default function StandOutScreen({ navigation }: Props) {
     return (
       <GameIntro
         emoji="⚡"
-        title="Stand Out"
+        title="Copycat"
         tagline="Unique answers only. Think different to win."
         rules={[
           { emoji: '❓', text: 'A question appears. Everyone has 10 seconds to submit an answer.' },
@@ -341,7 +341,7 @@ export default function StandOutScreen({ navigation }: Props) {
         <PhaseTransition phaseKey={gs.phase}>
 
         <ScrollView contentContainerStyle={styles.scroll}>
-          <Text style={styles.waitTitle}>Stand Out</Text>
+          <Text style={styles.waitTitle}>Copycat</Text>
           <Text style={styles.waitSub}>
             {isHost ? 'Choose a target score to win:' : 'Waiting for host to choose a target score...'}
           </Text>

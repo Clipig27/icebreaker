@@ -230,26 +230,26 @@ function AppInner() {
           <Stack.Screen name="HostLobby"     component={HostLobbyScreen}     options={{ title: 'Host Game' }} />
           <Stack.Screen name="JoinRoom"      component={JoinRoomScreen}      options={{ title: 'Join Game' }} />
           <Stack.Screen name="GameSelect"    component={GameSelectScreen}    options={{ title: 'Select Game', headerBackTitle: 'Players' }} />
-          <Stack.Screen name="LieDetector"   component={SafeLieDetector}     options={{ title: 'Lie Detector',   headerBackTitle: 'Games' }} />
-          <Stack.Screen name="TalentShow"    component={SafeTalentShow}      options={{ title: 'Talent Show',    headerBackTitle: 'Games' }} />
-          <Stack.Screen name="StandOut"      component={SafeStandOut}        options={{ title: 'Stand Out',      headerBackTitle: 'Games' }} />
+          <Stack.Screen name="LieDetector"   component={SafeLieDetector}     options={{ title: 'Trust Me Bro',   headerBackTitle: 'Games' }} />
+          <Stack.Screen name="TalentShow"    component={SafeTalentShow}      options={{ title: 'Silly Spotlight',    headerBackTitle: 'Games' }} />
+          <Stack.Screen name="StandOut"      component={SafeStandOut}        options={{ title: 'Copycat',      headerBackTitle: 'Games' }} />
           <Stack.Screen name="NumberGuessor" component={SafeNumberGuessor}   options={{ title: 'Number Guessor', headerBackTitle: 'Games' }} />
           <Stack.Screen name="PieCharts"     component={SafePieCharts}       options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
           <Stack.Screen name="DealOrSteal"      component={SafeDealOrSteal}       options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
           <Stack.Screen name="ShadowProtocol"   component={SafeShadowProtocol}    options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
           <Stack.Screen name="PotLuck"          component={SafePotLuck}           options={{ title: 'Pot Luck',          headerBackTitle: 'Games' }} />
-          <Stack.Screen name="ChainLink"        component={SafeChainLink}         options={{ title: 'ChainLink',         headerBackTitle: 'Games' }} />
+          <Stack.Screen name="ChainLink"        component={SafeChainLink}         options={{ title: 'Link or Sink',         headerBackTitle: 'Games' }} />
           <Stack.Screen name="PlotTwist"        component={SafePlotTwist}         options={{ title: 'Plot Twist',       headerBackTitle: 'Games' }} />
           <Stack.Screen name="Settings"         component={SettingsScreen}         options={{ title: 'Settings' }} />
           <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
             title: (route.params as any)?.game
               ? (() => {
                   const names: Record<string, string> = {
-                    lieDetector: 'Lie Detector', talentShow: 'Talent Show',
-                    standOut: 'Stand Out', numberGuessor: 'Number Guessor',
+                    lieDetector: 'Trust Me Bro', talentShow: 'Silly Spotlight',
+                    standOut: 'Copycat', numberGuessor: 'Number Guessor',
                     pieCharts: 'Pie Charts', dealOrSteal: 'Deal or Steal',
                     shadowProtocol: 'Shadow Protocol', potLuck: 'Pot Luck',
-                    chainLink: 'ChainLink',
+                    chainLink: 'Link or Sink',
                     plotTwist: 'Plot Twist',
                   };
                   return names[(route.params as any).game] ?? 'How to Play';

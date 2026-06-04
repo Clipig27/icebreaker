@@ -547,7 +547,7 @@ export default function ChainLinkScreen({ navigation }: Props) {
     return (
       <GameIntro
         emoji="🔗"
-        title="ChainLink"
+        title="Link or Sink"
         tagline="Link words together. Challenge bad links."
         rules={[
           { emoji: '🃏', text: 'Each player gets 7 word cards. An anchor word starts the chain.' },

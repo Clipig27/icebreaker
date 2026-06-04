@@ -219,7 +219,7 @@ export default function LieDetectorScreen({ navigation }: Props) {
     return (
       <GameIntro
         emoji="🕵️"
-        title="Lie Detector"
+        title="Trust Me Bro"
         tagline="Fool the group as the speaker. Catch lies as a listener."
         rules={[
           { emoji: '📝', text: 'The speaker reads a prompt and writes two answers — one true, one a lie.' },

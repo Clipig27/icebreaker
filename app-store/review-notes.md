@@ -33,7 +33,7 @@ No account creation is required. Players simply launch the app and choose a disp
 
 #### Playing a Game
 1. On Device A (the host), browse the list of available games in the room lobby.
-2. Select any game (we recommend starting with "Lie Detector" or "Number Guessor" as they are the simplest to test with 2 players).
+2. Select any game (we recommend starting with "Trust Me Bro" or "Number Guessor" as they are the simplest to test with 2 players).
 3. Both devices will transition to the game screen.
 4. Follow the on-screen prompts on each device to play through the game.
 5. After the game ends, results and scores are displayed. Players return to the lobby.
@@ -46,18 +46,18 @@ Some games have specific player count or interaction requirements:
 
 | Game | Min Players | Notes |
 |------|-------------|-------|
-| Lie Detector | 2 | Each player submits statements; others guess the lie. |
-| Talent Show | 3+ | Requires at least one performer and two voters. With 2 players, one performs and one votes. |
-| Stand Out | 3+ | Best experienced with 3+ players for duplicate detection. Playable with 2. |
+| Trust Me Bro | 2 | Each player submits statements; others guess the lie. |
+| Silly Spotlight | 3+ | Requires at least one performer and two voters. With 2 players, one performs and one votes. |
+| Copycat | 3+ | Best experienced with 3+ players for duplicate detection. Playable with 2. |
 | Number Guessor | 2 | Players guess a number; closest to the answer wins. |
 | Pie Charts | 3+ | Voting on group members works best with 3+ players. Playable with 2. |
 | Deal or Steal | 2 | Players negotiate and choose to deal or steal. |
 | Shadow Protocol | 4+ | Social deduction requires at least 4 players for role assignment. |
-| ChainLink | 2 | Word chaining with AI-judged challenges. Requires internet for AI referee. |
+| Link or Sink | 2 | Word chaining with AI-judged challenges. Requires internet for AI referee. |
 | Pot Luck | 2 | Trivia with a growing pot. |
 | Plot Twist | 3+ | Collaborative storytelling. Playable with 2, better with 3+. |
 
-**Recommended for 2-player review:** Lie Detector, Number Guessor, Deal or Steal, ChainLink, Pot Luck.
+**Recommended for 2-player review:** Trust Me Bro, Number Guessor, Deal or Steal, Link or Sink, Pot Luck.
 
 ---
 

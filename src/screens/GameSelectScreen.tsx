@@ -44,7 +44,7 @@ const GAMES: {
 }[] = [
   {
     id: 'lieDetector',
-    title: 'Lie Detector',
+    title: 'Trust Me Bro',
     emoji: '🕵️',
     desc: 'Fool everyone into guessing wrong.',
     minPlayers: 3,
@@ -55,7 +55,7 @@ const GAMES: {
   },
   {
     id: 'talentShow',
-    title: 'Talent Show',
+    title: 'Silly Spotlight',
     emoji: '🎭',
     desc: 'Perform. Survive the buzz. Win the crowd.',
     minPlayers: 4,
@@ -66,7 +66,7 @@ const GAMES: {
   },
   {
     id: 'standOut',
-    title: 'Stand Out',
+    title: 'Copycat',
     emoji: '⚡',
     desc: 'Unique answers only. First to 100 wins.',
     minPlayers: 3,
@@ -136,7 +136,7 @@ const GAMES: {
   },
   {
     id: 'chainLink',
-    title: 'ChainLink',
+    title: 'Link or Sink',
     emoji: '🔗',
     desc: 'Link words, explain the connection. Challenge bad links — AI referee decides.',
     minPlayers: 2,
@@ -469,15 +469,15 @@ export default function GameSelectScreen({ navigation }: Props) {
   const selectGame = (game: (typeof GAMES)[0]) => {
     console.log('[GameSelect] selected:', game.id, '— room:', room?.code ?? 'none');
     if (game.id === 'lieDetector' && players.length < 3) {
-      Alert.alert('Lie Detector', `Needs at least 3 players. You have ${players.length}.`);
+      Alert.alert('Trust Me Bro', `Needs at least 3 players. You have ${players.length}.`);
       return;
     }
     if (game.id === 'talentShow' && players.length < 4) {
-      Alert.alert('Talent Show', `Needs at least 4 players. You have ${players.length}.`);
+      Alert.alert('Silly Spotlight', `Needs at least 4 players. You have ${players.length}.`);
       return;
     }
     if (game.id === 'standOut' && players.length < 3) {
-      Alert.alert('Stand Out', `Needs at least 3 players. You have ${players.length}.`);
+      Alert.alert('Copycat', `Needs at least 3 players. You have ${players.length}.`);
       return;
     }
     if (game.id === 'numberGuessor' && players.length < 2) {
@@ -501,7 +501,7 @@ export default function GameSelectScreen({ navigation }: Props) {
       return;
     }
     if (game.id === 'chainLink' && players.length < 2) {
-      Alert.alert('ChainLink', `Needs at least 2 players. You have ${players.length}.`);
+      Alert.alert('Link or Sink', `Needs at least 2 players. You have ${players.length}.`);
       return;
     }
     if (game.id === 'plotTwist' && (players.length < 2 || players.length > 6)) {

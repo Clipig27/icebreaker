@@ -32,7 +32,7 @@ interface GameInfo {
 const INSTRUCTIONS: GameInfo[] = [
   {
     id: 'lieDetector',
-    title: 'Lie Detector',
+    title: 'Trust Me Bro',
     emoji: '🕵️',
     players: '2+ players',
     goal: 'Fool the group with your statements. Catch others\' lies.',
@@ -48,7 +48,7 @@ const INSTRUCTIONS: GameInfo[] = [
   },
   {
     id: 'talentShow',
-    title: 'Talent Show',
+    title: 'Silly Spotlight',
     emoji: '🎭',
     players: '3+ players',
     goal: 'Survive 3 rounds of performances and win the crowd.',
@@ -63,7 +63,7 @@ const INSTRUCTIONS: GameInfo[] = [
   },
   {
     id: 'standOut',
-    title: 'Stand Out',
+    title: 'Copycat',
     emoji: '⚡',
     players: '3+ players',
     goal: 'Give unique answers. Duplicates lose points. First to the target score wins.',
@@ -156,7 +156,7 @@ const INSTRUCTIONS: GameInfo[] = [
   },
   {
     id: 'chainLink',
-    title: 'ChainLink',
+    title: 'Link or Sink',
     emoji: '🔗',
     players: '2–8 players',
     goal: 'Empty your hand by linking words together.',

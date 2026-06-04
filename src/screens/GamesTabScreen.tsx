@@ -25,7 +25,7 @@ type Game = {
 const GAMES: Game[] = [
   {
     id: 'lieDetector',
-    title: 'Lie Detector',
+    title: 'Trust Me Bro',
     iconName: 'eye',
     accentColor: '#9D80FF',
     desc: 'Fool the group with your statements. Catch others\' lies.',
@@ -41,7 +41,7 @@ const GAMES: Game[] = [
   },
   {
     id: 'talentShow',
-    title: 'Talent Show',
+    title: 'Silly Spotlight',
     iconName: 'musical-notes',
     accentColor: '#EC4899',
     desc: 'Survive 3 rounds of performances and win the crowd.',
@@ -56,7 +56,7 @@ const GAMES: Game[] = [
   },
   {
     id: 'standOut',
-    title: 'Stand Out',
+    title: 'Copycat',
     iconName: 'flash',
     accentColor: '#F59E0B',
     desc: 'Give unique answers. Duplicates lose points. First to the target score wins.',
@@ -149,7 +149,7 @@ const GAMES: Game[] = [
   },
   {
     id: 'chainLink',
-    title: 'ChainLink',
+    title: 'Link or Sink',
     iconName: 'link',
     accentColor: '#C8642F',
     desc: 'Empty your hand by linking words together. AI referee judges disputes.',
