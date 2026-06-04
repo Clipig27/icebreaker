@@ -204,6 +204,37 @@ const disconnectTimers   = {};  // socketId     → timeout handle
 const playerPersistentIds = {}; // socketId     → persistentId (userId)
 const persistentToSocket  = {}; // persistentId → current socketId
 
+// ── Hardening: rate limiting ──────────────────────────────────────────────────
+const rateLimits = {};
+function rateLimit(key, maxPerWindow, windowMs) {
+  const now = Date.now();
+  const entry = rateLimits[key];
+  if (!entry || now > entry.resetAt) {
+    rateLimits[key] = { count: 1, resetAt: now + windowMs };
+    return true;
+  }
+  if (entry.count >= maxPerWindow) return false;
+  entry.count++;
+  return true;
+}
+// Clean up old rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const key in rateLimits) {
+    if (rateLimits[key].resetAt < now) delete rateLimits[key];
+  }
+}, 300000);
+
+// ── Hardening: input sanitizer ───────────────────────────────────────────────
+function sanitize(str, maxLen = 200) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[\x00-\x1F\x7F]/g, '').trim().slice(0, maxLen);
+}
+
+// ── Hardening: max rooms cap ─────────────────────────────────────────────────
+const MAX_ROOMS = 100;
+const MAX_PLAYERS_PER_ROOM = 10;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function generateCode() {
   return Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -1965,6 +1996,24 @@ io.on('connection', (socket) => {
 
   // ── Create room ─────────────────────────────────────────────────────────────
   socket.on('createRoom', ({ playerName, persistentId }, ack) => {
+    try {
+    // Rate limit: max 3 rooms per IP per minute
+    if (!rateLimit(`createRoom:${socket.handshake.address}`, 3, 60000)) {
+      if (ack) ack({ ok: false, error: 'Too many rooms created. Wait a moment.' });
+      return;
+    }
+    // Max rooms cap
+    if (Object.keys(rooms).length >= MAX_ROOMS) {
+      if (ack) ack({ ok: false, error: 'Server is busy. Try again later.' });
+      return;
+    }
+    // Input validation
+    playerName = sanitize(playerName, 20);
+    if (!playerName) {
+      if (ack) ack({ ok: false, error: 'Invalid player name.' });
+      return;
+    }
+
     console.log('[createRoom] socket=%s playerName=%s persistentId=%s', socket.id, playerName, persistentId);
     // Register FIRST so stableId() works in removeSocketFromAllRooms
     if (persistentId) {
@@ -1983,15 +2032,38 @@ io.on('connection', (socket) => {
       phase:     'lobby',
       hostScreen: 'lobby',
       gameState: {},
+      lastActivity: Date.now(),
     };
     socket.join(code);
     socket.emit('roomCreated', { code, room: rooms[code] });
     console.log('[createRoom] created code=%s by %s', code, playerName);
     if (ack) ack({ ok: true });
+    } catch (err) {
+      console.error('[createRoom] error:', err);
+      if (ack) ack({ ok: false, error: 'Server error' });
+    }
   });
 
   // ── Join room ────────────────────────────────────────────────────────────────
   socket.on('joinRoom', ({ code, playerName, persistentId }, ack) => {
+    try {
+    // Rate limit: max 10 joins per IP per minute
+    if (!rateLimit(`joinRoom:${socket.handshake.address}`, 10, 60000)) {
+      if (ack) ack({ ok: false, message: 'Too many join attempts. Wait a moment.' });
+      return;
+    }
+    // Input validation
+    playerName = sanitize(playerName, 20);
+    if (!playerName) {
+      if (ack) ack({ ok: false, message: 'Invalid player name.' });
+      return;
+    }
+    code = typeof code === 'string' ? code.trim().toUpperCase().slice(0, 4) : '';
+    if (!/^[A-Z0-9]{4}$/.test(code)) {
+      if (ack) ack({ ok: false, message: 'Invalid room code.' });
+      return;
+    }
+
     console.log('[joinRoom] socket=%s code=%s playerName=%s persistentId=%s', socket.id, code, playerName, persistentId);
     const room = rooms[code];
     if (!room) {
@@ -2072,9 +2144,16 @@ io.on('connection', (socket) => {
     }
 
     // ── New player joining ───────────────────────────────────────────────────
+    // Max players per room
+    if (!room.players.find(p => p.id === joinerStableId) && room.players.length >= MAX_PLAYERS_PER_ROOM) {
+      socket.emit('error', { message: 'Room is full (max ' + MAX_PLAYERS_PER_ROOM + ' players).' });
+      if (ack) ack({ ok: false, message: 'Room is full.' });
+      return;
+    }
     if (!room.players.find(p => p.id === joinerStableId)) {
       room.players.push({ id: joinerStableId, name: playerName, score: 0, persistentId: persistentId ?? null });
     }
+    room.lastActivity = Date.now();
     socket.join(code);
     if (room.phase === 'playing') {
       socket.emit('gameStarted', room);
@@ -2084,6 +2163,10 @@ io.on('connection', (socket) => {
     }
     console.log('[joinRoom] %s joined room %s', playerName, code);
     if (ack) ack({ ok: true });
+    } catch (err) {
+      console.error('[joinRoom] error:', err);
+      if (ack) ack({ ok: false, message: 'Server error' });
+    }
   });
 
   // ── Leave room (voluntary) ───────────────────────────────────────────────────
@@ -2129,6 +2212,7 @@ io.on('connection', (socket) => {
 
   // ── Start game ───────────────────────────────────────────────────────────────
   socket.on('startGame', ({ code, game, persistentId, potCap }, ack) => {
+    try {
     // Re-register persistentId mapping in case of reconnect before registerPersistentId arrived
     if (persistentId) {
       const old = persistentToSocket[persistentId];
@@ -2175,6 +2259,7 @@ io.on('connection', (socket) => {
     }
     console.log('[startGame] broadcasting gameStarted to room %s (%d players)', code, room.players.length);
     io.to(code).emit('gameStarted', room);
+    room.lastActivity = Date.now();
     if (ack) ack({ ok: true });
 
     // Analytics: track game start
@@ -2185,6 +2270,10 @@ io.on('connection', (socket) => {
       playerCount: room.players.length,
       hostId: room.hostId,
     });
+    } catch (err) {
+      console.error('[startGame] error:', err);
+      if (ack) ack({ ok: false, message: 'Server error' });
+    }
   });
 
   // ── Set host screen (host only) — mirrors host navigation to non-hosts ────────
@@ -2241,6 +2330,7 @@ io.on('connection', (socket) => {
 
   // ── Restart current game from scratch ─────────────────────────────────────────
   socket.on('restartGame', ({ code }) => {
+    try {
     const room = rooms[code];
     if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
     if (!isHost(room, socket.id)) { socket.emit('error', { message: 'Only the host can restart the game.' }); return; }
@@ -2261,9 +2351,13 @@ io.on('connection', (socket) => {
     room.players    = room.players.map(p => ({ ...p, score: 0 }));
     room.phase      = 'playing';
     room.hostScreen = 'playing';
+    room.lastActivity = Date.now();
 
     io.to(code).emit('gameStarted', room);
     console.log('[restartGame] room %s restarted game %s', code, game);
+    } catch (err) {
+      console.error('[restartGame] error:', err);
+    }
   });
 
   // ── Update game state (host only) ────────────────────────────────────────────
@@ -2296,13 +2390,20 @@ io.on('connection', (socket) => {
     }
 
     room.gameState = gameState;
+    room.lastActivity = Date.now();
     io.to(code).emit('gameStateUpdated', gameState);
   });
 
   // ── Player action (any player) ───────────────────────────────────────────────
   socket.on('playerAction', ({ code, action, data }) => {
+    try {
+    // Rate limit: max 30 actions per second per socket
+    if (!rateLimit(`playerAction:${socket.id}`, 30, 1000)) {
+      return;
+    }
     const room = rooms[code];
     if (!room) { socket.emit('error', { message: 'Room no longer exists.' }); return; }
+    room.lastActivity = Date.now();
 
     // ── Generic: advance from intro screen (host only) ──────────────────────
     if (action === 'advanceFromIntro') {
@@ -2395,7 +2496,7 @@ io.on('connection', (socket) => {
       // Ensure accumulators exist
       if (!Array.isArray(room.standOutAnswers)) room.standOutAnswers = [];
 
-      room.standOutAnswers.push({ playerId: soPlayerId, playerName: player.name, text: data.text });
+      room.standOutAnswers.push({ playerId: soPlayerId, playerName: player.name, text: sanitize(data.text, 200) });
       const newSubmitted = [...(gs.submittedPlayerIds ?? []), soPlayerId];
 
       // ── B. After inserting answer ──────────────────────────────────────────
@@ -2707,8 +2808,8 @@ io.on('connection', (socket) => {
       const next = {
         ...gs,
         phase: 'voting',
-        statement1: data.statement1,
-        statement2: data.statement2,
+        statement1: sanitize(data.statement1, 200),
+        statement2: sanitize(data.statement2, 200),
         votedPlayerIds: [],
         expectedVoterCount,
       };
@@ -2860,8 +2961,8 @@ io.on('connection', (socket) => {
       if (gs.phase !== 'playing' || gs.pending) return;
       const actorId = stableId(socket.id);
       if (gs.turnOrder[gs.turnIdx] !== actorId) return; // not your turn
-      const card = data.card;
-      const reason = typeof data.reason === 'string' ? data.reason.trim() : '';
+      const card = sanitize(data.card, 50);
+      const reason = sanitize(data.reason, 100);
       if (!card) return;
       const hand = gs.hands[actorId] ?? [];
       if (!hand.includes(card)) return; // don't own that card
@@ -3062,7 +3163,7 @@ io.on('connection', (socket) => {
       const currentPlayerId = gs.turnOrder[gs.turn];
       if (actorId !== currentPlayerId) return; // not your turn
 
-      const text = (data.text || '').trim();
+      const text = sanitize(data.text, 300);
       if (!text) return;
 
       // Self-word guard (server-side enforcement)
@@ -3145,6 +3246,9 @@ io.on('connection', (socket) => {
 
     // ── All other games: relay as before ─────────────────────────────────────
     io.to(code).emit('playerActionReceived', { playerId: stableId(socket.id), action, data });
+    } catch (err) {
+      console.error('[playerAction] error:', err);
+    }
   });
 
   // ── Update scores (host only) ────────────────────────────────────────────────
@@ -3180,6 +3284,33 @@ io.on('connection', (socket) => {
     }, 630_000);
   });
 });
+
+// ── Hardening: stale room cleanup (every 10 minutes, remove rooms idle >2 hours) ──
+setInterval(() => {
+  const now = Date.now();
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  for (const [code, room] of Object.entries(rooms)) {
+    if (!room.lastActivity || now - room.lastActivity > TWO_HOURS) {
+      console.log('[cleanup] removing stale room %s', code);
+      cleanupPlotTwist(code);
+      cleanupPotLuck(code);
+      const clData = chainLinkRoomData[code];
+      if (clData) {
+        if (clData.challengeTimer) clearTimeout(clData.challengeTimer);
+        if (clData.turnTimer) clearTimeout(clData.turnTimer);
+      }
+      delete chainLinkRoomData[code];
+      delete dosRoundData[code];
+      delete ldRoomData[code];
+      delete gameStartTimes[code];
+      delete rooms[code];
+    }
+  }
+  console.log('[cleanup] active rooms: %d', Object.keys(rooms).length);
+}, 600000);
+
+// ── Hardening: empty room grace-period cleanup ───────────────────────────────
+const emptyRoomTimers = {};
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
