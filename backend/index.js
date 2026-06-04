@@ -37,12 +37,86 @@ app.use(express.json());
 
 console.log('[startup] ANTHROPIC_API_KEY:', process.env.ANTHROPIC_API_KEY ? 'set' : 'NOT SET');
 
+// ── Supabase client for analytics ────────────────────────────────────────────
+const { createClient } = require('@supabase/supabase-js');
+const supabaseUrl  = process.env.SUPABASE_URL  || process.env.EXPO_PUBLIC_SUPABASE_URL  || '';
+const supabaseKey  = process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = supabaseUrl ? createClient(supabaseUrl, supabaseKey) : null;
+console.log('[startup] Supabase analytics:', supabase ? 'enabled' : 'DISABLED (no URL)');
+
+// Track game start timestamps per room for duration calculation
+const gameStartTimes = {};
+
+const TERMINAL_PHASES = new Set(['game-over', 'gameover', 'win']);
+const loggedCompletions = new Set(); // prevent double-logging
+
+function checkGameCompletion(code, gs, room) {
+  if (!gs || !TERMINAL_PHASES.has(gs.phase)) return;
+  const key = `${code}:${gs.game}:${Date.now() >> 14}`; // ~16s dedup window
+  if (loggedCompletions.has(key)) return;
+  loggedCompletions.add(key);
+  // Clean up old keys periodically
+  if (loggedCompletions.size > 500) loggedCompletions.clear();
+
+  const startTime = gameStartTimes[code];
+  const durationSecs = startTime ? Math.round((Date.now() - startTime) / 1000) : null;
+  delete gameStartTimes[code];
+
+  logGameEvent('game_completed', {
+    game: gs.game,
+    roomCode: code,
+    playerCount: room?.players?.length ?? 0,
+    hostId: room?.hostId ?? null,
+    winnerId: gs.winner ?? gs.winnerId ?? null,
+    rounds: gs.round ?? gs.currentRound ?? null,
+    durationSecs,
+    metadata: {
+      phase: gs.phase,
+      scores: gs.totalScores ?? gs.scores ?? gs.balances ?? {},
+    },
+  });
+}
+
+function logGameEvent(event, { game, roomCode, playerCount, hostId, winnerId, rounds, durationSecs, metadata }) {
+  if (!supabase) return;
+  supabase.from('game_events').insert({
+    event,
+    game,
+    room_code: roomCode,
+    player_count: playerCount ?? 0,
+    host_id: hostId ?? null,
+    winner_id: winnerId ?? null,
+    rounds: rounds ?? null,
+    duration_secs: durationSecs ?? null,
+    metadata: metadata ?? {},
+  }).then(({ error }) => {
+    if (error) console.warn('[analytics] insert error:', error.message);
+    else console.log('[analytics] %s: %s in %s (%d players)', event, game, roomCode, playerCount ?? 0);
+  });
+}
+
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
   pingInterval: 10000,
   pingTimeout:   5000,
 });
+
+// ── Analytics: intercept gameStateUpdated to detect game completion ───────────
+const origTo = io.to.bind(io);
+io.to = function(room) {
+  const adapter = origTo(room);
+  const origEmit = adapter.emit.bind(adapter);
+  adapter.emit = function(event, ...args) {
+    if (event === 'gameStateUpdated' && args[0]) {
+      const gs = args[0];
+      const r = rooms[room];
+      checkGameCompletion(room, gs, r);
+    }
+    return origEmit(event, ...args);
+  };
+  return adapter;
+};
 
 // ── In-memory state ───────────────────────────────────────────────────────────
 const rooms = {};   // code → room object
@@ -2102,6 +2176,15 @@ io.on('connection', (socket) => {
     console.log('[startGame] broadcasting gameStarted to room %s (%d players)', code, room.players.length);
     io.to(code).emit('gameStarted', room);
     if (ack) ack({ ok: true });
+
+    // Analytics: track game start
+    gameStartTimes[code] = Date.now();
+    logGameEvent('game_started', {
+      game,
+      roomCode: code,
+      playerCount: room.players.length,
+      hostId: room.hostId,
+    });
   });
 
   // ── Set host screen (host only) — mirrors host navigation to non-hosts ────────
