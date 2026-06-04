@@ -22,6 +22,7 @@ import type { TabParamList } from '../navigation/MainTabs';
 import type { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import { FONTS } from '../constants/theme';
+import SkiaBackground from '../components/SkiaBackground';
 
 type Props = {
   navigation: CompositeNavigationProp<
@@ -609,6 +610,7 @@ export default function HomeScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={s.safe}>
+      <SkiaBackground />
       <CosmicBackground />
       <BackgroundAtmosphere />
 
