@@ -31,6 +31,7 @@ import PlotTwistScreen        from './src/screens/PlotTwistScreen';
 import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
 import InstructionsScreen  from './src/screens/InstructionsScreen';
+import SettingsScreen      from './src/screens/SettingsScreen';
 
 import GameErrorBoundary from './src/components/GameErrorBoundary';
 import { ToastProvider } from './src/components/Toast';
@@ -62,6 +63,7 @@ export type RootStackParamList = {
   ChainLink:        undefined;
   PlotTwist:        undefined;
   Instructions:  { game?: string } | undefined;
+  Settings:      undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -238,6 +240,7 @@ function AppInner() {
           <Stack.Screen name="PotLuck"          component={SafePotLuck}           options={{ title: 'Pot Luck',          headerBackTitle: 'Games' }} />
           <Stack.Screen name="ChainLink"        component={SafeChainLink}         options={{ title: 'ChainLink',         headerBackTitle: 'Games' }} />
           <Stack.Screen name="PlotTwist"        component={SafePlotTwist}         options={{ title: 'Plot Twist',       headerBackTitle: 'Games' }} />
+          <Stack.Screen name="Settings"         component={SettingsScreen}         options={{ title: 'Settings' }} />
           <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
             title: (route.params as any)?.game
               ? (() => {

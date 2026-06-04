@@ -215,9 +215,12 @@ export default function ProfileScreen({ navigation }: Props) {
               <Text style={s.linkChevron}>›</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[s.linkRow, s.linkDisabled]} disabled>
+            <TouchableOpacity
+              style={s.linkRow}
+              onPress={() => navigation.navigate('Settings')}
+            >
               <Text style={s.linkIcon}>⚙️</Text>
-              <Text style={[s.linkLabel, s.linkLabelMuted]}>Settings</Text>
+              <Text style={s.linkLabel}>Settings</Text>
               <Text style={s.linkChevron}>›</Text>
             </TouchableOpacity>
           </View>

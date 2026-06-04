@@ -4,7 +4,7 @@
 Icebreaker
 
 ## Subtitle
-The Party Game for Friends
+Social Minigames to Break Ice
 
 ## Category
 Games > Party

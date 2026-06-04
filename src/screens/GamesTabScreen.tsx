@@ -2,9 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Animated,
   ScrollView, Modal, Pressable, ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../App';
 import { COLORS, FONTS } from '../constants/theme';
 import { fetchEnabledGames, checkIsAdmin } from '../storage/gameConfigStorage';
 
@@ -24,13 +28,14 @@ const GAMES: Game[] = [
     title: 'Lie Detector',
     iconName: 'eye',
     accentColor: '#9D80FF',
-    desc: 'Answer a prompt — then fool everyone into guessing wrong.',
-    players: '3+ players',
+    desc: 'Fool the group with your statements. Catch others\' lies.',
+    players: '2+ players',
     instructions: [
-      'A prompt is shown to everyone (e.g. "What is your biggest fear?").',
-      'Each player secretly writes their real answer AND a fake one.',
-      'Answers are read aloud. The group votes on which answer is the lie.',
-      'Score points for every person you fool.',
+      'Each round, one player is the speaker.',
+      'The speaker gets a prompt and writes two statements — one may be a lie.',
+      'Choose a mode: Lie + Truth, Two Lies, or Two Truths.',
+      'Everyone else votes on which statement they think is the lie.',
+      'Score points for fooling others or correctly spotting lies.',
       'The player with the most points at the end wins.',
     ],
   },
@@ -39,14 +44,14 @@ const GAMES: Game[] = [
     title: 'Talent Show',
     iconName: 'musical-notes',
     accentColor: '#EC4899',
-    desc: 'Perform a challenge. Survive the buzz. Win the crowd.',
+    desc: 'Survive 3 rounds of performances and win the crowd.',
     players: '3+ players',
     instructions: [
-      'Each round, a random challenge card is drawn (e.g. "Do your best robot impression").',
-      'Every player performs the challenge — no skipping.',
-      'The group votes on the best and worst performance.',
-      'Best performer gains points. Worst performer loses one.',
-      'Play as many rounds as you like. Highest score wins.',
+      'Round 1: Everyone performs a challenge. Audience votes Advance or Eliminate.',
+      'Players who get enough Advance votes move on.',
+      'Round 2: Remaining players perform again. Audience picks their top 2.',
+      'Round 3: The finalists face off. Everyone votes for the winner.',
+      'Tiebreakers may occur if votes are split.',
     ],
   },
   {
@@ -54,14 +59,16 @@ const GAMES: Game[] = [
     title: 'Stand Out',
     iconName: 'flash',
     accentColor: '#F59E0B',
-    desc: 'Give a unique answer or get penalised. First to 100 wins.',
+    desc: 'Give unique answers. Duplicates lose points. First to the target score wins.',
     players: '3+ players',
     instructions: [
-      'A question is asked (e.g. "Name a breakfast food").',
-      'Everyone secretly writes an answer.',
-      'Answers are revealed simultaneously.',
-      'If your answer matches anyone else\'s, you score nothing.',
-      'Unique answers score 10 points. First to 100 wins.',
+      'A prompt is shown to everyone.',
+      'You have 10 seconds to type a unique answer.',
+      'If your answer is unique, you score +10 points.',
+      'If someone else has the same answer, you both lose -10 points.',
+      'No answer? You lose -10 points.',
+      'Challenge answers you think are invalid.',
+      'First to the target score wins.',
     ],
   },
   {
@@ -69,14 +76,14 @@ const GAMES: Game[] = [
     title: 'Number Guessor',
     iconName: 'stats-chart',
     accentColor: '#06B6D4',
-    desc: 'One player sets a number. Everyone else guesses it.',
-    players: '3+ players',
+    desc: 'Guess closest to the correct answer. Lowest total penalty wins.',
+    players: '2+ players',
     instructions: [
-      'One player (the host) secretly picks a number within a set range.',
-      'All other players take turns guessing the number.',
-      'After each guess, the host says "Higher" or "Lower".',
-      'The player who guesses correctly wins the round.',
-      'Rotate the host role each round. Most wins takes the game.',
+      'A trivia-style question is shown with a numeric answer.',
+      'Everyone has 20 seconds to guess.',
+      'Your penalty = how far off you were + time taken.',
+      'Running out of time gives a 20-point penalty.',
+      'Lowest total penalty after all rounds wins.',
     ],
   },
   {
@@ -84,14 +91,13 @@ const GAMES: Game[] = [
     title: 'Pie Charts',
     iconName: 'pie-chart',
     accentColor: '#10B981',
-    desc: "Vote on 'who's most likely' questions. See who gets crowned.",
+    desc: "Vote on 'who's most likely to...' questions. See results as pie charts.",
     players: '3+ players',
     instructions: [
-      'A "who is most likely to..." question is shown to everyone.',
-      'Each player simultaneously points at (or votes for) someone.',
-      'The player with the most votes gets the card.',
-      'Collect the most cards to win.',
-      'The player voted most often overall is crowned at the end.',
+      'A question appears (e.g. "Who\'s most likely to...").',
+      'Everyone votes for the player they think fits best.',
+      'Results are shown as a colorful pie chart.',
+      'See who the group really thinks of!',
     ],
   },
   {
@@ -99,16 +105,16 @@ const GAMES: Game[] = [
     title: 'Deal or Steal',
     iconName: 'cash',
     accentColor: '#FBBF24',
-    desc: 'Deal for mutual gains or steal from Dealers. 4–6 players.',
+    desc: 'Finish with the highest balance. Everyone starts at $100.',
     players: '4–6 players',
     instructions: [
-      'Players are split into Dealers and Stealers at the start.',
-      'Each round, Dealers offer a deal — a proposed point split.',
-      'Stealers secretly choose to Accept the deal or Steal.',
-      'If both sides deal, both gain points.',
-      'If a Stealer steals, they take all the points — but risk being caught.',
-      'If everyone steals, nobody gets anything.',
-      'After several rounds, highest points wins.',
+      'Each round has a Dealer and Stealers.',
+      'The Dealer speaks to the group and proposes a deal.',
+      'Each Stealer secretly chooses: Deal (cooperate) or Steal.',
+      'Deal + Deal: both gain $20.',
+      'Deal + Steal: stealer takes $30, dealer loses $30.',
+      'Steal + Steal: both lose $10.',
+      'Player with the highest balance at the end wins.',
     ],
   },
   {
@@ -116,16 +122,14 @@ const GAMES: Game[] = [
     title: 'Shadow Protocol',
     iconName: 'moon',
     accentColor: '#F43F5E',
-    desc: "Social deduction. Find the Shadows before it's too late.",
+    desc: 'Agents: find the Shadows. Shadows: outlast the group.',
     players: '6–10 players',
     instructions: [
-      'At the start, some players are secretly assigned as Shadows.',
-      'Each round, all players discuss who they suspect is a Shadow.',
-      'The group votes to eliminate one player.',
-      'If a Shadow is eliminated, regular players score a point.',
-      'If an innocent is eliminated, the Shadows score a point.',
-      'Shadows win if they outlast the regular players.',
-      'Regular players win by eliminating all Shadows.',
+      'Each player gets a secret role: Agent, Shadow, Investigator, or Guardian.',
+      'Day phase: discuss and vote to eliminate a suspect.',
+      'Night phase: Shadows eliminate, Investigators scan, Guardians protect.',
+      'Agents win when all Shadows are eliminated.',
+      'Shadows win when they equal or outnumber Agents.',
     ],
   },
   {
@@ -133,16 +137,14 @@ const GAMES: Game[] = [
     title: 'Smarty Pot',
     iconName: 'cash',
     accentColor: '#FBBF24',
-    desc: 'Risk the growing pot or pass it on. Harder questions pay more.',
-    players: '3–15 players',
+    desc: 'Answer trivia to claim the pot. Risk it or pass it on.',
+    players: '3+ players',
     instructions: [
-      'A trivia question appears — Easy, Medium, or Hard difficulty.',
-      'Hard questions start the pot higher and can pay out more.',
-      'On your turn (15 seconds!): answer correctly to win the pot, skip to pass it on.',
-      'Wrong answer: you lose points equal to the pot. Skip: pot grows by 1.',
-      'If everyone skips, the pot is voided. Scores never go below 0.',
-      'Host sets the max pot cap (5–10) before the game.',
-      'First to the target score wins!',
+      'A pot starts small and grows each turn.',
+      'On your turn: Risk (answer a question) or Skip (pass to next player).',
+      'Correct answer: claim the pot! Harder questions = bigger pot.',
+      'Wrong answer: pot resets, you get nothing.',
+      'First to the target score wins.',
     ],
   },
   {
@@ -150,17 +152,19 @@ const GAMES: Game[] = [
     title: 'ChainLink',
     iconName: 'link',
     accentColor: '#C8642F',
-    desc: 'Link words and explain the connection. Challenge bad links — AI referee decides.',
+    desc: 'Empty your hand by linking words together. AI referee judges disputes.',
     players: '2–8 players',
     instructions: [
-      'Each player gets 10 word cards. An anchor word starts the chain.',
-      'On your turn: play a card and say how it links to the last word in the chain.',
-      'Other players have 5 seconds to CHALLENGE your link.',
-      'If challenged, an AI referee rules VALID or INVALID.',
-      'VALID: your card is discarded. INVALID: you keep it and draw a penalty card.',
-      'If you challenge a link and the AI rules it VALID, you draw a penalty card.',
-      'Skip your turn at any time at no cost.',
-      'First player to empty their hand wins.',
+      'Each player gets 7 word cards. An anchor word starts the chain.',
+      'On your turn, play a card that links to the last word (15 seconds).',
+      'After playing, the group discusses if the link is valid.',
+      'Anyone can call the AI Referee to judge a link.',
+      'The host can accept the link without a referee.',
+      'Invalid link: your card comes back + you draw 1 penalty card.',
+      'Valid challenge by you: the challenger draws a penalty card.',
+      'Running out of time: you draw a penalty card.',
+      'If nobody can play, the chain breaks and a new anchor appears.',
+      'First player to empty their hand wins!',
     ],
   },
   {
@@ -168,16 +172,15 @@ const GAMES: Game[] = [
     title: 'Plot Twist',
     iconName: 'document-text',
     accentColor: '#B5642A',
-    desc: 'Co-write a story. Bait others into typing your secret words.',
+    desc: 'Co-write a story. Bait others into using your secret words.',
     players: '2–6 players',
     instructions: [
-      'Everyone takes turns adding one sentence (5–12 words) to a shared story.',
-      'You secretly hold 5 target words — bait others into using them.',
-      'Someone types YOUR word → you +1, they −1 (per word). Used words get replaced.',
-      'You CANNOT use your own secret words.',
-      '20 seconds per turn. The table can VETO bad sentences.',
-      'AI deals related words and judges matches.',
-      'First to 5 points wins!',
+      'Everyone gets a hand of word cards.',
+      'On your turn, add a sentence to the growing story.',
+      'If your sentence contains another player\'s secret word, they score points.',
+      'Try to bait others into using your words naturally.',
+      'The story continues for several rounds.',
+      'Player with the most points from "hit" words wins.',
     ],
   },
 ];
@@ -221,6 +224,7 @@ function GameRow({ game, index, onPress }: { game: Game; index: number; onPress:
 }
 
 export default function GamesTabScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [selected, setSelected] = useState<Game | null>(null);
   const [enabledGames, setEnabledGames] = useState<Set<string> | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -291,6 +295,13 @@ export default function GamesTabScreen() {
                     <Text style={s.stepText}>{step}</Text>
                   </View>
                 ))}
+                <TouchableOpacity
+                  style={s.playNowBtn}
+                  activeOpacity={0.8}
+                  onPress={() => { setSelected(null); navigation.navigate('HostLobby'); }}
+                >
+                  <Text style={s.playNowText}>Play Now →</Text>
+                </TouchableOpacity>
               </ScrollView>
             </>
           )}
@@ -380,4 +391,18 @@ const s = StyleSheet.create({
   },
   stepNumText: { fontSize: 13, fontFamily: FONTS.extrabold },
   stepText:    { flex: 1, fontSize: 15, color: COLORS.text2, lineHeight: 22 },
+
+  playNowBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 14,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  playNowText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontFamily: FONTS.bold,
+  },
 });
