@@ -238,6 +238,24 @@ const GAMES: Game[] = [
       'See which picks were most divisive and where everyone agreed.',
     ],
   },
+  {
+    id: 'confessBet',
+    title: 'Confess & Bet',
+    iconName: 'chatbubble-ellipses',
+    accentColor: '#e8927c',
+    desc: 'Write confessions. Bet on who wrote them. Bluff your way out.',
+    players: '3–8 players',
+    category: 'Strategy',
+    intensity: 'Intense',
+    instructions: [
+      'Everyone secretly writes 3 confessions.',
+      'One player is randomly chosen — only their confessions play.',
+      'Confessions are revealed one at a time across 3 betting streets.',
+      'Bet on who you think wrote them, or fold.',
+      'Correct guess wins big. Wrong guess pays the confessor.',
+      'Most chips at the end wins.',
+    ],
+  },
 ];
 
 function GameRow({ game, index, onPress, isAdmin, isEnabled, onToggle }: {

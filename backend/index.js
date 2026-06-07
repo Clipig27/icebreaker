@@ -1872,6 +1872,8 @@ function buildInitialGameState(game) {
       return { game, phase: 'intro' };
     case 'blindRanking':
       return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], currentRound: 0, placements: {}, roundSubmitted: [], rankings: {}, votes: {}, votedPlayerIds: [], totalGames: 1, currentGame: 1, brScores: {} };
+    case 'confessBet':
+      return { game, phase: 'intro', totalRounds: 5, currentRound: 0, usedPromptSets: [], prompts: [], submissions: {}, submittedPlayerIds: [], confessorId: '', confessorCards: [], street: 0, bettingOrder: [], currentBettorIdx: 0, streetActions: [], allActions: [], foldedPlayerIds: [], banks: {} };
     default:
       return { game, phase: 'start' };
   }
@@ -3304,6 +3306,54 @@ io.on('connection', (socket) => {
         }
         gs.phase = 'vote-results';
       }
+      io.to(code).emit('gameStateUpdated', gs);
+      return;
+    }
+
+    // ── Confess & Bet: submit confessions ──────────────────────────────────
+    if (room.gameState?.game === 'confessBet' && action === 'cb-submit') {
+      const gs = room.gameState;
+      if (gs.phase !== 'submit') return;
+      const pid = stableId(socket.id);
+      if (gs.submittedPlayerIds.includes(pid)) return;
+      if (!Array.isArray(data?.confessions) || data.confessions.length !== 3) return;
+      if (!gs.submissions) gs.submissions = {};
+      gs.submissions[pid] = data.confessions;
+      gs.submittedPlayerIds.push(pid);
+      io.to(code).emit('gameStateUpdated', gs);
+      return;
+    }
+
+    // ── Confess & Bet: bet on confessor ─────────────────────────────────────
+    if (room.gameState?.game === 'confessBet' && action === 'cb-bet') {
+      const gs = room.gameState;
+      if (gs.phase !== 'street') return;
+      const pid = stableId(socket.id);
+      if (!gs.bettingOrder || gs.bettingOrder[gs.currentBettorIdx] !== pid) return;
+      const { targetId, amount } = data || {};
+      if (!targetId || typeof amount !== 'number' || amount < 1) return;
+      if (targetId === pid) return; // can't bet on yourself
+      gs.streetActions.push({ playerId: pid, folded: false, bet: amount, targetId, street: gs.street });
+      gs.allActions.push({ playerId: pid, folded: false, bet: amount, targetId, street: gs.street });
+      // Deduct from bank
+      if (!gs.banks) gs.banks = {};
+      gs.banks[pid] = (gs.banks[pid] || 100) - amount;
+      gs.currentBettorIdx += 1;
+      io.to(code).emit('gameStateUpdated', gs);
+      return;
+    }
+
+    // ── Confess & Bet: fold ─────────────────────────────────────────────────
+    if (room.gameState?.game === 'confessBet' && action === 'cb-fold') {
+      const gs = room.gameState;
+      if (gs.phase !== 'street') return;
+      const pid = stableId(socket.id);
+      if (!gs.bettingOrder || gs.bettingOrder[gs.currentBettorIdx] !== pid) return;
+      gs.streetActions.push({ playerId: pid, folded: true, street: gs.street });
+      gs.allActions.push({ playerId: pid, folded: true, street: gs.street });
+      if (!gs.foldedPlayerIds) gs.foldedPlayerIds = [];
+      gs.foldedPlayerIds.push(pid);
+      gs.currentBettorIdx += 1;
       io.to(code).emit('gameStateUpdated', gs);
       return;
     }

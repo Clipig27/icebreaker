@@ -8,7 +8,7 @@ export interface GameConfig {
 const ALL_GAMES = [
   'lieDetector', 'talentShow', 'standOut', 'numberGuessor',
   'pieCharts', 'dealOrSteal', 'shadowProtocol', 'potLuck',
-  'chainLink', 'plotTwist', 'blindRanking',
+  'chainLink', 'plotTwist', 'blindRanking', 'confessBet',
 ];
 
 /** Fetch which games are enabled. Returns a Set of enabled game IDs.

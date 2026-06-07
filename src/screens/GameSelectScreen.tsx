@@ -211,6 +211,21 @@ const GAMES: {
     screen: 'BlindRanking',
     tag: '2–5 players',
   },
+  {
+    id: 'confessBet',
+    title: 'Confess & Bet',
+    emoji: '🎭',
+    desc: 'Write confessions. Bet on who wrote them.',
+    minPlayers: 3,
+    maxPlayers: 8,
+    accentColor: '#e8927c',
+    gradientColors: ['#3D1A18', '#221008', '#0F0F13'] as const,
+    glowColor: '#e8927c',
+    category: 'Strategy',
+    intensity: 'Intense',
+    screen: 'ConfessBet',
+    tag: '3–8 players',
+  },
 ];
 
 // ─── Animated game card ────────────────────────────────────────────────────────
@@ -579,6 +594,10 @@ export default function GameSelectScreen({ navigation }: Props) {
       Alert.alert('Blind Ranking', `Requires 2–5 players. You have ${players.length}.`);
       return;
     }
+    if (game.id === 'confessBet' && (players.length < 3 || players.length > 8)) {
+      Alert.alert('Confess & Bet', `Requires 3–8 players. You have ${players.length}.`);
+      return;
+    }
     if (game.id === 'potLuck') {
       setSmartyPotConfig(prev => ({ ...prev, visible: true }));
       return;
@@ -599,6 +618,7 @@ export default function GameSelectScreen({ navigation }: Props) {
     if (game.id === 'chainLink' && players.length < 2) return true;
     if (game.id === 'plotTwist' && (players.length < 2 || players.length > 6)) return true;
     if (game.id === 'blindRanking' && (players.length < 2 || players.length > 5)) return true;
+    if (game.id === 'confessBet' && (players.length < 3 || players.length > 8)) return true;
     return false;
   }
 

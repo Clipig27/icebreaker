@@ -206,6 +206,24 @@ const INSTRUCTIONS: GameInfo[] = [
     ],
     tip: 'Leave some wiggle room in your top and bottom slots — you never know what\'s coming next.',
   },
+  {
+    id: 'confessBet',
+    title: 'Confess & Bet',
+    emoji: '🎭',
+    players: '3–8 players',
+    goal: 'Identify the confessor from their anonymous confessions. Bet big when you\'re sure.',
+    rules: [
+      'Everyone secretly writes 3 confessions to the same prompts.',
+      'One player is randomly chosen as the confessor — only their confessions are revealed.',
+      'Confessions are dealt one at a time across 3 betting streets.',
+      'Street 1: 3× payout (min $2) · Street 2: 2× (min $5) · Street 3: 1.5× (min $10)',
+      'On your turn, bet on who you think wrote it or fold.',
+      'Bet targets stay hidden until the reveal — only amounts and folds are public.',
+      'Correct guess: win bet × (multiplier − 1). Wrong guess: lose your bet to the confessor.',
+      'The confessor bets as camouflage (fully refunded). Most chips at the end wins.',
+    ],
+    tip: 'Write your confessions in a way that doesn\'t sound like you. When betting, pay attention to writing style — the voice reveals itself across cards.',
+  },
 ];
 
 export default function InstructionsScreen({ navigation, route }: Props) {

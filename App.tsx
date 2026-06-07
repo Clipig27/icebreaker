@@ -30,6 +30,7 @@ import PotLuckScreen          from './src/screens/PotLuckScreen';
 import ChainLinkScreen        from './src/screens/ChainLinkScreen';
 import PlotTwistScreen        from './src/screens/PlotTwistScreen';
 import BlindRankingScreen     from './src/screens/BlindRankingScreen';
+import ConfessBetScreen      from './src/screens/ConfessBetScreen';
 import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
 import InstructionsScreen  from './src/screens/InstructionsScreen';
@@ -67,6 +68,7 @@ export type RootStackParamList = {
   ChainLink:        undefined;
   PlotTwist:        undefined;
   BlindRanking:     undefined;
+  ConfessBet:       undefined;
   Instructions:  { game?: string } | undefined;
   Settings:      undefined;
 };
@@ -89,11 +91,12 @@ const SafePotLuck         = Safe(PotLuckScreen);
 const SafeChainLink       = Safe(ChainLinkScreen);
 const SafePlotTwist       = Safe(PlotTwistScreen);
 const SafeBlindRanking    = Safe(BlindRankingScreen);
+const SafeConfessBet     = Safe(ConfessBetScreen);
 
 // Game screen names where back navigation should be blocked for the host during play
 const GAME_SCREENS = new Set([
   'LieDetector', 'TalentShow', 'StandOut', 'NumberGuessor',
-  'PieCharts', 'DealOrSteal', 'ShadowProtocol', 'PotLuck', 'ChainLink', 'PlotTwist', 'BlindRanking',
+  'PieCharts', 'DealOrSteal', 'ShadowProtocol', 'PotLuck', 'ChainLink', 'PlotTwist', 'BlindRanking', 'ConfessBet',
 ]);
 
 function AppInner() {
@@ -130,6 +133,7 @@ function AppInner() {
     ChainLink: 'chainLink',
     PlotTwist: 'plotTwist',
     BlindRanking: 'blindRanking',
+    ConfessBet: 'confessBet',
   };
 
   // True when the host is mid-game and should not be able to back-navigate
@@ -247,6 +251,7 @@ function AppInner() {
           <Stack.Screen name="ChainLink"        component={SafeChainLink}         options={{ title: 'Link or Sink',         headerBackTitle: 'Games' }} />
           <Stack.Screen name="PlotTwist"        component={SafePlotTwist}         options={{ title: 'Plot Twist',       headerBackTitle: 'Games' }} />
           <Stack.Screen name="BlindRanking"     component={SafeBlindRanking}      options={{ title: 'Blind Ranking',    headerBackTitle: 'Games' }} />
+          <Stack.Screen name="ConfessBet"      component={SafeConfessBet}       options={{ title: 'Confess & Bet',   headerBackTitle: 'Games' }} />
           <Stack.Screen name="Settings"         component={SettingsScreen}         options={{ title: 'Settings' }} />
           <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
             title: (route.params as any)?.game
@@ -259,6 +264,7 @@ function AppInner() {
                     chainLink: 'Link or Sink',
                     plotTwist: 'Plot Twist',
                     blindRanking: 'Blind Ranking',
+                    confessBet: 'Confess & Bet',
                   };
                   return names[(route.params as any).game] ?? 'How to Play';
                 })()

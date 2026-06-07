@@ -35,7 +35,8 @@ export type GameType =
   | 'potLuck'
   | 'chainLink'
   | 'plotTwist'
-  | 'blindRanking';
+  | 'blindRanking'
+  | 'confessBet';
 
 type Room = {
   code: string;
@@ -408,6 +409,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         chainLink:      'ChainLink',
         plotTwist:      'PlotTwist',
         blindRanking:   'BlindRanking',
+        confessBet:     'ConfessBet',
       };
 
       const target = GAME_ROUTE[r.gameState.game];
