@@ -322,7 +322,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
   };
 
   // ── Intro ──────────────────────────────────────────────────────────────────
-  if (!gs || gs.phase === 'intro') {
+  if (!gs || gs.phase === 'intro' || (gs.phase as string) === 'start') {
     return (
       <GameIntro
         emoji="≣"
