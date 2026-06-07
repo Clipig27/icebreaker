@@ -267,198 +267,74 @@ export default function ConfessBetScreen({ navigation }: Props) {
     return () => { if (setupTimerRef.current) clearTimeout(setupTimerRef.current); };
   }, [!!gs]);
 
-  // ── Host: handle player actions ─────────────────────────────────────────────
+  // ── Host: react to game state changes for transitions ───────────────────────
+
+  // When all players submit, host picks confessor and advances to street
   useEffect(() => {
-    if (!isHost) return;
+    if (!isHost || !gs || gs.phase !== 'submit') return;
+    const submitted = gs.submittedPlayerIds ?? [];
+    if (submitted.length < allPlayers.length || allPlayers.length === 0) return;
 
-    const handler = ({ playerId, action, data }: any) => {
-      const state = gsRef.current;
-      if (!state) return;
-      const ap = room?.players ?? players;
+    const confessorId = allPlayers[Math.floor(Math.random() * allPlayers.length)].id;
+    const subs = gs.submissions as Record<string, string[]>;
+    const confessorCards = shuffleArray(subs[confessorId] ?? ['', '', '']) as string[];
+    const bettingOrder = shuffleArray(allPlayers.map(p => p.id));
 
-      // ── cb-submit ──
-      if (action === 'cb-submit' && state.phase === 'submit') {
-        const { confessions: playerConfessions } = data as { confessions: string[] };
-        if (state.submittedPlayerIds.includes(playerId)) return;
-
-        const nextSubmissions = { ...state.submissions, [playerId]: playerConfessions };
-        const nextSubmittedIds = [...state.submittedPlayerIds, playerId];
-
-        // Check if all players have submitted
-        if (nextSubmittedIds.length >= ap.length) {
-          // Pick confessor randomly
-          const confessorId = ap[Math.floor(Math.random() * ap.length)].id;
-          const confessorCards = shuffleArray((nextSubmissions as Record<string, string[]>)[confessorId] ?? ['', '', '']) as string[];
-          const bettingOrder = shuffleArray(ap.map(p => p.id));
-
-          const next: CBGameState = {
-            ...state,
-            submissions: nextSubmissions,
-            submittedPlayerIds: nextSubmittedIds,
-            phase: 'street',
-            confessorId,
-            confessorCards,
-            street: 0,
-            bettingOrder,
-            currentBettorIdx: 0,
-            streetActions: [],
-            allActions: [],
-            foldedPlayerIds: [],
-          };
-          gsRef.current = next;
-          sendGameStateRef.current(next);
-        } else {
-          const next: CBGameState = {
-            ...state,
-            submissions: nextSubmissions,
-            submittedPlayerIds: nextSubmittedIds,
-          };
-          gsRef.current = next;
-          sendGameStateRef.current(next);
-        }
-      }
-
-      // ── cb-bet ──
-      if (action === 'cb-bet' && state.phase === 'street') {
-        const { targetId, amount } = data as { targetId: string; amount: number };
-        if (state.bettingOrder[state.currentBettorIdx] !== playerId) return;
-
-        const streetAction: StreetAction = { playerId, folded: false, bet: amount, targetId };
-        const nextStreetActions = [...state.streetActions, streetAction];
-        const nextAllActions: StreetActionWithStreet[] = [...state.allActions, { ...streetAction, street: state.street }];
-        const nextBettorIdx = state.currentBettorIdx + 1;
-
-        // Check if all bettors for this street have acted
-        if (nextBettorIdx >= state.bettingOrder.length) {
-          // Advance to next street or reveal
-          if (state.street >= 2) {
-            // All streets done — go to reveal
-            const settlement = computeSettlement(
-              { ...state, streetActions: nextStreetActions, allActions: nextAllActions },
-              Object.fromEntries(ap.map(p => [p.id, p.name])),
-            );
-            const newBanks = applySettlement(state.banks, settlement);
-            const next: CBGameState = {
-              ...state,
-              streetActions: nextStreetActions,
-              allActions: nextAllActions,
-              phase: 'reveal',
-              banks: newBanks,
-              settlementData: settlement,
-            };
-            gsRef.current = next;
-            sendGameStateRef.current(next);
-          } else {
-            // Next street
-            const nextStreet = state.street + 1;
-            const newBettingOrder = shuffleArray(
-              state.bettingOrder.filter(id => !state.foldedPlayerIds.includes(id))
-            );
-            const next: CBGameState = {
-              ...state,
-              streetActions: [],
-              allActions: nextAllActions,
-              street: nextStreet,
-              bettingOrder: newBettingOrder,
-              currentBettorIdx: 0,
-            };
-            gsRef.current = next;
-            sendGameStateRef.current(next);
-          }
-        } else {
-          const next: CBGameState = {
-            ...state,
-            streetActions: nextStreetActions,
-            allActions: nextAllActions,
-            currentBettorIdx: nextBettorIdx,
-          };
-          gsRef.current = next;
-          sendGameStateRef.current(next);
-        }
-      }
-
-      // ── cb-fold ──
-      if (action === 'cb-fold' && state.phase === 'street') {
-        if (state.bettingOrder[state.currentBettorIdx] !== playerId) return;
-
-        const streetAction: StreetAction = { playerId, folded: true };
-        const nextStreetActions = [...state.streetActions, streetAction];
-        const nextAllActions: StreetActionWithStreet[] = [...state.allActions, { ...streetAction, street: state.street }];
-        const nextFolded = [...state.foldedPlayerIds, playerId];
-        const nextBettorIdx = state.currentBettorIdx + 1;
-
-        if (nextBettorIdx >= state.bettingOrder.length) {
-          if (state.street >= 2) {
-            const settlement = computeSettlement(
-              { ...state, streetActions: nextStreetActions, allActions: nextAllActions, foldedPlayerIds: nextFolded },
-              Object.fromEntries(ap.map(p => [p.id, p.name])),
-            );
-            const newBanks = applySettlement(state.banks, settlement);
-            const next: CBGameState = {
-              ...state,
-              streetActions: nextStreetActions,
-              allActions: nextAllActions,
-              foldedPlayerIds: nextFolded,
-              phase: 'reveal',
-              banks: newBanks,
-              settlementData: settlement,
-            };
-            gsRef.current = next;
-            sendGameStateRef.current(next);
-          } else {
-            const nextStreet = state.street + 1;
-            const newBettingOrder = shuffleArray(
-              state.bettingOrder.filter(id => !nextFolded.includes(id))
-            );
-            // If everyone folded, go straight to reveal
-            if (newBettingOrder.length === 0) {
-              const settlement = computeSettlement(
-                { ...state, streetActions: nextStreetActions, allActions: nextAllActions, foldedPlayerIds: nextFolded },
-                Object.fromEntries(ap.map(p => [p.id, p.name])),
-              );
-              const newBanks = applySettlement(state.banks, settlement);
-              const next: CBGameState = {
-                ...state,
-                streetActions: nextStreetActions,
-                allActions: nextAllActions,
-                foldedPlayerIds: nextFolded,
-                phase: 'reveal',
-                banks: newBanks,
-                settlementData: settlement,
-              };
-              gsRef.current = next;
-              sendGameStateRef.current(next);
-            } else {
-              const next: CBGameState = {
-                ...state,
-                streetActions: [],
-                allActions: nextAllActions,
-                foldedPlayerIds: nextFolded,
-                street: nextStreet,
-                bettingOrder: newBettingOrder,
-                currentBettorIdx: 0,
-              };
-              gsRef.current = next;
-              sendGameStateRef.current(next);
-            }
-          }
-        } else {
-          const next: CBGameState = {
-            ...state,
-            streetActions: nextStreetActions,
-            allActions: nextAllActions,
-            foldedPlayerIds: nextFolded,
-            currentBettorIdx: nextBettorIdx,
-          };
-          gsRef.current = next;
-          sendGameStateRef.current(next);
-        }
-      }
+    const next: CBGameState = {
+      ...gs,
+      phase: 'street',
+      confessorId,
+      confessorCards,
+      street: 0,
+      bettingOrder,
+      currentBettorIdx: 0,
+      streetActions: [],
+      allActions: [],
+      foldedPlayerIds: [],
     };
+    gsRef.current = next;
+    sendGameStateRef.current(next);
+  }, [gs?.submittedPlayerIds?.length]); // eslint-disable-line
 
-    socket.on('playerActionReceived', handler);
-    return () => { socket.off('playerActionReceived', handler); };
-  }, [isHost]); // eslint-disable-line
+  // When all bettors have acted for a street, host advances to next street or reveal
+  useEffect(() => {
+    if (!isHost || !gs || gs.phase !== 'street') return;
+    const { bettingOrder, currentBettorIdx, street, allActions, foldedPlayerIds, banks } = gs;
+    if (!bettingOrder || currentBettorIdx < bettingOrder.length) return; // not all acted yet
+
+    if (street >= 2) {
+      // All streets done — settlement
+      const settlement = computeSettlement(gs, Object.fromEntries(allPlayers.map(p => [p.id, p.name])));
+      const newBanks = applySettlement(banks, settlement);
+      const next: CBGameState = { ...gs, phase: 'reveal', banks: newBanks, settlementData: settlement };
+      gsRef.current = next;
+      sendGameStateRef.current(next);
+    } else {
+      // Next street
+      const nextStreet = street + 1;
+      const newBettingOrder = shuffleArray(
+        bettingOrder.filter(id => !(foldedPlayerIds ?? []).includes(id))
+      );
+      if (newBettingOrder.length === 0) {
+        // Everyone folded — go to reveal
+        const settlement = computeSettlement(gs, Object.fromEntries(allPlayers.map(p => [p.id, p.name])));
+        const newBanks = applySettlement(banks, settlement);
+        const next: CBGameState = { ...gs, phase: 'reveal', banks: newBanks, settlementData: settlement };
+        gsRef.current = next;
+        sendGameStateRef.current(next);
+      } else {
+        const next: CBGameState = {
+          ...gs,
+          streetActions: [],
+          street: nextStreet,
+          bettingOrder: newBettingOrder,
+          currentBettorIdx: 0,
+        };
+        gsRef.current = next;
+        sendGameStateRef.current(next);
+      }
+    }
+  }, [gs?.currentBettorIdx, gs?.phase]); // eslint-disable-line
 
   // ── Host actions ────────────────────────────────────────────────────────────
 
