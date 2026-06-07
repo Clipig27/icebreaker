@@ -254,6 +254,17 @@ export default function BlindRankingScreen({ navigation }: Props) {
     sendGameStateRef.current(next);
   };
 
+  // ── Auto-launch mid-series rounds once category+size are picked ────────────
+  const launchedRef = useRef(false);
+  useEffect(() => {
+    if (!isHost || !gs || gs.phase !== 'setup') { launchedRef.current = false; return; }
+    if ((gs.currentGame ?? 1) <= 1) return;
+    if (!selectedCategory || !selectedSize) return;
+    if (launchedRef.current) return;
+    launchedRef.current = true;
+    launchGame(gs.totalGames ?? 1, gs.currentGame ?? 1);
+  }, [gs?.phase, gs?.currentGame, selectedCategory, selectedSize]); // eslint-disable-line
+
   // ── Playing: place current round's item into a slot ─────────────────────────
   const handlePlaceItem = (slotIndex: number) => {
     if (!gs || gs.phase !== 'playing') return;
@@ -408,7 +419,11 @@ export default function BlindRankingScreen({ navigation }: Props) {
               <ScrollView contentContainerStyle={styles.scroll}>
                 <Text style={styles.setupEmoji}>≣</Text>
                 <Text style={styles.setupTitle}>Pick a Category</Text>
-                <Text style={styles.setupSub}>Choose what everyone will rank.</Text>
+                <Text style={styles.setupSub}>
+                  {(gs.totalGames ?? 1) > 1
+                    ? `Round ${gs.currentGame ?? 1} of ${gs.totalGames} — pick a category.`
+                    : 'Choose what everyone will rank.'}
+                </Text>
                 <View style={styles.categoryGrid}>
                   {BANK_KEYS.map(key => {
                     const bank = BANKS[key];
@@ -470,6 +485,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
       const bankEmoji = isCustom ? '✎' : (BANKS[selectedCategory]?.emoji ?? '');
 
       // Step 2: pick size
+      const isMidSeries = (gs.currentGame ?? 1) > 1;
       if (!selectedSize) {
         return (
           <SafeAreaView style={styles.safe}>
@@ -500,7 +516,18 @@ export default function BlindRankingScreen({ navigation }: Props) {
         );
       }
 
-      // Step 3: pick number of rounds
+      // Mid-series: skip rounds picker, auto-launch via effect
+      if (isMidSeries) {
+        return (
+          <SafeAreaView style={styles.safe}>
+            <View style={styles.centered}>
+              <Text style={styles.waitTitle}>Starting round {gs.currentGame}...</Text>
+            </View>
+          </SafeAreaView>
+        );
+      }
+
+      // Step 3: pick number of rounds (first game only)
       return (
         <SafeAreaView style={styles.safe}>
           <PhaseTransition phaseKey="setup-rounds">
@@ -924,7 +951,29 @@ export default function BlindRankingScreen({ navigation }: Props) {
                 hasMoreGames ? (
                   <PrimaryButton
                     title={`Next Round (${(gs.currentGame ?? 1) + 1} / ${gs.totalGames})`}
-                    onPress={() => launchGame(gs.totalGames ?? 1, (gs.currentGame ?? 1) + 1)}
+                    onPress={() => {
+                      setSelectedCategory(null);
+                      setSelectedSize(null);
+                      const next: BRGameState = {
+                        game: 'blindRanking',
+                        phase: 'setup',
+                        categoryKey: '',
+                        categoryLabel: '',
+                        categoryEmoji: '',
+                        size: 5,
+                        draw: [],
+                        currentRound: 0,
+                        placements: {},
+                        roundSubmitted: [],
+                        rankings: {},
+                        votes: {},
+                        votedPlayerIds: [],
+                        totalGames: gs.totalGames ?? 1,
+                        currentGame: (gs.currentGame ?? 1) + 1,
+                      };
+                      gsRef.current = next;
+                      sendGameStateRef.current(next);
+                    }}
                   />
                 ) : (
                   <>
