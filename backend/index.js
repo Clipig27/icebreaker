@@ -3285,7 +3285,7 @@ io.on('connection', (socket) => {
       if (!gs.votes) gs.votes = {};
       if (gs.votedPlayerIds.includes(pid)) return; // already voted
       const voteeId = data?.voteeId;
-      if (!voteeId || voteeId === pid) return; // can't vote for yourself
+      if (!voteeId) return;
       if (!room.players.some(p => p.id === voteeId)) return; // invalid votee
       gs.votes[pid] = voteeId;
       gs.votedPlayerIds.push(pid);

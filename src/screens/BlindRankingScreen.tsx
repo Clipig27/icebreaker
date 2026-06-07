@@ -22,6 +22,7 @@ import SecondaryButton from '../components/SecondaryButton';
 import { COLORS, FONTS } from '../constants/theme';
 import GameIntro from '../components/GameIntro';
 import PhaseTransition from '../components/PhaseTransition';
+import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 
 // ── Accent colour for Blind Ranking ──────────────────────────────────────────
 const ACCENT = '#e8927c';
@@ -364,6 +365,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
                   placeholderTextColor={COLORS.text3}
                   value={customName}
                   onChangeText={setCustomName}
+                  inputAccessoryViewID={KB_DONE_ID}
                 />
                 <Text style={styles.editorLabel}>ITEMS (one per line, min 5)</Text>
                 <TextInput
@@ -373,6 +375,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
                   value={customItems}
                   onChangeText={setCustomItems}
                   multiline
+                  inputAccessoryViewID={KB_DONE_ID}
                 />
                 <Text style={styles.editorCount}>{itemCount} items</Text>
                 <PrimaryButton
@@ -386,6 +389,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </ScrollView>
             </KeyboardAvoidingView>
+            <KeyboardDoneBar />
           </SafeAreaView>
         );
       }
@@ -792,7 +796,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
 
               {!hasVoted && (
                 <View style={styles.voteGrid}>
-                  {allPlayers.filter(p => p.id !== myId).map(p => (
+                  {allPlayers.map(p => (
                     <TouchableOpacity
                       key={p.id}
                       style={[
