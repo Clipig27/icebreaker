@@ -273,13 +273,13 @@ function GameCard({
           end={{ x: 1, y: 1 }}
           style={card.gradient}
         >
-          {/* Accent border */}
+          {/* Accent border — uses category color for consistency with Games tab */}
           <View
             style={[
               card.accentBorder,
               {
-                borderColor: game.accentColor,
-                shadowColor: game.glowColor,
+                borderColor: CATEGORIES.find(c => c.label === game.category)!.color,
+                shadowColor: CATEGORIES.find(c => c.label === game.category)!.color,
                 opacity: disabled ? 0.25 : 0.6,
               },
             ]}
@@ -348,7 +348,7 @@ function GameCard({
           <View
             style={[
               card.accentBar,
-              { backgroundColor: game.accentColor, opacity: disabled ? 0.2 : 0.85 },
+              { backgroundColor: CATEGORIES.find(c => c.label === game.category)!.color, opacity: disabled ? 0.2 : 0.85 },
             ]}
           />
         </LinearGradient>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Animated,
   ScrollView, Modal, Pressable, ActivityIndicator,
@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { COLORS, FONTS } from '../constants/theme';
@@ -272,12 +272,14 @@ export default function GamesTabScreen() {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<GameCategory | null>(null);
 
-  useEffect(() => {
-    Promise.all([
-      fetchEnabledGames().then(setEnabledGames),
-      checkIsAdmin().then(setIsAdmin),
-    ]).finally(() => setLoading(false));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      Promise.all([
+        fetchEnabledGames().then(setEnabledGames),
+        checkIsAdmin().then(setIsAdmin),
+      ]).finally(() => setLoading(false));
+    }, [])
+  );
 
   const visibleGames = (enabledGames
     ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
