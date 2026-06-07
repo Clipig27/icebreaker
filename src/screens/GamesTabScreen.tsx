@@ -12,6 +12,15 @@ import { RootStackParamList } from '../../App';
 import { COLORS, FONTS } from '../constants/theme';
 import { fetchEnabledGames, checkIsAdmin } from '../storage/gameConfigStorage';
 
+type GameCategory = 'Strategy' | 'Trivia' | 'Creative' | 'Party';
+
+const CATEGORIES: { label: GameCategory; color: string }[] = [
+  { label: 'Strategy', color: '#F43F5E' },
+  { label: 'Trivia',   color: '#06B6D4' },
+  { label: 'Creative', color: '#F59E0B' },
+  { label: 'Party',    color: '#10B981' },
+];
+
 type Game = {
   id: string;
   title: string;
@@ -19,17 +28,19 @@ type Game = {
   accentColor: string;
   desc: string;
   players: string;
+  category: GameCategory;
   instructions: string[];
 };
 
 const GAMES: Game[] = [
   {
     id: 'lieDetector',
-    title: 'Trust Me Bro',
+    title: 'Liar Liar',
     iconName: 'eye',
     accentColor: '#9D80FF',
     desc: 'Fool the group with your statements. Catch others\' lies.',
     players: '2+ players',
+    category: 'Strategy',
     instructions: [
       'Each round, one player is the speaker.',
       'The speaker gets a prompt and writes two statements — one may be a lie.',
@@ -41,11 +52,12 @@ const GAMES: Game[] = [
   },
   {
     id: 'talentShow',
-    title: 'Silly Spotlight',
+    title: "Nobody's Got Talent",
     iconName: 'musical-notes',
     accentColor: '#EC4899',
     desc: 'Survive 3 rounds of performances and win the crowd.',
     players: '3+ players',
+    category: 'Party',
     instructions: [
       'Round 1: Everyone performs a challenge. Audience votes Advance or Eliminate.',
       'Players who get enough Advance votes move on.',
@@ -61,6 +73,7 @@ const GAMES: Game[] = [
     accentColor: '#F59E0B',
     desc: 'Give unique answers. Duplicates lose points. First to the target score wins.',
     players: '3+ players',
+    category: 'Creative',
     instructions: [
       'A prompt is shown to everyone.',
       'You have 10 seconds to type a unique answer.',
@@ -73,11 +86,12 @@ const GAMES: Game[] = [
   },
   {
     id: 'numberGuessor',
-    title: 'Number Guessor',
+    title: '1 to 100',
     iconName: 'stats-chart',
     accentColor: '#06B6D4',
     desc: 'Guess closest to the correct answer. Lowest total penalty wins.',
     players: '2+ players',
+    category: 'Trivia',
     instructions: [
       'A trivia-style question is shown with a numeric answer.',
       'Everyone has 20 seconds to guess.',
@@ -93,6 +107,7 @@ const GAMES: Game[] = [
     accentColor: '#10B981',
     desc: "Vote on 'who's most likely to...' questions. See results as pie charts.",
     players: '3+ players',
+    category: 'Party',
     instructions: [
       'A question appears (e.g. "Who\'s most likely to...").',
       'Everyone votes for the player they think fits best.',
@@ -107,6 +122,7 @@ const GAMES: Game[] = [
     accentColor: '#FBBF24',
     desc: 'Finish with the highest balance. Everyone starts at $100.',
     players: '4–6 players',
+    category: 'Strategy',
     instructions: [
       'Each round has a Dealer and Stealers.',
       'The Dealer speaks to the group and proposes a deal.',
@@ -124,6 +140,7 @@ const GAMES: Game[] = [
     accentColor: '#F43F5E',
     desc: 'Agents: find the Shadows. Shadows: outlast the group.',
     players: '6–10 players',
+    category: 'Strategy',
     instructions: [
       'Each player gets a secret role: Agent, Shadow, Investigator, or Guardian.',
       'Day phase: discuss and vote to eliminate a suspect.',
@@ -139,6 +156,7 @@ const GAMES: Game[] = [
     accentColor: '#FBBF24',
     desc: 'Answer trivia to claim the pot. Risk it or pass it on.',
     players: '3+ players',
+    category: 'Trivia',
     instructions: [
       'A pot starts small and grows each turn.',
       'On your turn: Risk (answer a question) or Skip (pass to next player).',
@@ -154,6 +172,7 @@ const GAMES: Game[] = [
     accentColor: '#C8642F',
     desc: 'Empty your hand by linking words together. AI referee judges disputes.',
     players: '2–8 players',
+    category: 'Strategy',
     instructions: [
       'Each player gets 7 word cards. An anchor word starts the chain.',
       'On your turn, play a card that links to the last word (15 seconds).',
@@ -174,6 +193,7 @@ const GAMES: Game[] = [
     accentColor: '#B5642A',
     desc: 'Co-write a story. Bait others into using your secret words.',
     players: '2–6 players',
+    category: 'Creative',
     instructions: [
       'Everyone gets a hand of word cards.',
       'On your turn, add a sentence to the growing story.',
@@ -210,11 +230,16 @@ function GameRow({ game, index, onPress }: { game: Game; index: number; onPress:
         onPressOut={() => Animated.spring(pressScale, { toValue: 1,    useNativeDriver: true, speed: 20, bounciness: 10 }).start()}
         onPress={onPress}
       >
-        <View style={[s.iconBox, { backgroundColor: game.accentColor + '1A', borderColor: game.accentColor + '40' }]}>
-          <Ionicons name={game.iconName} size={22} color={game.accentColor} />
+        <View style={[s.iconBox, { backgroundColor: CATEGORIES.find(c => c.label === game.category)!.color + '1A', borderColor: CATEGORIES.find(c => c.label === game.category)!.color + '40' }]}>
+          <Ionicons name={game.iconName} size={22} color={CATEGORIES.find(c => c.label === game.category)!.color} />
         </View>
         <View style={s.info}>
-          <Text style={s.gameTitle}>{game.title}</Text>
+          <View style={s.titleRow}>
+            <Text style={s.gameTitle}>{game.title}</Text>
+            <View style={[s.categoryBadge, { backgroundColor: CATEGORIES.find(c => c.label === game.category)!.color + '1A', borderColor: CATEGORIES.find(c => c.label === game.category)!.color + '44' }]}>
+              <Text style={[s.categoryBadgeText, { color: CATEGORIES.find(c => c.label === game.category)!.color }]}>{game.category}</Text>
+            </View>
+          </View>
           <Text style={s.gameDesc}>{game.desc}</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.text3} />
@@ -229,6 +254,7 @@ export default function GamesTabScreen() {
   const [enabledGames, setEnabledGames] = useState<Set<string> | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<GameCategory | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -237,9 +263,10 @@ export default function GamesTabScreen() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  const visibleGames = enabledGames
+  const visibleGames = (enabledGames
     ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
-    : GAMES;
+    : GAMES
+  ).filter(g => !activeFilter || g.category === activeFilter);
 
   if (loading) {
     return (
@@ -251,6 +278,31 @@ export default function GamesTabScreen() {
 
   return (
     <SafeAreaView style={s.safe}>
+      {/* Category filter chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={s.filterRow}>
+        <Pressable
+          style={[s.filterChip, !activeFilter && s.filterChipActive]}
+          onPress={() => setActiveFilter(null)}
+        >
+          <Text style={[s.filterChipText, !activeFilter && s.filterChipTextActive]}>All</Text>
+        </Pressable>
+        {CATEGORIES.map(cat => {
+          const isActive = activeFilter === cat.label;
+          return (
+            <Pressable
+              key={cat.label}
+              style={[
+                s.filterChip,
+                isActive && { backgroundColor: cat.color + '22', borderColor: cat.color + '55' },
+              ]}
+              onPress={() => setActiveFilter(isActive ? null : cat.label)}
+            >
+              <Text style={[s.filterChipText, isActive && { color: cat.color }]}>{cat.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       <ScrollView contentContainerStyle={s.list}>
         {visibleGames.map((game, i) => (
           <React.Fragment key={game.id}>
@@ -277,7 +329,12 @@ export default function GamesTabScreen() {
                 </View>
                 <View style={s.modalTitleBlock}>
                   <Text style={s.modalTitle}>{selected.title}</Text>
-                  <Text style={[s.modalPlayers, { color: selected.accentColor }]}>{selected.players}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                    <Text style={[s.modalPlayers, { color: selected.accentColor }]}>{selected.players}</Text>
+                    <View style={[s.categoryBadge, { backgroundColor: CATEGORIES.find(c => c.label === selected.category)!.color + '1A', borderColor: CATEGORIES.find(c => c.label === selected.category)!.color + '44' }]}>
+                      <Text style={[s.categoryBadgeText, { color: CATEGORIES.find(c => c.label === selected.category)!.color }]}>{selected.category}</Text>
+                    </View>
+                  </View>
                 </View>
                 <Pressable style={s.closeBtn} onPress={() => setSelected(null)} hitSlop={12}>
                   <Ionicons name="close" size={20} color={COLORS.text2} />
@@ -313,7 +370,28 @@ export default function GamesTabScreen() {
 
 const s = StyleSheet.create({
   safe:    { flex: 1, backgroundColor: COLORS.bg },
-  list:    { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 },
+  filterRow: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4, gap: 8 },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface2,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.accent + '22',
+    borderColor: COLORS.accent + '55',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontFamily: FONTS.semibold,
+    color: COLORS.text2,
+  },
+  filterChipTextActive: {
+    color: COLORS.accent,
+  },
+  list:    { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
 
   divider: { height: 1, backgroundColor: COLORS.border },
 
@@ -332,7 +410,19 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   info:      { flex: 1 },
+  titleRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
   gameTitle: { fontSize: 17, fontFamily: FONTS.bold, color: COLORS.text },
+  categoryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontFamily: FONTS.semibold,
+    letterSpacing: 0.3,
+  },
   gameDesc:  { fontSize: 13, color: COLORS.text2, marginTop: 2 },
 
   // Modal

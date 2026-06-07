@@ -26,6 +26,15 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'GameSelect'>;
 };
 
+type GameCategory = 'Strategy' | 'Trivia' | 'Creative' | 'Party';
+
+const CATEGORIES: { label: GameCategory; color: string }[] = [
+  { label: 'Strategy', color: '#F43F5E' },
+  { label: 'Trivia',   color: '#06B6D4' },
+  { label: 'Creative', color: '#F59E0B' },
+  { label: 'Party',    color: '#10B981' },
+];
+
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2;
 
@@ -39,29 +48,32 @@ const GAMES: {
   accentColor: string;
   gradientColors: readonly [string, string, string];
   glowColor: string;
+  category: GameCategory;
   screen: keyof RootStackParamList;
   tag?: string;
 }[] = [
   {
     id: 'lieDetector',
-    title: 'Trust Me Bro',
+    title: 'Liar Liar',
     emoji: '🕵️',
     desc: 'Fool everyone into guessing wrong.',
     minPlayers: 3,
     accentColor: '#7C5CF6',
     gradientColors: ['#2A1F4E', '#1A1230', '#0F0F13'],
     glowColor: '#7C5CF6',
+    category: 'Strategy',
     screen: 'LieDetector',
   },
   {
     id: 'talentShow',
-    title: 'Silly Spotlight',
+    title: "Nobody's Got Talent",
     emoji: '🎭',
     desc: 'Perform. Survive the buzz. Win the crowd.',
     minPlayers: 4,
     accentColor: '#EC4899',
     gradientColors: ['#3D1A2E', '#231020', '#0F0F13'],
     glowColor: '#EC4899',
+    category: 'Party',
     screen: 'TalentShow',
   },
   {
@@ -73,17 +85,19 @@ const GAMES: {
     accentColor: '#F59E0B',
     gradientColors: ['#3D2A10', '#241808', '#0F0F13'],
     glowColor: '#F59E0B',
+    category: 'Creative',
     screen: 'StandOut',
   },
   {
     id: 'numberGuessor',
-    title: 'Number Guessor',
+    title: '1 to 100',
     emoji: '🎯',
     desc: 'Set the number. Guess the number.',
     minPlayers: 2,
     accentColor: '#06B6D4',
     gradientColors: ['#0A2D35', '#061A20', '#0F0F13'],
     glowColor: '#06B6D4',
+    category: 'Trivia',
     screen: 'NumberGuessor',
   },
   {
@@ -95,6 +109,7 @@ const GAMES: {
     accentColor: '#10B981',
     gradientColors: ['#0A2D20', '#061A13', '#0F0F13'],
     glowColor: '#10B981',
+    category: 'Party',
     screen: 'PieCharts',
   },
   {
@@ -107,6 +122,7 @@ const GAMES: {
     accentColor: '#FBBF24',
     gradientColors: ['#3D2E08', '#221B04', '#0F0F13'],
     glowColor: '#FBBF24',
+    category: 'Strategy',
     screen: 'DealOrSteal',
     tag: '4–6 players',
   },
@@ -120,6 +136,7 @@ const GAMES: {
     accentColor: '#F43F5E',
     gradientColors: ['#3D0F18', '#22080E', '#0F0F13'],
     glowColor: '#F43F5E',
+    category: 'Strategy',
     screen: 'ShadowProtocol',
     tag: '6–10 players',
   },
@@ -132,6 +149,7 @@ const GAMES: {
     accentColor: '#FBBF24',
     gradientColors: ['#3D2E08', '#221B04', '#0F0F13'],
     glowColor: '#FBBF24',
+    category: 'Trivia',
     screen: 'PotLuck',
   },
   {
@@ -143,6 +161,7 @@ const GAMES: {
     accentColor: '#C8642F',
     gradientColors: ['#3D1A08', '#220E04', '#0F0F13'],
     glowColor: '#C8642F',
+    category: 'Strategy',
     screen: 'ChainLink',
   },
   {
@@ -155,6 +174,7 @@ const GAMES: {
     accentColor: '#B5642A',
     gradientColors: ['#3D2210', '#221408', '#0F0F13'],
     glowColor: '#B5642A',
+    category: 'Creative',
     screen: 'PlotTwist',
     tag: '2–6 players',
   },
@@ -263,6 +283,11 @@ function GameCard({
             </TouchableOpacity>
           </View>
 
+          {/* Category label */}
+          <Text style={[card.categoryLabel, { color: CATEGORIES.find(c => c.label === game.category)!.color }]}>
+            {game.category}
+          </Text>
+
           {/* Title */}
           <Text style={[card.title, disabled && card.disabledText]}>{game.title}</Text>
 
@@ -369,6 +394,13 @@ const card = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   helpText: { fontSize: 12, fontFamily: FONTS.extrabold, lineHeight: 16 },
+  categoryLabel: {
+    fontSize: 9,
+    fontFamily: FONTS.bold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
   title: {
     fontSize: 15,
     fontFamily: FONTS.extrabold,
@@ -464,16 +496,17 @@ export default function GameSelectScreen({ navigation }: Props) {
     );
   }, []);
 
+  const [activeFilter, setActiveFilter] = useState<GameCategory | null>(null);
   const [smartyPotConfig, setSmartyPotConfig] = useState<{ visible: boolean; potCap: number }>({ visible: false, potCap: 7 });
 
   const selectGame = (game: (typeof GAMES)[0]) => {
     console.log('[GameSelect] selected:', game.id, '— room:', room?.code ?? 'none');
     if (game.id === 'lieDetector' && players.length < 3) {
-      Alert.alert('Trust Me Bro', `Needs at least 3 players. You have ${players.length}.`);
+      Alert.alert('Liar Liar', `Needs at least 3 players. You have ${players.length}.`);
       return;
     }
     if (game.id === 'talentShow' && players.length < 4) {
-      Alert.alert('Silly Spotlight', `Needs at least 4 players. You have ${players.length}.`);
+      Alert.alert("Nobody's Got Talent", `Needs at least 4 players. You have ${players.length}.`);
       return;
     }
     if (game.id === 'standOut' && players.length < 3) {
@@ -481,7 +514,7 @@ export default function GameSelectScreen({ navigation }: Props) {
       return;
     }
     if (game.id === 'numberGuessor' && players.length < 2) {
-      Alert.alert('Number Guessor', `Needs at least 2 players. You have ${players.length}.`);
+      Alert.alert('1 to 100', `Needs at least 2 players. You have ${players.length}.`);
       return;
     }
     if (game.id === 'pieCharts' && players.length < 3) {
@@ -532,10 +565,11 @@ export default function GameSelectScreen({ navigation }: Props) {
 
   const hasScores = players.some(p => p.score > 0);
 
-  // Filter games: admins see all, regular users only see enabled
-  const visibleGames = enabledGames
+  // Filter games: admins see all, regular users only see enabled; then by category
+  const visibleGames = (enabledGames
     ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
-    : GAMES;
+    : GAMES
+  ).filter(g => !activeFilter || g.category === activeFilter);
 
   // Pair games into rows of 2
   const rows: (typeof GAMES)[] = [];
@@ -558,6 +592,33 @@ export default function GameSelectScreen({ navigation }: Props) {
             </View>
           </View>
         </View>
+
+        {/* Category filter chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16, flexGrow: 0 }} contentContainerStyle={{ gap: 8 }}>
+          <TouchableOpacity
+            style={[s.filterChip, !activeFilter && s.filterChipActive]}
+            onPress={() => setActiveFilter(null)}
+            activeOpacity={0.7}
+          >
+            <Text style={[s.filterChipText, !activeFilter && s.filterChipTextActive]}>All</Text>
+          </TouchableOpacity>
+          {CATEGORIES.map(cat => {
+            const isActive = activeFilter === cat.label;
+            return (
+              <TouchableOpacity
+                key={cat.label}
+                style={[
+                  s.filterChip,
+                  isActive && { backgroundColor: cat.color + '22', borderColor: cat.color + '55' },
+                ]}
+                onPress={() => setActiveFilter(isActive ? null : cat.label)}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.filterChipText, isActive && { color: cat.color }]}>{cat.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
         {/* Game grid */}
         <View style={s.grid}>
@@ -721,6 +782,26 @@ const s = StyleSheet.create({
     fontFamily: FONTS.semibold,
     color: COLORS.text2,
     letterSpacing: 0.2,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface2,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.accent + '22',
+    borderColor: COLORS.accent + '55',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontFamily: FONTS.semibold,
+    color: COLORS.text2,
+  },
+  filterChipTextActive: {
+    color: COLORS.accent,
   },
   grid: {
     gap: 0,
