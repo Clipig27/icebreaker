@@ -1873,7 +1873,7 @@ function buildInitialGameState(game) {
     case 'blindRanking':
       return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], currentRound: 0, placements: {}, roundSubmitted: [], rankings: {}, votes: {}, votedPlayerIds: [], totalGames: 1, currentGame: 1, brScores: {} };
     case 'confessBet':
-      return { game, phase: 'intro', totalRounds: 5, currentRound: 0, usedPromptSets: [], prompts: [], submissions: {}, submittedPlayerIds: [], confessorId: '', confessorCards: [], street: 0, bettingOrder: [], currentBettorIdx: 0, streetActions: [], allActions: [], foldedPlayerIds: [], banks: {} };
+      return { game, phase: 'intro', totalRounds: 0, currentRound: 0, usedPromptSets: [], prompts: [], submissions: {}, submittedPlayerIds: [], confessorId: '', confessorCards: [], street: 0, bettingOrder: [], currentBettorIdx: 0, streetActions: [], allActions: [], foldedPlayerIds: [], banks: {} };
     default:
       return { game, phase: 'start' };
   }
@@ -2428,6 +2428,8 @@ io.on('connection', (socket) => {
         potLuck: 'rolling',
         chainLink: 'playing',
         plotTwist: 'dealing',
+        blindRanking: 'setup',
+        confessBet: 'setup',
       };
 
       const nextPhase = STARTING_PHASES[game] || 'setup';
