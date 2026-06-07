@@ -43,6 +43,9 @@ interface BRGameState {
   rankings: Record<string, string[]>;      // final rankings (filled at end)
   votes?: Record<string, string>;
   votedPlayerIds?: string[];
+  // Multi-game series
+  totalGames: number;                      // 1, 3, or 5
+  currentGame: number;                     // 1-indexed, which game in the series
 }
 
 interface CustomCategory {
@@ -202,11 +205,13 @@ export default function BlindRankingScreen({ navigation }: Props) {
     return () => { if (setupTimerRef.current) clearTimeout(setupTimerRef.current); };
   }, [!!gs]);
 
-  // ── Setup: host picks size ─────────────────────────────────────────────────
+  // ── Setup: host picks category, size, then rounds ──────────────────────────
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedSize, setSelectedSize] = useState<5 | 10 | null>(null);
 
-  const handlePickSize = (size: 5 | 10) => {
-    if (!isHost || !selectedCategory) return;
+  const launchGame = (totalGames: number, currentGame: number) => {
+    if (!isHost || !selectedCategory || !selectedSize) return;
+    const size = selectedSize;
     const isCustom = selectedCategory.startsWith('custom:');
     let pool: string[], label: string, emoji: string;
     if (isCustom) {
@@ -224,7 +229,6 @@ export default function BlindRankingScreen({ navigation }: Props) {
     }
     if (pool.length < size) return;
     const draw = shuffle(pool).slice(0, size);
-    // Initialize empty placements for all players
     const placements: Record<string, (string | null)[]> = {};
     for (const p of allPlayers) {
       placements[p.id] = new Array(size).fill(null);
@@ -243,6 +247,8 @@ export default function BlindRankingScreen({ navigation }: Props) {
       rankings: {},
       votes: {},
       votedPlayerIds: [],
+      totalGames,
+      currentGame,
     };
     gsRef.current = next;
     sendGameStateRef.current(next);
@@ -456,35 +462,67 @@ export default function BlindRankingScreen({ navigation }: Props) {
         );
       }
 
-      // Category selected — pick size
+      // Category selected — pick size, then rounds
       const isCustom = selectedCategory.startsWith('custom:');
       const bankLabel = isCustom
         ? customCategories.find(c => c.id === selectedCategory.replace('custom:', ''))?.label ?? 'Custom'
         : BANKS[selectedCategory]?.label ?? '';
       const bankEmoji = isCustom ? '✎' : (BANKS[selectedCategory]?.emoji ?? '');
 
+      // Step 2: pick size
+      if (!selectedSize) {
+        return (
+          <SafeAreaView style={styles.safe}>
+            <PhaseTransition phaseKey="setup-size">
+              <View style={styles.centered}>
+                <Text style={styles.setupEmoji}>{bankEmoji}</Text>
+                <Text style={styles.setupTitle}>{bankLabel}</Text>
+                <Text style={styles.setupSub}>How many items to rank?</Text>
+                <View style={styles.sizeRow}>
+                  {([5, 10] as const).map(size => (
+                    <TouchableOpacity
+                      key={size}
+                      style={styles.sizeCard}
+                      onPress={() => setSelectedSize(size)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.sizeNum}>{size}</Text>
+                      <Text style={styles.sizeLabel}>Top {size}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity onPress={() => setSelectedCategory(null)} style={{ marginTop: 12 }}>
+                  <Text style={styles.backLink}>Change category</Text>
+                </TouchableOpacity>
+              </View>
+            </PhaseTransition>
+          </SafeAreaView>
+        );
+      }
+
+      // Step 3: pick number of rounds
       return (
         <SafeAreaView style={styles.safe}>
-          <PhaseTransition phaseKey="setup-size">
+          <PhaseTransition phaseKey="setup-rounds">
             <View style={styles.centered}>
               <Text style={styles.setupEmoji}>{bankEmoji}</Text>
               <Text style={styles.setupTitle}>{bankLabel}</Text>
-              <Text style={styles.setupSub}>How many items to rank?</Text>
+              <Text style={[styles.setupSub, { marginBottom: 4 }]}>Top {selectedSize} · How many rounds?</Text>
               <View style={styles.sizeRow}>
-                {([5, 10] as const).map(size => (
+                {([1, 3, 5] as const).map(n => (
                   <TouchableOpacity
-                    key={size}
+                    key={n}
                     style={styles.sizeCard}
-                    onPress={() => handlePickSize(size)}
+                    onPress={() => launchGame(n, 1)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.sizeNum}>{size}</Text>
-                    <Text style={styles.sizeLabel}>Top {size}</Text>
+                    <Text style={styles.sizeNum}>{n}</Text>
+                    <Text style={styles.sizeLabel}>{n === 1 ? 'Round' : 'Rounds'}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-              <TouchableOpacity onPress={() => setSelectedCategory(null)} style={{ marginTop: 12 }}>
-                <Text style={styles.backLink}>Change category</Text>
+              <TouchableOpacity onPress={() => setSelectedSize(null)} style={{ marginTop: 12 }}>
+                <Text style={styles.backLink}>Change size</Text>
               </TouchableOpacity>
             </View>
           </PhaseTransition>
@@ -568,6 +606,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
             <View style={styles.playingHeader}>
               <Text style={styles.playingCategoryLabel}>
                 {gs.categoryEmoji} {gs.categoryLabel}
+                {(gs.totalGames ?? 1) > 1 ? ` · Game ${gs.currentGame}/${gs.totalGames}` : ''}
               </Text>
               <TouchableOpacity onPress={() => setShowPeek(true)} style={styles.peekBtn}>
                 <Text style={styles.peekBtnText}>👀 Peek</Text>
@@ -845,6 +884,8 @@ export default function BlindRankingScreen({ navigation }: Props) {
     const sorted = Object.entries(tally).sort((a, b) => b[1] - a[1]);
     const winnerId = sorted[0]?.[0];
 
+    const hasMoreGames = (gs.currentGame ?? 1) < (gs.totalGames ?? 1);
+
     return (
       <SafeAreaView style={styles.safe}>
         <PhaseTransition phaseKey="vote-results">
@@ -852,6 +893,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
             <Text style={styles.revealTitle}>Best List</Text>
             <Text style={styles.revealCategoryLabel}>
               {gs.categoryEmoji} {gs.categoryLabel}
+              {(gs.totalGames ?? 1) > 1 ? ` · Round ${gs.currentGame ?? 1} / ${gs.totalGames}` : ''}
             </Text>
 
             <View style={styles.voteResultsContainer}>
@@ -864,7 +906,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
                       {isWinner ? '👑 ' : ''}{player?.name ?? 'Player'}
                     </Text>
                     <Text style={[styles.voteResultCount, isWinner && { color: ACCENT }]}>
-                      {count} vote{count !== 1 ? 's' : ''}
+                      {count} vote{count !== 1 ? 's' : ''} · {player?.score ?? 0} pts total
                     </Text>
                   </View>
                 );
@@ -872,42 +914,52 @@ export default function BlindRankingScreen({ navigation }: Props) {
               {allPlayers.filter(p => !tally[p.id]).map(p => (
                 <View key={p.id} style={styles.voteResultRow}>
                   <Text style={styles.voteResultName}>{p.name}</Text>
-                  <Text style={styles.voteResultCount}>0 votes</Text>
+                  <Text style={styles.voteResultCount}>0 votes · {p.score ?? 0} pts total</Text>
                 </View>
               ))}
             </View>
 
             <View style={styles.actions}>
               {isHost ? (
-                <>
+                hasMoreGames ? (
                   <PrimaryButton
-                    title="Play Again"
-                    onPress={() => {
-                      setSelectedCategory(null);
-                      const next: BRGameState = {
-                        game: 'blindRanking',
-                        phase: 'setup',
-                        categoryKey: '',
-                        categoryLabel: '',
-                        categoryEmoji: '',
-                        size: 5,
-                        draw: [],
-                        currentRound: 0,
-                        placements: {},
-                        roundSubmitted: [],
-                        rankings: {},
-                        votes: {},
-                        votedPlayerIds: [],
-                      };
-                      gsRef.current = next;
-                      sendGameStateRef.current(next);
-                    }}
+                    title={`Next Round (${(gs.currentGame ?? 1) + 1} / ${gs.totalGames})`}
+                    onPress={() => launchGame(gs.totalGames ?? 1, (gs.currentGame ?? 1) + 1)}
                   />
-                  <SecondaryButton
-                    title="Choose New Game"
-                    onPress={() => navigation.navigate('GameSelect')}
-                  />
-                </>
+                ) : (
+                  <>
+                    <PrimaryButton
+                      title="New Series"
+                      onPress={() => {
+                        setSelectedCategory(null);
+                        setSelectedSize(null);
+                        const next: BRGameState = {
+                          game: 'blindRanking',
+                          phase: 'setup',
+                          categoryKey: '',
+                          categoryLabel: '',
+                          categoryEmoji: '',
+                          size: 5,
+                          draw: [],
+                          currentRound: 0,
+                          placements: {},
+                          roundSubmitted: [],
+                          rankings: {},
+                          votes: {},
+                          votedPlayerIds: [],
+                          totalGames: 1,
+                          currentGame: 1,
+                        };
+                        gsRef.current = next;
+                        sendGameStateRef.current(next);
+                      }}
+                    />
+                    <SecondaryButton
+                      title="Choose New Game"
+                      onPress={() => navigation.navigate('GameSelect')}
+                    />
+                  </>
+                )
               ) : (
                 <Text style={styles.waitSub}>Waiting for host...</Text>
               )}

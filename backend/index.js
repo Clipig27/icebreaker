@@ -1871,7 +1871,7 @@ function buildInitialGameState(game) {
     case 'shadowProtocol':
       return { game, phase: 'intro' };
     case 'blindRanking':
-      return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], currentRound: 0, placements: {}, roundSubmitted: [], rankings: {}, votes: {}, votedPlayerIds: [] };
+      return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], currentRound: 0, placements: {}, roundSubmitted: [], rankings: {}, votes: {}, votedPlayerIds: [], totalGames: 1, currentGame: 1 };
     default:
       return { game, phase: 'start' };
   }

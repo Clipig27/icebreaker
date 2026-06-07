@@ -5,7 +5,14 @@ export interface GameConfig {
   enabled: boolean;
 }
 
-/** Fetch which games are enabled. Returns a Set of enabled game IDs. */
+const ALL_GAMES = [
+  'lieDetector', 'talentShow', 'standOut', 'numberGuessor',
+  'pieCharts', 'dealOrSteal', 'shadowProtocol', 'potLuck',
+  'chainLink', 'plotTwist', 'blindRanking',
+];
+
+/** Fetch which games are enabled. Returns a Set of enabled game IDs.
+ *  Games not in the DB are treated as enabled by default. */
 export async function fetchEnabledGames(): Promise<Set<string>> {
   const { data, error } = await supabase
     .from('game_config')
@@ -13,15 +20,19 @@ export async function fetchEnabledGames(): Promise<Set<string>> {
 
   if (error) {
     console.error('[gameConfig] fetch failed:', error.message);
-    // Fallback: all games enabled
-    return new Set([
-      'lieDetector', 'talentShow', 'standOut', 'numberGuessor',
-      'pieCharts', 'dealOrSteal', 'shadowProtocol', 'potLuck',
-      'chainLink', 'plotTwist', 'blindRanking',
-    ]);
+    return new Set(ALL_GAMES);
   }
 
-  return new Set((data as GameConfig[]).filter(g => g.enabled).map(g => g.game_id));
+  const rows = data as GameConfig[];
+  const knownIds = new Set(rows.map(r => r.game_id));
+  const enabled = new Set(rows.filter(g => g.enabled).map(g => g.game_id));
+
+  // Games not in the DB yet are enabled by default
+  for (const id of ALL_GAMES) {
+    if (!knownIds.has(id)) enabled.add(id);
+  }
+
+  return enabled;
 }
 
 /** Toggle a game's enabled status (admin only). Upserts so it works even if the row doesn't exist yet. */
