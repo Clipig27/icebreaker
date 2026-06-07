@@ -3299,7 +3299,7 @@ io.on('connection', (socket) => {
         // Award 10 points per vote received
         for (const p of room.players) {
           if (tally[p.id]) {
-            p.score = (p.score || 0) + tally[p.id] * 10;
+            p.score = (p.score || 0) + tally[p.id];
           }
         }
         gs.phase = 'vote-results';

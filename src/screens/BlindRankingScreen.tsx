@@ -730,7 +730,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
             <Text style={styles.calloutTitle}>Most Divisive</Text>
             <Text style={styles.calloutSub}>Biggest disagreements</Text>
             {divisive.map((stat, i) => (
-              <View key={stat.item} style={styles.calloutRow}>
+              <View key={`${i}-${stat.item}`} style={styles.calloutRow}>
                 <Text style={styles.calloutIndex}>{i + 1}.</Text>
                 <Text style={styles.calloutItem} numberOfLines={1}>{stat.item}</Text>
                 <Text style={styles.calloutSpread}>spread: {stat.spread}</Text>
@@ -745,7 +745,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
             <Text style={[styles.calloutTitle, { color: COLORS.success }]}>Everyone Agrees</Text>
             <Text style={styles.calloutSub}>Nearly identical rankings</Text>
             {agreed.map((stat, i) => (
-              <View key={stat.item} style={styles.calloutRow}>
+              <View key={`${i}-${stat.item}`} style={styles.calloutRow}>
                 <Text style={styles.calloutIndex}>{i + 1}.</Text>
                 <Text style={styles.calloutItem} numberOfLines={1}>{stat.item}</Text>
                 <Text style={[styles.calloutSpread, { color: COLORS.success }]}>
