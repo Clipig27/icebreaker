@@ -1871,7 +1871,7 @@ function buildInitialGameState(game) {
     case 'shadowProtocol':
       return { game, phase: 'intro' };
     case 'blindRanking':
-      return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], rankings: {}, submittedPlayerIds: [] };
+      return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], currentRound: 0, placements: {}, roundSubmitted: [], rankings: {}, votes: {}, votedPlayerIds: [] };
     default:
       return { game, phase: 'start' };
   }
@@ -3246,18 +3246,64 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // ── Blind Ranking: submit ranking ───────────────────────────────────────
-    if (room.gameState?.game === 'blindRanking' && action === 'br-submit') {
+    // ── Blind Ranking: place item for current round ─────────────────────────
+    if (room.gameState?.game === 'blindRanking' && action === 'br-place') {
       const gs = room.gameState;
       if (gs.phase !== 'playing') return;
       const pid = stableId(socket.id);
-      if (gs.submittedPlayerIds.includes(pid)) return; // already submitted
-      if (!Array.isArray(data?.ranking) || data.ranking.length !== gs.size) return;
-      gs.rankings[pid] = data.ranking;
-      gs.submittedPlayerIds.push(pid);
-      // If all players submitted, auto-advance to reveal
-      if (gs.submittedPlayerIds.length >= room.players.length) {
-        gs.phase = 'reveal';
+      if (!gs.roundSubmitted) gs.roundSubmitted = [];
+      if (gs.roundSubmitted.includes(pid)) return; // already placed this round
+      const { slotIndex, item } = data || {};
+      if (typeof slotIndex !== 'number' || slotIndex < 0 || slotIndex >= gs.size) return;
+      if (!gs.placements) gs.placements = {};
+      if (!gs.placements[pid]) gs.placements[pid] = new Array(gs.size).fill(null);
+      if (gs.placements[pid][slotIndex] !== null) return; // slot already filled
+      // Verify item matches current draw item
+      if (item !== gs.draw[gs.currentRound]) return;
+      gs.placements[pid][slotIndex] = item;
+      gs.roundSubmitted.push(pid);
+      // If all players placed, advance to next round or reveal
+      if (gs.roundSubmitted.length >= room.players.length) {
+        if (gs.currentRound + 1 >= gs.size) {
+          // All rounds done — go to reveal
+          gs.phase = 'reveal';
+        } else {
+          gs.currentRound += 1;
+          gs.roundSubmitted = [];
+        }
+      }
+      io.to(code).emit('gameStateUpdated', gs);
+      return;
+    }
+
+    // ── Blind Ranking: vote for best list ────────────────────────────────────
+    if (room.gameState?.game === 'blindRanking' && action === 'br-vote') {
+      const gs = room.gameState;
+      if (gs.phase !== 'voting') return;
+      const pid = stableId(socket.id);
+      if (!gs.votedPlayerIds) gs.votedPlayerIds = [];
+      if (!gs.votes) gs.votes = {};
+      if (gs.votedPlayerIds.includes(pid)) return; // already voted
+      const voteeId = data?.voteeId;
+      if (!voteeId || voteeId === pid) return; // can't vote for yourself
+      if (!room.players.some(p => p.id === voteeId)) return; // invalid votee
+      gs.votes[pid] = voteeId;
+      gs.votedPlayerIds.push(pid);
+      // If all players voted, tally and award points
+      if (gs.votedPlayerIds.length >= room.players.length) {
+        // Tally votes
+        const tally = {};
+        for (const vid of Object.values(gs.votes)) {
+          tally[vid] = (tally[vid] || 0) + 1;
+        }
+        // Award 10 points per vote received
+        for (const p of room.players) {
+          if (tally[p.id]) {
+            p.score = (p.score || 0) + tally[p.id] * 10;
+          }
+        }
+        gs.phase = 'vote-results';
+        io.to(code).emit('scoresUpdated', room.players);
       }
       io.to(code).emit('gameStateUpdated', gs);
       return;

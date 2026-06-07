@@ -7,12 +7,16 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { useGame } from '../context/GameContext';
 import socket from '../socket';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import { COLORS, FONTS } from '../constants/theme';
@@ -26,16 +30,27 @@ const ACCENT = '#e8927c';
 
 interface BRGameState {
   game: 'blindRanking';
-  phase: 'intro' | 'setup' | 'playing' | 'waiting' | 'reveal';
+  phase: 'intro' | 'setup' | 'playing' | 'reveal' | 'voting' | 'vote-results';
   categoryKey: string;
   categoryLabel: string;
   categoryEmoji: string;
   size: 5 | 10;
-  draw: string[];
-  currentPlayerId: string;
-  rankings: Record<string, string[]>;
-  submittedPlayerIds: string[];
+  draw: string[];                          // items in the order everyone sees them
+  currentRound: number;                    // 0-indexed, which item from draw is being placed
+  placements: Record<string, (string | null)[]>;  // playerId -> their slot array
+  roundSubmitted: string[];                // who has placed for current round
+  rankings: Record<string, string[]>;      // final rankings (filled at end)
+  votes?: Record<string, string>;
+  votedPlayerIds?: string[];
 }
+
+interface CustomCategory {
+  id: string;
+  label: string;
+  items: string[];
+}
+
+const CUSTOM_CATEGORIES_KEY = 'br_custom_categories';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'BlindRanking'>;
@@ -104,55 +119,75 @@ export default function BlindRankingScreen({ navigation }: Props) {
 
   const allPlayers = room?.players ?? players;
 
-  // ── Local playing state (per-player, NOT synced) ───────────────────────────
-  const [feed, setFeed] = useState<string[]>([]);
-  const [feedPos, setFeedPos] = useState(0);
-  const [slots, setSlots] = useState<(string | null)[]>([]);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
+  // ── Local playing state ─────────────────────────────────────────────────────
+  const [hasPlacedThisRound, setHasPlacedThisRound] = useState(false);
+  const [showPeek, setShowPeek] = useState(false);
 
   // Animate the "now placing" card
   const popAnim = useRef(new Animated.Value(0)).current;
+  const prevRoundRef = useRef(-1);
 
-  // Reset local state when phase changes to 'playing'
+  // Reset placed flag when round advances
   useEffect(() => {
-    if (gs?.phase === 'playing' && gs.draw?.length > 0) {
-      const shuffledFeed = shuffle(gs.draw);
-      setFeed(shuffledFeed);
-      setFeedPos(0);
-      setSlots(new Array(gs.size).fill(null));
-      setHasSubmitted(false);
+    if (!gs || gs.phase !== 'playing') return;
+    if (gs.currentRound !== prevRoundRef.current) {
+      prevRoundRef.current = gs.currentRound;
+      setHasPlacedThisRound(false);
+      // Trigger pop animation
+      popAnim.setValue(0);
+      Animated.spring(popAnim, {
+        toValue: 1,
+        speed: 20,
+        bounciness: 14,
+        useNativeDriver: true,
+      }).start();
     }
-  }, [gs?.phase]); // eslint-disable-line
+  }, [gs?.currentRound, gs?.phase]); // eslint-disable-line
 
-  // Reset submitted flag when phase resets
+  // Check if I've already submitted for this round (reconnect safety)
   useEffect(() => {
-    if (gs?.phase !== 'playing' && gs?.phase !== 'waiting') {
-      setHasSubmitted(false);
+    if (gs?.phase === 'playing' && (gs.roundSubmitted ?? []).includes(myId)) {
+      setHasPlacedThisRound(true);
     }
+  }, [gs?.roundSubmitted?.length]); // eslint-disable-line
+
+  // ── Custom categories (persisted locally) ────────────────────────────────
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  const [showCustomEditor, setShowCustomEditor] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customItems, setCustomItems] = useState('');
+
+  useEffect(() => {
+    AsyncStorage.getItem(CUSTOM_CATEGORIES_KEY).then(raw => {
+      if (raw) setCustomCategories(JSON.parse(raw));
+    }).catch(() => {});
+  }, []);
+
+  const saveCustomCategory = async () => {
+    const items = customItems.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!customName.trim() || items.length < 5) return;
+    const cat: CustomCategory = { id: `c${Date.now()}`, label: customName.trim(), items };
+    const next = [...customCategories, cat];
+    setCustomCategories(next);
+    await AsyncStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(next));
+    setCustomName('');
+    setCustomItems('');
+    setShowCustomEditor(false);
+  };
+
+  const deleteCustomCategory = async (id: string) => {
+    const next = customCategories.filter(c => c.id !== id);
+    setCustomCategories(next);
+    await AsyncStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(next));
+  };
+
+  // ── Voting state ────────────────────────────────────────────────────────────
+  const [myVote, setMyVote] = useState<string | null>(null);
+
+  // Reset vote when phase changes
+  useEffect(() => {
+    if (gs?.phase !== 'voting') setMyVote(null);
   }, [gs?.phase]);
-
-  // Pop animation for each new card
-  useEffect(() => {
-    popAnim.setValue(0);
-    Animated.spring(popAnim, {
-      toValue: 1,
-      speed: 20,
-      bounciness: 14,
-      useNativeDriver: true,
-    }).start();
-  }, [feedPos]); // eslint-disable-line
-
-  // ── Host: auto-advance to reveal when all submitted ────────────────────────
-  useEffect(() => {
-    if (!isHost || !gs || gs.phase !== 'playing') return;
-    const submitted = gs.submittedPlayerIds ?? [];
-    const total = allPlayers.length;
-    if (submitted.length >= total && total > 0) {
-      const next: BRGameState = { ...gs, phase: 'reveal' };
-      gsRef.current = next;
-      sendGameStateRef.current(next);
-    }
-  }, [gs?.submittedPlayerIds?.length]); // eslint-disable-line
 
   // ── Setup timeout ──────────────────────────────────────────────────────────
   const [setupTimedOut, setSetupTimedOut] = useState(false);
@@ -171,50 +206,66 @@ export default function BlindRankingScreen({ navigation }: Props) {
 
   const handlePickSize = (size: 5 | 10) => {
     if (!isHost || !selectedCategory) return;
-    const bank = BANKS[selectedCategory];
-    const draw = shuffle(bank.items).slice(0, size);
+    const isCustom = selectedCategory.startsWith('custom:');
+    let pool: string[], label: string, emoji: string;
+    if (isCustom) {
+      const cat = customCategories.find(c => c.id === selectedCategory.replace('custom:', ''));
+      if (!cat) return;
+      pool = cat.items;
+      label = cat.label;
+      emoji = '✎';
+    } else {
+      const bank = BANKS[selectedCategory];
+      if (!bank) return;
+      pool = bank.items;
+      label = bank.label;
+      emoji = bank.emoji;
+    }
+    if (pool.length < size) return;
+    const draw = shuffle(pool).slice(0, size);
+    // Initialize empty placements for all players
+    const placements: Record<string, (string | null)[]> = {};
+    for (const p of allPlayers) {
+      placements[p.id] = new Array(size).fill(null);
+    }
     const next: BRGameState = {
       game: 'blindRanking',
       phase: 'playing',
       categoryKey: selectedCategory,
-      categoryLabel: bank.label,
-      categoryEmoji: bank.emoji,
+      categoryLabel: label,
+      categoryEmoji: emoji,
       size,
       draw,
-      currentPlayerId: '',
+      currentRound: 0,
+      placements,
+      roundSubmitted: [],
       rankings: {},
-      submittedPlayerIds: [],
+      votes: {},
+      votedPlayerIds: [],
     };
     gsRef.current = next;
     sendGameStateRef.current(next);
   };
 
-  // ── Playing: place an item into a slot ─────────────────────────────────────
+  // ── Playing: place current round's item into a slot ─────────────────────────
   const handlePlaceItem = (slotIndex: number) => {
-    if (slots[slotIndex] !== null) return; // already filled
-    if (feedPos >= feed.length) return;    // no more items
+    if (!gs || gs.phase !== 'playing') return;
+    const mySlots = gs.placements?.[myId];
+    if (!mySlots || mySlots[slotIndex] !== null) return; // already filled
+    if (hasPlacedThisRound) return;
 
-    const currentItem = feed[feedPos];
-    const newSlots = [...slots];
-    newSlots[slotIndex] = currentItem;
-    setSlots(newSlots);
+    const currentItem = gs.draw[gs.currentRound];
+    if (!currentItem) return;
 
-    const nextPos = feedPos + 1;
-    setFeedPos(nextPos);
-
-    // Check if all slots are filled
-    if (nextPos >= feed.length) {
-      // All items placed — submit
-      const finalSlots = newSlots.filter((s): s is string => s !== null);
-      setHasSubmitted(true);
-      sendPlayerAction('br-submit', { ranking: finalSlots });
-    }
+    setHasPlacedThisRound(true);
+    sendPlayerAction('br-place', { slotIndex, item: currentItem });
   };
 
   // ── Reveal helpers ─────────────────────────────────────────────────────────
   const computeRevealStats = () => {
-    if (!gs || gs.phase !== 'reveal') return { divisive: [], agreed: [] };
-    const rankings = gs.rankings ?? {};
+    if (!gs || !['reveal', 'voting', 'vote-results'].includes(gs.phase)) return { divisive: [], agreed: [] };
+    // Use placements as the final rankings
+    const rankings = gs.placements ?? {};
     const playerIds = Object.keys(rankings);
     if (playerIds.length === 0) return { divisive: [], agreed: [] };
 
@@ -296,6 +347,49 @@ export default function BlindRankingScreen({ navigation }: Props) {
   // ── Phase: setup ───────────────────────────────────────────────────────────
   if (gs.phase === 'setup') {
     if (isHost) {
+      // Custom category editor
+      if (showCustomEditor) {
+        const itemCount = customItems.split('\n').map(s => s.trim()).filter(Boolean).length;
+        const canSave = customName.trim().length > 0 && itemCount >= 5;
+        return (
+          <SafeAreaView style={styles.safe}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+              <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+                <Text style={styles.setupTitle}>New Category</Text>
+                <Text style={styles.setupSub}>Create your own ranking category.</Text>
+                <Text style={styles.editorLabel}>CATEGORY NAME</Text>
+                <TextInput
+                  style={styles.editorInput}
+                  placeholder="e.g. Best Marvel movies"
+                  placeholderTextColor={COLORS.text3}
+                  value={customName}
+                  onChangeText={setCustomName}
+                />
+                <Text style={styles.editorLabel}>ITEMS (one per line, min 5)</Text>
+                <TextInput
+                  style={[styles.editorInput, { height: 180, textAlignVertical: 'top' }]}
+                  placeholder={"Iron Man\nEndgame\nSpider-Man\n..."}
+                  placeholderTextColor={COLORS.text3}
+                  value={customItems}
+                  onChangeText={setCustomItems}
+                  multiline
+                />
+                <Text style={styles.editorCount}>{itemCount} items</Text>
+                <PrimaryButton
+                  title="Save Category"
+                  onPress={saveCustomCategory}
+                  style={{ opacity: canSave ? 1 : 0.4 }}
+                  disabled={!canSave}
+                />
+                <TouchableOpacity onPress={() => setShowCustomEditor(false)} style={{ marginTop: 8, alignSelf: 'center' }}>
+                  <Text style={styles.backLink}>Cancel</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        );
+      }
+
       // If category not yet selected, show category grid
       if (!selectedCategory) {
         return (
@@ -321,6 +415,37 @@ export default function BlindRankingScreen({ navigation }: Props) {
                     );
                   })}
                 </View>
+
+                {/* Custom categories */}
+                {customCategories.length > 0 && (
+                  <>
+                    <Text style={styles.customSectionTitle}>Your Categories</Text>
+                    <View style={styles.categoryGrid}>
+                      {customCategories.map(cat => (
+                        <TouchableOpacity
+                          key={cat.id}
+                          style={[styles.categoryCard, { borderColor: ACCENT + '66' }]}
+                          onPress={() => setSelectedCategory(`custom:${cat.id}`)}
+                          onLongPress={() => deleteCustomCategory(cat.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.categoryEmoji}>✎</Text>
+                          <Text style={styles.categoryLabel} numberOfLines={2}>{cat.label}</Text>
+                          <Text style={styles.customItemCount}>{cat.items.length} items</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                {/* Make your own button */}
+                <TouchableOpacity
+                  style={styles.makeOwnBtn}
+                  onPress={() => setShowCustomEditor(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.makeOwnText}>+ Make Your Own</Text>
+                </TouchableOpacity>
               </ScrollView>
             </PhaseTransition>
           </SafeAreaView>
@@ -328,13 +453,18 @@ export default function BlindRankingScreen({ navigation }: Props) {
       }
 
       // Category selected — pick size
-      const bank = BANKS[selectedCategory];
+      const isCustom = selectedCategory.startsWith('custom:');
+      const bankLabel = isCustom
+        ? customCategories.find(c => c.id === selectedCategory.replace('custom:', ''))?.label ?? 'Custom'
+        : BANKS[selectedCategory]?.label ?? '';
+      const bankEmoji = isCustom ? '✎' : (BANKS[selectedCategory]?.emoji ?? '');
+
       return (
         <SafeAreaView style={styles.safe}>
           <PhaseTransition phaseKey="setup-size">
             <View style={styles.centered}>
-              <Text style={styles.setupEmoji}>{bank.emoji}</Text>
-              <Text style={styles.setupTitle}>{bank.label}</Text>
+              <Text style={styles.setupEmoji}>{bankEmoji}</Text>
+              <Text style={styles.setupTitle}>{bankLabel}</Text>
               <Text style={styles.setupSub}>How many items to rank?</Text>
               <View style={styles.sizeRow}>
                 {([5, 10] as const).map(size => (
@@ -373,31 +503,12 @@ export default function BlindRankingScreen({ navigation }: Props) {
   }
 
   // ── Phase: playing ─────────────────────────────────────────────────────────
-  if (gs.phase === 'playing' || gs.phase === 'waiting') {
-    const mySubmitted = hasSubmitted || (gs.submittedPlayerIds ?? []).includes(myId);
-    const submittedCount = (gs.submittedPlayerIds ?? []).length;
+  if (gs.phase === 'playing') {
+    const currentItem = gs.draw[gs.currentRound];
+    const mySlots = gs.placements?.[myId] ?? new Array(gs.size).fill(null);
+    const submittedCount = (gs.roundSubmitted ?? []).length;
     const totalPlayers = allPlayers.length;
-
-    // Player has submitted — show waiting screen
-    if (mySubmitted) {
-      return (
-        <SafeAreaView style={styles.safe}>
-          <PhaseTransition phaseKey="submitted">
-            <View style={styles.centered}>
-              <Text style={styles.waitEmoji}>✅</Text>
-              <Text style={styles.waitTitle}>Rankings locked in!</Text>
-              <Text style={styles.waitSub}>
-                Waiting for others... {submittedCount} / {totalPlayers}
-              </Text>
-            </View>
-          </PhaseTransition>
-        </SafeAreaView>
-      );
-    }
-
-    // Still playing — show item feed + slots
-    const currentItem = feedPos < feed.length ? feed[feedPos] : null;
-    const itemsRemaining = feed.length - feedPos;
+    const waitingForOthers = hasPlacedThisRound;
 
     const popScale = popAnim.interpolate({
       inputRange: [0, 1],
@@ -408,22 +519,70 @@ export default function BlindRankingScreen({ navigation }: Props) {
       outputRange: [0, 1],
     });
 
+    // Peek modal — see everyone's lists
+    if (showPeek) {
+      const placements = gs.placements ?? {};
+      return (
+        <SafeAreaView style={styles.safe}>
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.playingHeader}>
+              <Text style={styles.revealTitle}>Everyone's Lists</Text>
+              <TouchableOpacity onPress={() => setShowPeek(false)}>
+                <Text style={[styles.peekBtnText, { fontSize: 14 }]}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.revealCategoryLabel}>
+              Round {gs.currentRound + 1} / {gs.size}
+            </Text>
+            {allPlayers.map(p => {
+              const pSlots = placements[p.id] ?? [];
+              const isMe = p.id === myId;
+              return (
+                <View key={p.id} style={[styles.peekPlayerCard, isMe && { borderColor: ACCENT + '66' }]}>
+                  <Text style={[styles.peekPlayerName, isMe && { color: ACCENT }]}>
+                    {p.name}{isMe ? ' (you)' : ''}
+                  </Text>
+                  {pSlots.map((item, i) => (
+                    <View key={i} style={styles.peekSlotRow}>
+                      <Text style={styles.peekSlotRank}>#{i + 1}</Text>
+                      <Text style={styles.peekSlotItem}>{item ?? '—'}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.safe}>
-        <PhaseTransition phaseKey="playing">
+        <PhaseTransition phaseKey={`playing-${gs.currentRound}`}>
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
             {/* Header */}
             <View style={styles.playingHeader}>
               <Text style={styles.playingCategoryLabel}>
                 {gs.categoryEmoji} {gs.categoryLabel}
               </Text>
-              <Text style={styles.playingProgress}>
-                {feedPos} / {feed.length} placed
-              </Text>
+              <TouchableOpacity onPress={() => setShowPeek(true)} style={styles.peekBtn}>
+                <Text style={styles.peekBtnText}>👀 Peek</Text>
+              </TouchableOpacity>
             </View>
+            <Text style={styles.playingProgress}>
+              Round {gs.currentRound + 1} / {gs.size} · {submittedCount}/{totalPlayers} placed
+            </Text>
 
             {/* Current item card */}
-            {currentItem && (
+            {waitingForOthers ? (
+              <View style={[styles.nowPlacingCard, { borderColor: COLORS.success + '66' }]}>
+                <Text style={[styles.nowPlacingLabel, { color: COLORS.success }]}>PLACED!</Text>
+                <Text style={styles.nowPlacingItem}>{currentItem}</Text>
+                <Text style={styles.nowPlacingHint}>
+                  Waiting for others... {submittedCount}/{totalPlayers}
+                </Text>
+              </View>
+            ) : (
               <Animated.View
                 style={[
                   styles.nowPlacingCard,
@@ -433,7 +592,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
                 <Text style={styles.nowPlacingLabel}>NOW PLACING</Text>
                 <Text style={styles.nowPlacingItem}>{currentItem}</Text>
                 <Text style={styles.nowPlacingHint}>
-                  Tap a slot below to place it ({itemsRemaining} remaining)
+                  Tap a slot below · {gs.size - gs.currentRound} items left
                 </Text>
               </Animated.View>
             )}
@@ -443,9 +602,9 @@ export default function BlindRankingScreen({ navigation }: Props) {
               Your Top {gs.size} Ranking
             </Text>
             <View style={styles.slotsContainer}>
-              {slots.map((slotItem, idx) => {
+              {mySlots.map((slotItem: string | null, idx: number) => {
                 const isFilled = slotItem !== null;
-                const canPlace = !isFilled && currentItem !== null;
+                const canPlace = !isFilled && !waitingForOthers;
                 return (
                   <TouchableOpacity
                     key={idx}
@@ -480,108 +639,240 @@ export default function BlindRankingScreen({ navigation }: Props) {
     );
   }
 
-  // ── Phase: reveal ──────────────────────────────────────────────────────────
-  if (gs.phase === 'reveal') {
-    const rankings = gs.rankings ?? {};
+  // ── Shared reveal UI (used in reveal + voting + vote-results) ──────────────
+  const renderRevealContent = () => {
+    const rankings = gs!.placements ?? {};
     const playerIds = Object.keys(rankings);
     const { divisive, agreed } = computeRevealStats();
-    const draw = gs.draw ?? [];
+    const colWidth = Math.max(120, (SCREEN_WIDTH - 40 - 36) / playerIds.length);
 
+    return (
+      <>
+        {/* Title */}
+        <Text style={styles.revealTitle}>Results</Text>
+        <Text style={styles.revealCategoryLabel}>
+          {gs!.categoryEmoji} {gs!.categoryLabel} — Top {gs!.size}
+        </Text>
+
+        {/* Divisive callout */}
+        {divisive.length > 0 && (
+          <View style={styles.calloutCard}>
+            <Text style={styles.calloutTitle}>Most Divisive</Text>
+            <Text style={styles.calloutSub}>Biggest disagreements</Text>
+            {divisive.map((stat, i) => (
+              <View key={stat.item} style={styles.calloutRow}>
+                <Text style={styles.calloutIndex}>{i + 1}.</Text>
+                <Text style={styles.calloutItem} numberOfLines={1}>{stat.item}</Text>
+                <Text style={styles.calloutSpread}>spread: {stat.spread}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Agreed callout */}
+        {agreed.length > 0 && (
+          <View style={[styles.calloutCard, styles.calloutCardAgreed]}>
+            <Text style={[styles.calloutTitle, { color: COLORS.success }]}>Everyone Agrees</Text>
+            <Text style={styles.calloutSub}>Nearly identical rankings</Text>
+            {agreed.map((stat, i) => (
+              <View key={stat.item} style={styles.calloutRow}>
+                <Text style={styles.calloutIndex}>{i + 1}.</Text>
+                <Text style={styles.calloutItem} numberOfLines={1}>{stat.item}</Text>
+                <Text style={[styles.calloutSpread, { color: COLORS.success }]}>
+                  spread: {stat.spread}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Side-by-side comparison — fixed-width columns */}
+        <Text style={styles.comparisonTitle}>Side-by-Side</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View>
+            {/* Header row */}
+            <View style={styles.comparisonHeaderRow}>
+              <View style={styles.comparisonRankCol}>
+                <Text style={styles.comparisonHeaderText}>#</Text>
+              </View>
+              {playerIds.map(pid => {
+                const player = allPlayers.find(p => p.id === pid);
+                return (
+                  <View key={pid} style={[styles.comparisonPlayerCol, { width: colWidth }]}>
+                    <Text style={[
+                      styles.comparisonHeaderText,
+                      pid === myId && { color: ACCENT },
+                    ]} numberOfLines={1}>
+                      {player?.name ?? 'Player'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Data rows */}
+            {Array.from({ length: gs!.size }).map((_, rowIdx) => (
+              <View
+                key={rowIdx}
+                style={[
+                  styles.comparisonDataRow,
+                  rowIdx % 2 === 0 && styles.comparisonDataRowAlt,
+                ]}
+              >
+                <View style={styles.comparisonRankCol}>
+                  <Text style={styles.comparisonRankNum}>{rowIdx + 1}</Text>
+                </View>
+                {playerIds.map(pid => {
+                  const ranking = rankings[pid] ?? [];
+                  const item = ranking[rowIdx] ?? '—';
+                  return (
+                    <View key={pid} style={[styles.comparisonPlayerCol, { width: colWidth }]}>
+                      <Text style={styles.comparisonItemText} numberOfLines={2}>
+                        {item}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </>
+    );
+  };
+
+  // ── Phase: reveal ──────────────────────────────────────────────────────────
+  if (gs.phase === 'reveal') {
     return (
       <SafeAreaView style={styles.safe}>
         <PhaseTransition phaseKey={gs.phase}>
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-            {/* Title */}
-            <Text style={styles.revealTitle}>Results</Text>
+            {renderRevealContent()}
+            {/* Host advances to voting */}
+            <View style={styles.actions}>
+              {isHost ? (
+                <PrimaryButton
+                  title="Vote for Best List"
+                  onPress={() => {
+                    const next: BRGameState = { ...gs, phase: 'voting', votes: {}, votedPlayerIds: [] };
+                    gsRef.current = next;
+                    sendGameStateRef.current(next);
+                  }}
+                />
+              ) : (
+                <Text style={styles.waitSub}>Waiting for host...</Text>
+              )}
+            </View>
+          </ScrollView>
+        </PhaseTransition>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Phase: voting ─────────────────────────────────────────────────────────
+  if (gs.phase === 'voting') {
+    const votedIds = gs.votedPlayerIds ?? [];
+    const hasVoted = votedIds.includes(myId);
+
+    return (
+      <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey="voting">
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            {renderRevealContent()}
+
+            <View style={styles.voteSection}>
+              <Text style={styles.voteTitle}>
+                {hasVoted ? 'Vote submitted!' : 'Who had the best list?'}
+              </Text>
+              <Text style={styles.voteSub}>
+                {hasVoted
+                  ? `${votedIds.length} / ${allPlayers.length} voted`
+                  : 'Vote for the player with the best ranking.'}
+              </Text>
+
+              {!hasVoted && (
+                <View style={styles.voteGrid}>
+                  {allPlayers.filter(p => p.id !== myId).map(p => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[
+                        styles.voteCard,
+                        myVote === p.id && styles.voteCardSelected,
+                      ]}
+                      onPress={() => setMyVote(p.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.voteCardName,
+                        myVote === p.id && { color: ACCENT },
+                      ]}>{p.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {!hasVoted && myVote && (
+                <PrimaryButton
+                  title={`Vote for ${allPlayers.find(p => p.id === myVote)?.name}`}
+                  onPress={() => {
+                    sendPlayerAction('br-vote', { voteeId: myVote });
+                  }}
+                />
+              )}
+
+              {hasVoted && (
+                <Text style={styles.waitSub}>Waiting for others...</Text>
+              )}
+            </View>
+          </ScrollView>
+        </PhaseTransition>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Phase: vote-results ───────────────────────────────────────────────────
+  if (gs.phase === 'vote-results') {
+    const votes = gs.votes ?? {};
+    // Tally votes
+    const tally: Record<string, number> = {};
+    for (const voteeId of Object.values(votes)) {
+      tally[voteeId] = (tally[voteeId] ?? 0) + 1;
+    }
+    const sorted = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+    const winnerId = sorted[0]?.[0];
+
+    return (
+      <SafeAreaView style={styles.safe}>
+        <PhaseTransition phaseKey="vote-results">
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <Text style={styles.revealTitle}>Best List</Text>
             <Text style={styles.revealCategoryLabel}>
-              {gs.categoryEmoji} {gs.categoryLabel} — Top {gs.size}
+              {gs.categoryEmoji} {gs.categoryLabel}
             </Text>
 
-            {/* Divisive callout */}
-            {divisive.length > 0 && (
-              <View style={styles.calloutCard}>
-                <Text style={styles.calloutTitle}>Most Divisive</Text>
-                <Text style={styles.calloutSub}>Biggest disagreements</Text>
-                {divisive.map((stat, i) => (
-                  <View key={stat.item} style={styles.calloutRow}>
-                    <Text style={styles.calloutIndex}>{i + 1}.</Text>
-                    <Text style={styles.calloutItem} numberOfLines={1}>{stat.item}</Text>
-                    <Text style={styles.calloutSpread}>spread: {stat.spread}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Agreed callout */}
-            {agreed.length > 0 && (
-              <View style={[styles.calloutCard, styles.calloutCardAgreed]}>
-                <Text style={[styles.calloutTitle, { color: COLORS.success }]}>Everyone Agrees</Text>
-                <Text style={styles.calloutSub}>Nearly identical rankings</Text>
-                {agreed.map((stat, i) => (
-                  <View key={stat.item} style={styles.calloutRow}>
-                    <Text style={styles.calloutIndex}>{i + 1}.</Text>
-                    <Text style={styles.calloutItem} numberOfLines={1}>{stat.item}</Text>
-                    <Text style={[styles.calloutSpread, { color: COLORS.success }]}>
-                      spread: {stat.spread}
+            <View style={styles.voteResultsContainer}>
+              {sorted.map(([pid, count], i) => {
+                const player = allPlayers.find(p => p.id === pid);
+                const isWinner = i === 0;
+                return (
+                  <View key={pid} style={[styles.voteResultRow, isWinner && styles.voteResultWinner]}>
+                    <Text style={[styles.voteResultName, isWinner && { color: ACCENT }]}>
+                      {isWinner ? '👑 ' : ''}{player?.name ?? 'Player'}
+                    </Text>
+                    <Text style={[styles.voteResultCount, isWinner && { color: ACCENT }]}>
+                      {count} vote{count !== 1 ? 's' : ''}
                     </Text>
                   </View>
-                ))}
-              </View>
-            )}
-
-            {/* Side-by-side comparison */}
-            <Text style={styles.comparisonTitle}>Side-by-Side</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.comparisonTable}>
-                {/* Header row */}
-                <View style={styles.comparisonHeaderRow}>
-                  <View style={styles.comparisonRankCol}>
-                    <Text style={styles.comparisonHeaderText}>#</Text>
-                  </View>
-                  {playerIds.map(pid => {
-                    const player = allPlayers.find(p => p.id === pid);
-                    return (
-                      <View key={pid} style={styles.comparisonPlayerCol}>
-                        <Text style={[
-                          styles.comparisonHeaderText,
-                          pid === myId && { color: ACCENT },
-                        ]} numberOfLines={1}>
-                          {player?.name ?? 'Player'}
-                        </Text>
-                      </View>
-                    );
-                  })}
+                );
+              })}
+              {allPlayers.filter(p => !tally[p.id]).map(p => (
+                <View key={p.id} style={styles.voteResultRow}>
+                  <Text style={styles.voteResultName}>{p.name}</Text>
+                  <Text style={styles.voteResultCount}>0 votes</Text>
                 </View>
+              ))}
+            </View>
 
-                {/* Data rows */}
-                {Array.from({ length: gs.size }).map((_, rowIdx) => (
-                  <View
-                    key={rowIdx}
-                    style={[
-                      styles.comparisonDataRow,
-                      rowIdx % 2 === 0 && styles.comparisonDataRowAlt,
-                    ]}
-                  >
-                    <View style={styles.comparisonRankCol}>
-                      <Text style={styles.comparisonRankNum}>{rowIdx + 1}</Text>
-                    </View>
-                    {playerIds.map(pid => {
-                      const ranking = rankings[pid] ?? [];
-                      const item = ranking[rowIdx] ?? '—';
-                      return (
-                        <View key={pid} style={styles.comparisonPlayerCol}>
-                          <Text style={styles.comparisonItemText} numberOfLines={2}>
-                            {item}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
-
-            {/* Actions */}
             <View style={styles.actions}>
               {isHost ? (
                 <>
@@ -597,9 +888,12 @@ export default function BlindRankingScreen({ navigation }: Props) {
                         categoryEmoji: '',
                         size: 5,
                         draw: [],
-                        currentPlayerId: '',
+                        currentRound: 0,
+                        placements: {},
+                        roundSubmitted: [],
                         rankings: {},
-                        submittedPlayerIds: [],
+                        votes: {},
+                        votedPlayerIds: [],
                       };
                       gsRef.current = next;
                       sendGameStateRef.current(next);
@@ -897,9 +1191,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginTop: 4,
   },
-  comparisonTable: {
-    minWidth: SCREEN_WIDTH - 40,
-  },
   comparisonHeaderRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
@@ -913,9 +1204,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   comparisonPlayerCol: {
-    flex: 1,
-    minWidth: 90,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -947,4 +1236,180 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   actions: { gap: 10, marginTop: 8, alignItems: 'center' },
+
+  // ── Peek ─────────────────────────────────────────────────────────────────
+  peekBtn: {
+    backgroundColor: COLORS.surface2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderHi,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  peekBtnText: {
+    fontSize: 13,
+    fontFamily: FONTS.bold,
+    color: ACCENT,
+  },
+  peekPlayerCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    gap: 4,
+  },
+  peekPlayerName: {
+    fontSize: 15,
+    fontFamily: FONTS.bold,
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  peekSlotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  peekSlotRank: {
+    fontSize: 12,
+    fontFamily: FONTS.bold,
+    color: COLORS.text3,
+    width: 28,
+  },
+  peekSlotItem: {
+    fontSize: 13,
+    fontFamily: FONTS.medium,
+    color: COLORS.text2,
+  },
+
+  // ── Custom categories ───────────────────────────────────────────────────
+  customSectionTitle: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
+    color: COLORS.text,
+    marginTop: 12,
+  },
+  customItemCount: {
+    fontSize: 10,
+    fontFamily: FONTS.medium,
+    color: COLORS.text3,
+  },
+  makeOwnBtn: {
+    borderWidth: 2,
+    borderColor: ACCENT + '55',
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  makeOwnText: {
+    fontSize: 15,
+    fontFamily: FONTS.bold,
+    color: ACCENT,
+  },
+  editorLabel: {
+    fontSize: 11,
+    fontFamily: FONTS.bold,
+    color: ACCENT,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  editorInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderHi,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    fontFamily: FONTS.medium,
+    color: COLORS.text,
+  },
+  editorCount: {
+    fontSize: 11,
+    fontFamily: FONTS.medium,
+    color: COLORS.text3,
+    textAlign: 'right',
+    marginTop: 2,
+  },
+
+  // ── Voting ────────────────────────────────────────────────────────────────
+  voteSection: {
+    gap: 12,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 16,
+  },
+  voteTitle: {
+    fontSize: 20,
+    fontFamily: FONTS.extrabold,
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  voteSub: {
+    fontSize: 13,
+    fontFamily: FONTS.medium,
+    color: COLORS.text2,
+    textAlign: 'center',
+  },
+  voteGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  voteCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.borderHi,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  voteCardSelected: {
+    borderColor: ACCENT,
+    backgroundColor: ACCENT + '14',
+  },
+  voteCardName: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
+    color: COLORS.text,
+  },
+
+  // ── Vote results ──────────────────────────────────────────────────────────
+  voteResultsContainer: {
+    gap: 8,
+    marginTop: 8,
+  },
+  voteResultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  voteResultWinner: {
+    borderColor: ACCENT + '66',
+    backgroundColor: ACCENT + '12',
+  },
+  voteResultName: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
+    color: COLORS.text,
+  },
+  voteResultCount: {
+    fontSize: 14,
+    fontFamily: FONTS.semibold,
+    color: COLORS.text2,
+  },
 });
