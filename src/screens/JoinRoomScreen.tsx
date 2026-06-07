@@ -161,6 +161,8 @@ export default function JoinRoomScreen({ navigation, route }: any) {
                 onChangeText={t => setCode(t.toUpperCase())}
                 maxLength={4}
                 autoCapitalize="characters"
+                autoCorrect={false}
+                spellCheck={false}
                 autoFocus
                 returnKeyType="next"
                 keyboardAppearance="dark"
