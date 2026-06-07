@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, StyleSheet, FlatList,
   Animated, Pressable, Platform, Keyboard,
   KeyboardAvoidingView, ScrollView, ActivityIndicator,
+  InteractionManager, Alert,
 } from 'react-native';
 import { KeyboardDoneBar, KB_DONE_ID } from '../components/KeyboardDoneBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useGame } from '../context/GameContext';
 import { COLORS, RADIUS, FONTS } from '../constants/theme';
+import LobbyPlayerRow from '../components/LobbyPlayerRow';
 
 export default function JoinRoomScreen({ navigation, route }: any) {
-  const { joinRoom, leaveRoom, room, currentUser } = useGame();
+  const { joinRoom, leaveRoom, room, currentUser, isHost, setHostScreen } = useGame();
 
   const autoRoomCode: string | undefined = route?.params?.roomCode;
 
@@ -23,14 +26,25 @@ export default function JoinRoomScreen({ navigation, route }: any) {
   const joinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── All hooks at top ───────────────────────────────────────────────────────
-  const joinBtnScale = useRef(new Animated.Value(1)).current;
+  const joinBtnScale  = useRef(new Animated.Value(1)).current;
+  const startBtnScale = useRef(new Animated.Value(1)).current;
   const formFade     = useRef(new Animated.Value(0)).current;
   const codeAnim     = useRef(new Animated.Value(0)).current;
   const listAnim     = useRef(new Animated.Value(0)).current;
   const actionsAnim  = useRef(new Animated.Value(0)).current;
 
+  // If host role transfers to this player, update hostScreen so other players see status
+  useFocusEffect(
+    useCallback(() => {
+      if (isHost && room) setHostScreen('lobby');
+    }, [isHost, room?.code])
+  );
+
   useEffect(() => {
-    Animated.spring(formFade, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 8 }).start();
+    const task = InteractionManager.runAfterInteractions(() => {
+      Animated.spring(formFade, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 8 }).start();
+    });
+    return () => task.cancel();
   }, []);
 
   useEffect(() => {
@@ -77,11 +91,14 @@ export default function JoinRoomScreen({ navigation, route }: any) {
 
   useEffect(() => {
     if (!joined) return;
-    Animated.stagger(100, [
-      Animated.spring(codeAnim,    { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 10 }),
-      Animated.spring(listAnim,    { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 8 }),
-      Animated.spring(actionsAnim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 8 }),
-    ]).start();
+    const task = InteractionManager.runAfterInteractions(() => {
+      Animated.stagger(100, [
+        Animated.spring(codeAnim,    { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 10 }),
+        Animated.spring(listAnim,    { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 8 }),
+        Animated.spring(actionsAnim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 8 }),
+      ]).start();
+    });
+    return () => task.cancel();
   }, [joined]);
 
   const slideUp = (anim: Animated.Value) => ({
@@ -102,7 +119,10 @@ export default function JoinRoomScreen({ navigation, route }: any) {
     ]).start();
     setJoining(true);
     joinRoom(code.trim().toUpperCase(), name.trim());
-    joinTimeoutRef.current = setTimeout(() => setJoining(false), 8000);
+    joinTimeoutRef.current = setTimeout(() => {
+      setJoining(false);
+      Alert.alert('Could not join', 'Room not found. Check the code and try again.');
+    }, 4000);
   };
 
   // ── Join form ─────────────────────────────────────────────────────────────
@@ -198,66 +218,79 @@ export default function JoinRoomScreen({ navigation, route }: any) {
   // ── Waiting lobby ─────────────────────────────────────────────────────────
   const isHostSelecting = room?.hostScreen === 'selecting';
 
+  const bounce = (ref: Animated.Value, cb?: () => void) =>
+    Animated.sequence([
+      Animated.spring(ref, { toValue: 0.93, useNativeDriver: true, speed: 80, bounciness: 0 }),
+      Animated.spring(ref, { toValue: 1,    useNativeDriver: true, speed: 18, bounciness: 16 }),
+    ]).start(cb);
+
   return (
     <View style={s.root}>
       <SafeAreaView style={s.safe}>
-
-        <Animated.View style={[s.codeCard, slideUp(codeAnim)]}>
-          <LinearGradient
-            colors={isHostSelecting ? ['#1A2E1A', '#0D1A0D'] : ['#1E1830', '#120E22']}
-            style={s.codeCardGradient}
-          >
-            <View style={s.statusIcon}>
-              <Ionicons
-                name={isHostSelecting ? 'game-controller' : 'time-outline'}
-                size={22}
-                color={isHostSelecting ? '#22C55E' : '#06B6D4'}
-              />
-            </View>
-            <Text style={s.statusTitle}>
-              {isHostSelecting ? 'Get Ready…' : 'Waiting for host'}
-            </Text>
-            <Text style={s.code}>{room?.code}</Text>
-            <Text style={s.codeHint}>
-              {isHostSelecting ? 'Host is choosing a game' : 'The game starts when the host is ready'}
-            </Text>
-          </LinearGradient>
-          <View style={[s.codeGlow, { shadowColor: isHostSelecting ? '#22C55E' : '#06B6D4' }]} />
-        </Animated.View>
-
-        <Animated.View style={[s.section, slideUp(listAnim)]}>
-          <View style={s.sectionHeader}>
-            <Text style={s.sectionLabel}>Players</Text>
-            <View style={s.playerCount}>
-              <Text style={s.playerCountText}>{room?.players.length}</Text>
-            </View>
-          </View>
-          <FlatList
-            data={room?.players}
-            keyExtractor={(_, i) => i.toString()}
-            scrollEnabled={false}
-            renderItem={({ item, index }) => (
-              <View style={s.playerRow}>
-                <View style={[s.playerAvatar, index === 0 && s.playerAvatarHost]}>
-                  <Text style={s.playerAvatarText}>{item.name[0].toUpperCase()}</Text>
-                </View>
-                <Text style={s.playerName} numberOfLines={1}>{item.name}</Text>
-                {index === 0 && (
-                  <View style={s.hostBadge}>
-                    <Text style={s.hostBadgeText}>HOST</Text>
-                  </View>
-                )}
+        <ScrollView
+          contentContainerStyle={s.lobbyScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View style={[s.codeCard, slideUp(codeAnim)]}>
+            <LinearGradient
+              colors={isHost ? ['#1E1830', '#120E22'] : isHostSelecting ? ['#1A2E1A', '#0D1A0D'] : ['#1E1830', '#120E22']}
+              style={s.codeCardGradient}
+            >
+              <View style={s.statusIcon}>
+                <Ionicons
+                  name={isHost ? 'game-controller' : isHostSelecting ? 'game-controller' : 'time-outline'}
+                  size={22}
+                  color={isHost ? COLORS.accent : isHostSelecting ? '#22C55E' : '#06B6D4'}
+                />
               </View>
+              <Text style={s.statusTitle}>
+                {isHost ? 'You are the host' : isHostSelecting ? 'Get Ready…' : 'Waiting for host'}
+              </Text>
+              <Text style={s.code}>{room?.code}</Text>
+              <Text style={s.codeHint}>
+                {isHost ? 'Start the game when everyone is ready' : isHostSelecting ? 'Host is choosing a game' : 'The game starts when the host is ready'}
+              </Text>
+            </LinearGradient>
+            <View style={[s.codeGlow, { shadowColor: isHost ? COLORS.accent : isHostSelecting ? '#22C55E' : '#06B6D4' }]} />
+          </Animated.View>
+
+          <Animated.View style={[s.section, slideUp(listAnim)]}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionLabel}>Players</Text>
+              <View style={s.playerCount}>
+                <Text style={s.playerCountText}>{room?.players.length}</Text>
+              </View>
+            </View>
+            {(room?.players ?? []).map((item, index) => (
+              <LobbyPlayerRow
+                key={item.persistentId ?? index.toString()}
+                player={item}
+                isHost={item.id === room?.hostId}
+                isMe={item.persistentId === currentUser?.id || item.name === currentUser?.username}
+              />
+            ))}
+          </Animated.View>
+
+          <Animated.View style={[s.actions, slideUp(actionsAnim)]}>
+            {isHost && (
+              <Animated.View style={{ width: '100%', transform: [{ scale: startBtnScale }] }}>
+                <Pressable
+                  style={[s.startBtn, (room?.players.length ?? 0) < 2 && s.startBtnDisabled]}
+                  disabled={(room?.players.length ?? 0) < 2}
+                  onPress={() => bounce(startBtnScale, () => navigation.navigate('GameSelect'))}
+                >
+                  <LinearGradient colors={['#7C5CF6','#5B3FD4']} start={{x:0,y:0}} end={{x:1,y:1}} style={s.startBtnGradient}>
+                    <Text style={s.startBtnText}>Start Game</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#fff" />
+                  </LinearGradient>
+                </Pressable>
+              </Animated.View>
             )}
-          />
-        </Animated.View>
-
-        <Animated.View style={[s.actions, slideUp(actionsAnim)]}>
-          <Pressable style={s.dangerBtn} onPress={() => leaveRoom()}>
-            <Text style={s.dangerBtnText}>Leave Room</Text>
-          </Pressable>
-        </Animated.View>
-
+            <Pressable style={s.dangerBtn} onPress={() => leaveRoom()}>
+              <Text style={s.dangerBtnText}>Leave Room</Text>
+            </Pressable>
+          </Animated.View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -313,6 +346,17 @@ const s = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontSize: 16, fontFamily: FONTS.bold },
 
+  startBtn: { width: '100%', borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: 8 },
+  startBtnDisabled: { opacity: 0.35 },
+  startBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  startBtnText: { color: '#fff', fontSize: 16, fontFamily: FONTS.bold },
+
   dangerBtn: { paddingVertical: 12, alignItems: 'center' },
   dangerBtnText: { color: COLORS.danger, fontSize: 14, fontFamily: FONTS.semibold },
 
@@ -337,7 +381,8 @@ const s = StyleSheet.create({
   code: { fontSize: 58, fontFamily: FONTS.extrabold, color: COLORS.accent, letterSpacing: 10 },
   codeHint: { fontSize: 13, color: COLORS.text2, marginTop: 6, textAlign: 'center' },
 
-  section: { width: '100%', flex: 1 },
+  lobbyScroll: { flexGrow: 1, paddingBottom: 20 },
+  section: { width: '100%' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   sectionLabel: { fontSize: 13, fontFamily: FONTS.bold, color: COLORS.text2, letterSpacing: 1.5, textTransform: 'uppercase' },
   playerCount: { backgroundColor: COLORS.accent + '22', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
