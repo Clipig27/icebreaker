@@ -1870,6 +1870,8 @@ function buildInitialGameState(game) {
       return { game, phase: 'intro', prompt: '', story: [], turn: 0, turnOrder: [], scores: {}, winner: null };
     case 'shadowProtocol':
       return { game, phase: 'intro' };
+    case 'blindRanking':
+      return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], rankings: {}, submittedPlayerIds: [] };
     default:
       return { game, phase: 'start' };
   }
@@ -3241,6 +3243,23 @@ io.on('connection', (socket) => {
       if (actorId !== currentPlayerId) return;
 
       ptAdvanceTurn(code);
+      return;
+    }
+
+    // ── Blind Ranking: submit ranking ───────────────────────────────────────
+    if (room.gameState?.game === 'blindRanking' && action === 'br-submit') {
+      const gs = room.gameState;
+      if (gs.phase !== 'playing') return;
+      const pid = stableId(socket.id);
+      if (gs.submittedPlayerIds.includes(pid)) return; // already submitted
+      if (!Array.isArray(data?.ranking) || data.ranking.length !== gs.size) return;
+      gs.rankings[pid] = data.ranking;
+      gs.submittedPlayerIds.push(pid);
+      // If all players submitted, auto-advance to reveal
+      if (gs.submittedPlayerIds.length >= room.players.length) {
+        gs.phase = 'reveal';
+      }
+      io.to(code).emit('gameStateUpdated', gs);
       return;
     }
 

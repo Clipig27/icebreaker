@@ -1,5 +1,6 @@
 import 'react-native-reanimated';
 import React from 'react';
+import * as SystemUI from 'expo-system-ui';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -28,6 +29,7 @@ import ShadowProtocolScreen   from './src/screens/ShadowProtocolScreen';
 import PotLuckScreen          from './src/screens/PotLuckScreen';
 import ChainLinkScreen        from './src/screens/ChainLinkScreen';
 import PlotTwistScreen        from './src/screens/PlotTwistScreen';
+import BlindRankingScreen     from './src/screens/BlindRankingScreen';
 import HostLobbyScreen     from './src/screens/HostLobbyScreen';
 import JoinRoomScreen      from './src/screens/JoinRoomScreen';
 import InstructionsScreen  from './src/screens/InstructionsScreen';
@@ -36,6 +38,8 @@ import SettingsScreen      from './src/screens/SettingsScreen';
 import GameErrorBoundary from './src/components/GameErrorBoundary';
 import { ToastProvider } from './src/components/Toast';
 import { COLORS, FONTS } from './src/constants/theme';
+
+SystemUI.setBackgroundColorAsync('#0A0A0F');
 
 import InviteModal from './src/components/InviteModal';
 import HostOptionsMenu from './src/components/HostOptionsMenu';
@@ -62,6 +66,7 @@ export type RootStackParamList = {
   PotLuck:          undefined;
   ChainLink:        undefined;
   PlotTwist:        undefined;
+  BlindRanking:     undefined;
   Instructions:  { game?: string } | undefined;
   Settings:      undefined;
 };
@@ -83,11 +88,12 @@ const SafeShadowProtocol  = Safe(ShadowProtocolScreen);
 const SafePotLuck         = Safe(PotLuckScreen);
 const SafeChainLink       = Safe(ChainLinkScreen);
 const SafePlotTwist       = Safe(PlotTwistScreen);
+const SafeBlindRanking    = Safe(BlindRankingScreen);
 
 // Game screen names where back navigation should be blocked for the host during play
 const GAME_SCREENS = new Set([
   'LieDetector', 'TalentShow', 'StandOut', 'NumberGuessor',
-  'PieCharts', 'DealOrSteal', 'ShadowProtocol', 'PotLuck', 'ChainLink', 'PlotTwist',
+  'PieCharts', 'DealOrSteal', 'ShadowProtocol', 'PotLuck', 'ChainLink', 'PlotTwist', 'BlindRanking',
 ]);
 
 function AppInner() {
@@ -123,17 +129,17 @@ function AppInner() {
     PotLuck: 'potLuck',
     ChainLink: 'chainLink',
     PlotTwist: 'plotTwist',
+    BlindRanking: 'blindRanking',
   };
 
   // True when the host is mid-game and should not be able to back-navigate
   const hostInActiveGame = isHost && room?.phase === 'playing';
 
-  // Rendered as headerRight on every screen
-  function HeaderRight({ routeName, nav }: { routeName: string; nav: any }) {
+  // Rendered as headerRight on every screen — memoized to prevent re-renders during transitions
+  const HeaderRight = React.useCallback(({ routeName, nav }: { routeName: string; nav: any }) => {
     const gameId = ROUTE_TO_GAME[routeName];
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        {/* Host: show Host Options menu. Non-host: show room code pill */}
         {isHost && room?.code ? (
           <HostOptionsMenu />
         ) : room?.code ? (
@@ -161,7 +167,7 @@ function AppInner() {
         )}
       </View>
     );
-  }
+  }, [isHost, room?.code]);
 
   if (onboarded === null) {
     return (
@@ -230,27 +236,29 @@ function AppInner() {
           <Stack.Screen name="HostLobby"     component={HostLobbyScreen}     options={{ title: 'Host Game' }} />
           <Stack.Screen name="JoinRoom"      component={JoinRoomScreen}      options={{ title: 'Join Game' }} />
           <Stack.Screen name="GameSelect"    component={GameSelectScreen}    options={{ title: 'Select Game', headerBackTitle: 'Players' }} />
-          <Stack.Screen name="LieDetector"   component={SafeLieDetector}     options={{ title: 'Trust Me Bro',   headerBackTitle: 'Games' }} />
-          <Stack.Screen name="TalentShow"    component={SafeTalentShow}      options={{ title: 'Silly Spotlight',    headerBackTitle: 'Games' }} />
+          <Stack.Screen name="LieDetector"   component={SafeLieDetector}     options={{ title: 'Liar Liar',   headerBackTitle: 'Games' }} />
+          <Stack.Screen name="TalentShow"    component={SafeTalentShow}      options={{ title: "Nobody's Got Talent",    headerBackTitle: 'Games' }} />
           <Stack.Screen name="StandOut"      component={SafeStandOut}        options={{ title: 'Copycat',      headerBackTitle: 'Games' }} />
-          <Stack.Screen name="NumberGuessor" component={SafeNumberGuessor}   options={{ title: 'Number Guessor', headerBackTitle: 'Games' }} />
+          <Stack.Screen name="NumberGuessor" component={SafeNumberGuessor}   options={{ title: '1 to 100', headerBackTitle: 'Games' }} />
           <Stack.Screen name="PieCharts"     component={SafePieCharts}       options={{ title: 'Pie Charts',     headerBackTitle: 'Games' }} />
           <Stack.Screen name="DealOrSteal"      component={SafeDealOrSteal}       options={{ title: 'Deal or Steal',     headerBackTitle: 'Games' }} />
           <Stack.Screen name="ShadowProtocol"   component={SafeShadowProtocol}    options={{ title: 'Shadow Protocol',   headerBackTitle: 'Games' }} />
           <Stack.Screen name="PotLuck"          component={SafePotLuck}           options={{ title: 'Pot Luck',          headerBackTitle: 'Games' }} />
           <Stack.Screen name="ChainLink"        component={SafeChainLink}         options={{ title: 'Link or Sink',         headerBackTitle: 'Games' }} />
           <Stack.Screen name="PlotTwist"        component={SafePlotTwist}         options={{ title: 'Plot Twist',       headerBackTitle: 'Games' }} />
+          <Stack.Screen name="BlindRanking"     component={SafeBlindRanking}      options={{ title: 'Blind Ranking',    headerBackTitle: 'Games' }} />
           <Stack.Screen name="Settings"         component={SettingsScreen}         options={{ title: 'Settings' }} />
           <Stack.Screen name="Instructions"     component={InstructionsScreen}     options={({ route }) => ({
             title: (route.params as any)?.game
               ? (() => {
                   const names: Record<string, string> = {
-                    lieDetector: 'Trust Me Bro', talentShow: 'Silly Spotlight',
-                    standOut: 'Copycat', numberGuessor: 'Number Guessor',
+                    lieDetector: 'Liar Liar', talentShow: "Nobody's Got Talent",
+                    standOut: 'Copycat', numberGuessor: '1 to 100',
                     pieCharts: 'Pie Charts', dealOrSteal: 'Deal or Steal',
                     shadowProtocol: 'Shadow Protocol', potLuck: 'Pot Luck',
                     chainLink: 'Link or Sink',
                     plotTwist: 'Plot Twist',
+                    blindRanking: 'Blind Ranking',
                   };
                   return names[(route.params as any).game] ?? 'How to Play';
                 })()

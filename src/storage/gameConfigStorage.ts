@@ -17,7 +17,7 @@ export async function fetchEnabledGames(): Promise<Set<string>> {
     return new Set([
       'lieDetector', 'talentShow', 'standOut', 'numberGuessor',
       'pieCharts', 'dealOrSteal', 'shadowProtocol', 'potLuck',
-      'chainLink', 'plotTwist',
+      'chainLink', 'plotTwist', 'blindRanking',
     ]);
   }
 

@@ -203,6 +203,22 @@ const GAMES: Game[] = [
       'Player with the most points from "hit" words wins.',
     ],
   },
+  {
+    id: 'blindRanking',
+    title: 'Blind Ranking',
+    iconName: 'list',
+    accentColor: '#e8927c',
+    desc: 'Rank items blind as they appear. No take-backs. Compare the chaos.',
+    players: '2–5 players',
+    category: 'Party',
+    instructions: [
+      'The host picks a category and list size (Top 5 or Top 10).',
+      'Items appear one at a time in random order.',
+      'Lock each item into a rank slot — you can\'t move it later.',
+      'Once everyone finishes, rankings are revealed side by side.',
+      'See which picks were most divisive and where everyone agreed.',
+    ],
+  },
 ];
 
 function GameRow({ game, index, onPress }: { game: Game; index: number; onPress: () => void }) {

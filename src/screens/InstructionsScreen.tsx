@@ -32,7 +32,7 @@ interface GameInfo {
 const INSTRUCTIONS: GameInfo[] = [
   {
     id: 'lieDetector',
-    title: 'Trust Me Bro',
+    title: 'Liar Liar',
     emoji: '🕵️',
     players: '2+ players',
     goal: 'Fool the group with your statements. Catch others\' lies.',
@@ -48,7 +48,7 @@ const INSTRUCTIONS: GameInfo[] = [
   },
   {
     id: 'talentShow',
-    title: 'Silly Spotlight',
+    title: "Nobody's Got Talent",
     emoji: '🎭',
     players: '3+ players',
     goal: 'Survive 3 rounds of performances and win the crowd.',
@@ -80,7 +80,7 @@ const INSTRUCTIONS: GameInfo[] = [
   },
   {
     id: 'numberGuessor',
-    title: 'Number Guessor',
+    title: '1 to 100',
     emoji: '🎯',
     players: '2+ players',
     goal: 'Guess closest to the correct answer. Lowest total penalty wins.',
@@ -189,6 +189,22 @@ const INSTRUCTIONS: GameInfo[] = [
       'Player with the most points from "hit" words wins.',
     ],
     tip: 'Write sentences that steer the story toward topics where others might naturally use your words — but be subtle about it.',
+  },
+  {
+    id: 'blindRanking',
+    title: 'Blind Ranking',
+    emoji: '≣',
+    players: '2–5 players',
+    goal: 'Rank items blind as they appear — no take-backs. Compare the chaos.',
+    rules: [
+      'The host picks a category and list size (Top 5 or Top 10).',
+      'Items from the category appear one at a time in random order.',
+      'Lock each item into a rank slot as it appears — you can\'t move it later.',
+      'You don\'t know what items are coming next.',
+      'Once everyone finishes, all rankings are revealed side by side.',
+      'See which picks were most divisive and where everyone agreed.',
+    ],
+    tip: 'Leave some wiggle room in your top and bottom slots — you never know what\'s coming next.',
   },
 ];
 
