@@ -24,12 +24,14 @@ export async function fetchEnabledGames(): Promise<Set<string>> {
   return new Set((data as GameConfig[]).filter(g => g.enabled).map(g => g.game_id));
 }
 
-/** Toggle a game's enabled status (admin only). */
+/** Toggle a game's enabled status (admin only). Upserts so it works even if the row doesn't exist yet. */
 export async function toggleGame(gameId: string, enabled: boolean): Promise<void> {
   const { error } = await supabase
     .from('game_config')
-    .update({ enabled, updated_at: new Date().toISOString() })
-    .eq('game_id', gameId);
+    .upsert(
+      { game_id: gameId, enabled, updated_at: new Date().toISOString() },
+      { onConflict: 'game_id' },
+    );
 
   if (error) {
     console.error('[gameConfig] toggle failed:', error.message);
