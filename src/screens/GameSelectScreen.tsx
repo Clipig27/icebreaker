@@ -27,12 +27,19 @@ type Props = {
 };
 
 type GameCategory = 'Strategy' | 'Trivia' | 'Creative' | 'Party';
+type GameIntensity = 'Chill' | 'Normal' | 'Intense';
 
 const CATEGORIES: { label: GameCategory; color: string }[] = [
   { label: 'Strategy', color: '#F43F5E' },
   { label: 'Trivia',   color: '#06B6D4' },
   { label: 'Creative', color: '#F59E0B' },
   { label: 'Party',    color: '#10B981' },
+];
+
+const INTENSITIES: { label: GameIntensity; color: string }[] = [
+  { label: 'Chill',   color: '#10B981' },
+  { label: 'Normal',  color: '#FBBF24' },
+  { label: 'Intense', color: '#F43F5E' },
 ];
 
 const { width } = Dimensions.get('window');
@@ -49,6 +56,7 @@ const GAMES: {
   gradientColors: readonly [string, string, string];
   glowColor: string;
   category: GameCategory;
+  intensity: GameIntensity;
   screen: keyof RootStackParamList;
   tag?: string;
 }[] = [
@@ -62,6 +70,7 @@ const GAMES: {
     gradientColors: ['#2A1F4E', '#1A1230', '#0F0F13'],
     glowColor: '#7C5CF6',
     category: 'Strategy',
+    intensity: 'Intense',
     screen: 'LieDetector',
   },
   {
@@ -74,6 +83,7 @@ const GAMES: {
     gradientColors: ['#3D1A2E', '#231020', '#0F0F13'],
     glowColor: '#EC4899',
     category: 'Party',
+    intensity: 'Chill',
     screen: 'TalentShow',
   },
   {
@@ -86,6 +96,7 @@ const GAMES: {
     gradientColors: ['#3D2A10', '#241808', '#0F0F13'],
     glowColor: '#F59E0B',
     category: 'Creative',
+    intensity: 'Normal',
     screen: 'StandOut',
   },
   {
@@ -98,6 +109,7 @@ const GAMES: {
     gradientColors: ['#0A2D35', '#061A20', '#0F0F13'],
     glowColor: '#06B6D4',
     category: 'Trivia',
+    intensity: 'Normal',
     screen: 'NumberGuessor',
   },
   {
@@ -110,6 +122,7 @@ const GAMES: {
     gradientColors: ['#0A2D20', '#061A13', '#0F0F13'],
     glowColor: '#10B981',
     category: 'Party',
+    intensity: 'Chill',
     screen: 'PieCharts',
   },
   {
@@ -123,6 +136,7 @@ const GAMES: {
     gradientColors: ['#3D2E08', '#221B04', '#0F0F13'],
     glowColor: '#FBBF24',
     category: 'Strategy',
+    intensity: 'Intense',
     screen: 'DealOrSteal',
     tag: '4–6 players',
   },
@@ -137,6 +151,7 @@ const GAMES: {
     gradientColors: ['#3D0F18', '#22080E', '#0F0F13'],
     glowColor: '#F43F5E',
     category: 'Strategy',
+    intensity: 'Intense',
     screen: 'ShadowProtocol',
     tag: '6–10 players',
   },
@@ -150,6 +165,7 @@ const GAMES: {
     gradientColors: ['#3D2E08', '#221B04', '#0F0F13'],
     glowColor: '#FBBF24',
     category: 'Trivia',
+    intensity: 'Normal',
     screen: 'PotLuck',
   },
   {
@@ -162,6 +178,7 @@ const GAMES: {
     gradientColors: ['#3D1A08', '#220E04', '#0F0F13'],
     glowColor: '#C8642F',
     category: 'Strategy',
+    intensity: 'Normal',
     screen: 'ChainLink',
   },
   {
@@ -175,6 +192,7 @@ const GAMES: {
     gradientColors: ['#3D2210', '#221408', '#0F0F13'],
     glowColor: '#B5642A',
     category: 'Creative',
+    intensity: 'Normal',
     screen: 'PlotTwist',
     tag: '2–6 players',
   },
@@ -189,6 +207,7 @@ const GAMES: {
     gradientColors: ['#3D1A18', '#221008', '#0F0F13'] as const,
     glowColor: '#e8927c',
     category: 'Party',
+    intensity: 'Chill',
     screen: 'BlindRanking',
     tag: '2–5 players',
   },
@@ -511,6 +530,7 @@ export default function GameSelectScreen({ navigation }: Props) {
   }, []);
 
   const [activeFilter, setActiveFilter] = useState<GameCategory | null>(null);
+  const [activeIntensity, setActiveIntensity] = useState<GameIntensity | null>(null);
   const [smartyPotConfig, setSmartyPotConfig] = useState<{ visible: boolean; potCap: number }>({ visible: false, potCap: 7 });
 
   const selectGame = (game: (typeof GAMES)[0]) => {
@@ -588,7 +608,8 @@ export default function GameSelectScreen({ navigation }: Props) {
   const visibleGames = (enabledGames
     ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
     : GAMES
-  ).filter(g => !activeFilter || g.category === activeFilter);
+  ).filter(g => !activeFilter || g.category === activeFilter)
+   .filter(g => !activeIntensity || g.intensity === activeIntensity);
 
   // Pair games into rows of 2
   const rows: (typeof GAMES)[] = [];
@@ -634,6 +655,23 @@ export default function GameSelectScreen({ navigation }: Props) {
                 activeOpacity={0.7}
               >
                 <Text style={[s.filterChipText, isActive && { color: cat.color }]}>{cat.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+          <View style={{ width: 1, height: 20, backgroundColor: COLORS.border, alignSelf: 'center' }} />
+          {INTENSITIES.map(int => {
+            const isActive = activeIntensity === int.label;
+            return (
+              <TouchableOpacity
+                key={int.label}
+                style={[
+                  s.filterChip,
+                  isActive && { backgroundColor: int.color + '22', borderColor: int.color + '55' },
+                ]}
+                onPress={() => setActiveIntensity(isActive ? null : int.label)}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.filterChipText, isActive && { color: int.color }]}>{int.label}</Text>
               </TouchableOpacity>
             );
           })}

@@ -13,12 +13,19 @@ import { COLORS, FONTS } from '../constants/theme';
 import { fetchEnabledGames, checkIsAdmin, toggleGame } from '../storage/gameConfigStorage';
 
 type GameCategory = 'Strategy' | 'Trivia' | 'Creative' | 'Party';
+type GameIntensity = 'Chill' | 'Normal' | 'Intense';
 
 const CATEGORIES: { label: GameCategory; color: string }[] = [
   { label: 'Strategy', color: '#F43F5E' },
   { label: 'Trivia',   color: '#06B6D4' },
   { label: 'Creative', color: '#F59E0B' },
   { label: 'Party',    color: '#10B981' },
+];
+
+const INTENSITIES: { label: GameIntensity; color: string }[] = [
+  { label: 'Chill',   color: '#10B981' },
+  { label: 'Normal',  color: '#FBBF24' },
+  { label: 'Intense', color: '#F43F5E' },
 ];
 
 type Game = {
@@ -29,6 +36,7 @@ type Game = {
   desc: string;
   players: string;
   category: GameCategory;
+  intensity: GameIntensity;
   instructions: string[];
 };
 
@@ -41,6 +49,7 @@ const GAMES: Game[] = [
     desc: 'Fool the group with your statements. Catch others\' lies.',
     players: '2+ players',
     category: 'Strategy',
+    intensity: 'Intense',
     instructions: [
       'Each round, one player is the speaker.',
       'The speaker gets a prompt and writes two statements — one may be a lie.',
@@ -58,6 +67,7 @@ const GAMES: Game[] = [
     desc: 'Survive 3 rounds of performances and win the crowd.',
     players: '3+ players',
     category: 'Party',
+    intensity: 'Chill',
     instructions: [
       'Round 1: Everyone performs a challenge. Audience votes Advance or Eliminate.',
       'Players who get enough Advance votes move on.',
@@ -74,6 +84,7 @@ const GAMES: Game[] = [
     desc: 'Give unique answers. Duplicates lose points. First to the target score wins.',
     players: '3+ players',
     category: 'Creative',
+    intensity: 'Normal',
     instructions: [
       'A prompt is shown to everyone.',
       'You have 10 seconds to type a unique answer.',
@@ -92,6 +103,7 @@ const GAMES: Game[] = [
     desc: 'Guess closest to the correct answer. Lowest total penalty wins.',
     players: '2+ players',
     category: 'Trivia',
+    intensity: 'Normal',
     instructions: [
       'A trivia-style question is shown with a numeric answer.',
       'Everyone has 20 seconds to guess.',
@@ -108,6 +120,7 @@ const GAMES: Game[] = [
     desc: "Vote on 'who's most likely to...' questions. See results as pie charts.",
     players: '3+ players',
     category: 'Party',
+    intensity: 'Chill',
     instructions: [
       'A question appears (e.g. "Who\'s most likely to...").',
       'Everyone votes for the player they think fits best.',
@@ -123,6 +136,7 @@ const GAMES: Game[] = [
     desc: 'Finish with the highest balance. Everyone starts at $100.',
     players: '4–6 players',
     category: 'Strategy',
+    intensity: 'Intense',
     instructions: [
       'Each round has a Dealer and Stealers.',
       'The Dealer speaks to the group and proposes a deal.',
@@ -141,6 +155,7 @@ const GAMES: Game[] = [
     desc: 'Agents: find the Shadows. Shadows: outlast the group.',
     players: '6–10 players',
     category: 'Strategy',
+    intensity: 'Intense',
     instructions: [
       'Each player gets a secret role: Agent, Shadow, Investigator, or Guardian.',
       'Day phase: discuss and vote to eliminate a suspect.',
@@ -157,6 +172,7 @@ const GAMES: Game[] = [
     desc: 'Answer trivia to claim the pot. Risk it or pass it on.',
     players: '3+ players',
     category: 'Trivia',
+    intensity: 'Normal',
     instructions: [
       'A pot starts small and grows each turn.',
       'On your turn: Risk (answer a question) or Skip (pass to next player).',
@@ -173,6 +189,7 @@ const GAMES: Game[] = [
     desc: 'Empty your hand by linking words together. AI referee judges disputes.',
     players: '2–8 players',
     category: 'Strategy',
+    intensity: 'Normal',
     instructions: [
       'Each player gets 7 word cards. An anchor word starts the chain.',
       'On your turn, play a card that links to the last word (15 seconds).',
@@ -194,6 +211,7 @@ const GAMES: Game[] = [
     desc: 'Co-write a story. Bait others into using your secret words.',
     players: '2–6 players',
     category: 'Creative',
+    intensity: 'Normal',
     instructions: [
       'Everyone gets a hand of word cards.',
       'On your turn, add a sentence to the growing story.',
@@ -211,6 +229,7 @@ const GAMES: Game[] = [
     desc: 'Rank items blind as they appear. No take-backs. Compare the chaos.',
     players: '2–5 players',
     category: 'Party',
+    intensity: 'Chill',
     instructions: [
       'The host picks a category and list size (Top 5 or Top 10).',
       'Items appear one at a time in random order.',
@@ -290,6 +309,7 @@ export default function GamesTabScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<GameCategory | null>(null);
+  const [activeIntensity, setActiveIntensity] = useState<GameIntensity | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -303,7 +323,8 @@ export default function GamesTabScreen() {
   const visibleGames = (enabledGames
     ? GAMES.filter(g => isAdmin || enabledGames.has(g.id))
     : GAMES
-  ).filter(g => !activeFilter || g.category === activeFilter);
+  ).filter(g => !activeFilter || g.category === activeFilter)
+   .filter(g => !activeIntensity || g.intensity === activeIntensity);
 
   if (loading) {
     return (
@@ -335,6 +356,22 @@ export default function GamesTabScreen() {
               onPress={() => setActiveFilter(isActive ? null : cat.label)}
             >
               <Text style={[s.filterChipText, isActive && { color: cat.color }]}>{cat.label}</Text>
+            </Pressable>
+          );
+        })}
+        <View style={{ width: 1, height: 20, backgroundColor: COLORS.border, alignSelf: 'center' }} />
+        {INTENSITIES.map(int => {
+          const isActive = activeIntensity === int.label;
+          return (
+            <Pressable
+              key={int.label}
+              style={[
+                s.filterChip,
+                isActive && { backgroundColor: int.color + '22', borderColor: int.color + '55' },
+              ]}
+              onPress={() => setActiveIntensity(isActive ? null : int.label)}
+            >
+              <Text style={[s.filterChipText, isActive && { color: int.color }]}>{int.label}</Text>
             </Pressable>
           );
         })}
