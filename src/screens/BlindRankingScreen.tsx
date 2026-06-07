@@ -46,6 +46,7 @@ interface BRGameState {
   // Multi-game series
   totalGames: number;                      // 1, 3, or 5
   currentGame: number;                     // 1-indexed, which game in the series
+  brScores?: Record<string, number>;       // BR-internal scores (not global)
 }
 
 interface CustomCategory {
@@ -933,7 +934,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
                       {isWinner ? '👑 ' : ''}{player?.name ?? 'Player'}
                     </Text>
                     <Text style={[styles.voteResultCount, isWinner && { color: ACCENT }]}>
-                      {count} vote{count !== 1 ? 's' : ''} · {player?.score ?? 0} pts total
+                      {count} vote{count !== 1 ? 's' : ''} · {gs.brScores?.[pid] ?? 0} pts total
                     </Text>
                   </View>
                 );
@@ -941,7 +942,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
               {allPlayers.filter(p => !tally[p.id]).map(p => (
                 <View key={p.id} style={styles.voteResultRow}>
                   <Text style={styles.voteResultName}>{p.name}</Text>
-                  <Text style={styles.voteResultCount}>0 votes · {p.score ?? 0} pts total</Text>
+                  <Text style={styles.voteResultCount}>0 votes · {gs.brScores?.[p.id] ?? 0} pts total</Text>
                 </View>
               ))}
             </View>
@@ -970,6 +971,7 @@ export default function BlindRankingScreen({ navigation }: Props) {
                         votedPlayerIds: [],
                         totalGames: gs.totalGames ?? 1,
                         currentGame: (gs.currentGame ?? 1) + 1,
+                        brScores: gs.brScores ?? {},
                       };
                       gsRef.current = next;
                       sendGameStateRef.current(next);

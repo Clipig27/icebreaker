@@ -1871,7 +1871,7 @@ function buildInitialGameState(game) {
     case 'shadowProtocol':
       return { game, phase: 'intro' };
     case 'blindRanking':
-      return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], currentRound: 0, placements: {}, roundSubmitted: [], rankings: {}, votes: {}, votedPlayerIds: [], totalGames: 1, currentGame: 1 };
+      return { game, phase: 'intro', categoryKey: '', categoryLabel: '', categoryEmoji: '', size: 10, draw: [], currentRound: 0, placements: {}, roundSubmitted: [], rankings: {}, votes: {}, votedPlayerIds: [], totalGames: 1, currentGame: 1, brScores: {} };
     default:
       return { game, phase: 'start' };
   }
@@ -3291,19 +3291,18 @@ io.on('connection', (socket) => {
       gs.votedPlayerIds.push(pid);
       // If all players voted, tally and award points
       if (gs.votedPlayerIds.length >= room.players.length) {
-        // Tally votes
+        // Tally votes and store in game state (not global scores)
         const tally = {};
         for (const vid of Object.values(gs.votes)) {
           tally[vid] = (tally[vid] || 0) + 1;
         }
-        // Award 10 points per vote received
+        if (!gs.brScores) gs.brScores = {};
         for (const p of room.players) {
           if (tally[p.id]) {
-            p.score = (p.score || 0) + tally[p.id];
+            gs.brScores[p.id] = (gs.brScores[p.id] || 0) + tally[p.id];
           }
         }
         gs.phase = 'vote-results';
-        io.to(code).emit('scoresUpdated', room.players);
       }
       io.to(code).emit('gameStateUpdated', gs);
       return;
