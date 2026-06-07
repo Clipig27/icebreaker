@@ -10,7 +10,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { COLORS, FONTS } from '../constants/theme';
-import { fetchEnabledGames, checkIsAdmin } from '../storage/gameConfigStorage';
+import { fetchEnabledGames, checkIsAdmin, toggleGame } from '../storage/gameConfigStorage';
 
 type GameCategory = 'Strategy' | 'Trivia' | 'Creative' | 'Party';
 
@@ -221,7 +221,10 @@ const GAMES: Game[] = [
   },
 ];
 
-function GameRow({ game, index, onPress }: { game: Game; index: number; onPress: () => void }) {
+function GameRow({ game, index, onPress, isAdmin, isEnabled, onToggle }: {
+  game: Game; index: number; onPress: () => void;
+  isAdmin?: boolean; isEnabled?: boolean; onToggle?: (enabled: boolean) => void;
+}) {
   const entrance = useRef(new Animated.Value(0)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
 
@@ -258,7 +261,23 @@ function GameRow({ game, index, onPress }: { game: Game; index: number; onPress:
           </View>
           <Text style={s.gameDesc}>{game.desc}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.text3} />
+        {isAdmin && onToggle ? (
+          <TouchableOpacity
+            onPress={() => onToggle(!isEnabled)}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={{
+              backgroundColor: isEnabled ? '#0d3d0d' : '#3d0d0d',
+              borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+              borderWidth: 1, borderColor: isEnabled ? '#1a6b1a' : '#6b1a1a',
+            }}
+          >
+            <Text style={{ color: isEnabled ? '#4ade80' : '#f87171', fontSize: 10, fontFamily: FONTS.extrabold }}>
+              {isEnabled ? 'ON' : 'OFF'}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <Ionicons name="chevron-forward" size={18} color={COLORS.text3} />
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -325,7 +344,22 @@ export default function GamesTabScreen() {
         {visibleGames.map((game, i) => (
           <React.Fragment key={game.id}>
             {i === 0 && <View style={s.divider} />}
-            <GameRow game={game} index={i} onPress={() => setSelected(game)} />
+            <GameRow
+              game={game}
+              index={i}
+              onPress={() => setSelected(game)}
+              isAdmin={isAdmin}
+              isEnabled={enabledGames?.has(game.id) ?? true}
+              onToggle={(enabled) => {
+                toggleGame(game.id, enabled).then(() => {
+                  setEnabledGames(prev => {
+                    const next = new Set(prev);
+                    if (enabled) next.add(game.id); else next.delete(game.id);
+                    return next;
+                  });
+                }).catch(() => {});
+              }}
+            />
             <View style={s.divider} />
           </React.Fragment>
         ))}
