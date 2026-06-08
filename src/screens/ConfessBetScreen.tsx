@@ -688,27 +688,25 @@ export default function ConfessBetScreen({ navigation }: Props) {
               {/* Top bar — single line */}
               <View style={styles.streetTopBar}>
                 <Text style={styles.streetTopBarText}>
-                  Round {gs.currentRound}/{gs.totalRounds} · Street {currentStreet + 1}/3 · M{multiplier}x payout
+                  Round {gs.currentRound}/{gs.totalRounds} · Street {currentStreet + 1}/3 · {multiplier}x payout
                 </Text>
               </View>
 
-              {/* Chip rail — compact horizontal */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.streetChipRailScroll}>
-                <View style={styles.streetChipRailRow}>
-                  {allPlayers.map(p => {
-                    const chips = gs.banks[p.id] ?? 0;
-                    const isMe = p.id === myId;
-                    return (
-                      <View key={p.id} style={[styles.streetChipPill, isMe && styles.streetChipPillMe]}>
-                        <Text style={[styles.streetChipPillName, isMe && { color: ACCENT }]} numberOfLines={1}>
-                          {p.name}
-                        </Text>
-                        <Text style={[styles.streetChipPillAmt, isMe && { color: ACCENT }]}>${chips}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+              {/* Chip displays — centered, bigger */}
+              <View style={styles.streetChipRow}>
+                {allPlayers.map(p => {
+                  const chips = gs.banks[p.id] ?? 0;
+                  const isMe = p.id === myId;
+                  return (
+                    <View key={p.id} style={[styles.streetChipBox, isMe && styles.streetChipBoxMe]}>
+                      <Text style={[styles.streetChipName, isMe && { color: ACCENT }]} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                      <Text style={[styles.streetChipAmt, isMe && { color: ACCENT }]}>${chips}</Text>
+                    </View>
+                  );
+                })}
+              </View>
 
               {/* Cards area — fanned playing cards */}
               <View style={styles.streetFannedCards}>
@@ -784,6 +782,13 @@ export default function ConfessBetScreen({ navigation }: Props) {
                         keyboardAppearance="dark"
                         inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
                       />
+                      <TouchableOpacity
+                        style={styles.allInBtn}
+                        onPress={() => setWagerText(String(myBank))}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.allInBtnText}>ALL IN</Text>
+                      </TouchableOpacity>
                       <Text style={styles.streetWagerMinLabel}>(min ${minBet})</Text>
                     </View>
                     {wagerInvalid && (
@@ -1615,38 +1620,35 @@ const styles = StyleSheet.create({
     color: '#8585A0',
     letterSpacing: 0.3,
   },
-  streetChipRailScroll: {
-    marginHorizontal: -16,
-    flexGrow: 0,
-  },
-  streetChipRailRow: {
+  streetChipRow: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    gap: 6,
+    justifyContent: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 4,
   },
-  streetChipPill: {
-    flexDirection: 'row',
+  streetChipBox: {
     alignItems: 'center',
     backgroundColor: '#16161C',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#222230',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    gap: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#32324A',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 70,
   },
-  streetChipPillMe: {
-    borderColor: ACCENT + '66',
+  streetChipBoxMe: {
+    borderColor: ACCENT + '88',
     backgroundColor: ACCENT_BG,
   },
-  streetChipPillName: {
-    fontSize: 10,
+  streetChipName: {
+    fontSize: 11,
     fontFamily: FONTS.semibold,
     color: '#8585A0',
   },
-  streetChipPillAmt: {
-    fontSize: 11,
-    fontFamily: FONTS.bold,
+  streetChipAmt: {
+    fontSize: 18,
+    fontFamily: FONTS.extrabold,
     color: '#F2F2F7',
   },
 
@@ -1783,6 +1785,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: FONTS.medium,
     color: '#555570',
+  },
+  allInBtn: {
+    backgroundColor: ACCENT + '22',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: ACCENT + '66',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  allInBtnText: {
+    fontSize: 11,
+    fontFamily: FONTS.extrabold,
+    color: ACCENT,
+    letterSpacing: 1,
   },
   streetWagerError: {
     fontSize: 11,
