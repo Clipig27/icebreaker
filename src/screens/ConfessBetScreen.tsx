@@ -1660,8 +1660,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   streetPlayingCard: {
-    width: 140,
-    height: 100,
+    width: 90,
+    height: 140,
     backgroundColor: '#FFF8F0',
     borderRadius: 12,
     borderWidth: 1,
@@ -1694,8 +1694,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   streetCardBack: {
-    width: 140,
-    height: 100,
+    width: 90,
+    height: 140,
     backgroundColor: '#1E1E27',
     borderRadius: 12,
     borderWidth: 2,
