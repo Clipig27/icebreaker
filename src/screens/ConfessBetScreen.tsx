@@ -742,7 +742,7 @@ export default function ConfessBetScreen({ navigation }: Props) {
                       <Text style={styles.streetCamoHint}>Camouflage bet — pick anyone, bet refunded</Text>
                     )}
                     <Text style={styles.streetActionLabel}>Who's the confessor?</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
                       <View style={styles.streetTargetRow}>
                         {bettingTargets.map(p => (
                           <TouchableOpacity
@@ -1716,8 +1716,6 @@ const styles = StyleSheet.create({
 
   // Action area
   streetActionArea: {
-    flex: 1,
-    justifyContent: 'center',
     gap: 8,
   },
   streetCamoHint: {
