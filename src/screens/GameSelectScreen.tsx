@@ -36,6 +36,13 @@ const CATEGORIES: { label: GameCategory; color: string }[] = [
   { label: 'Party',    color: '#10B981' },
 ];
 
+const CATEGORY_GRADIENTS: Record<GameCategory, readonly [string, string, string]> = {
+  Strategy: ['#3D0F18', '#22080E', '#0F0F13'],
+  Trivia:   ['#0A2D35', '#061A20', '#0F0F13'],
+  Creative: ['#3D2A10', '#241808', '#0F0F13'],
+  Party:    ['#0A2D20', '#061A13', '#0F0F13'],
+};
+
 const INTENSITIES: { label: GameIntensity; color: string }[] = [
   { label: 'Chill',   color: '#10B981' },
   { label: 'Normal',  color: '#FBBF24' },
@@ -302,7 +309,7 @@ function GameCard({
         style={{ flex: 1 }}
       >
         <LinearGradient
-          colors={game.gradientColors}
+          colors={CATEGORY_GRADIENTS[game.category]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={card.gradient}

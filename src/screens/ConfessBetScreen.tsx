@@ -676,191 +676,163 @@ export default function ConfessBetScreen({ navigation }: Props) {
     const bettingTargets = allPlayers.filter(p => p.id !== myId);
 
     const parsedWager = parseInt(wagerText, 10);
-    const wagerValid = !isNaN(parsedWager) && parsedWager >= minBet && parsedWager <= myBank;
+    const isAllIn = !isNaN(parsedWager) && parsedWager === myBank;
+    const wagerValid = !isNaN(parsedWager) && (parsedWager >= minBet || isAllIn) && parsedWager <= myBank;
+    const wagerInvalid = wagerText !== '' && !isNaN(parsedWager) && parsedWager < minBet && !isAllIn;
 
     return (
       <SafeAreaView style={styles.safe}>
         <PhaseTransition phaseKey={`street-${currentStreet}`}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-              {/* Header */}
-              <View style={styles.streetHeader}>
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    Round {gs.currentRound} / {gs.totalRounds}
-                  </Text>
-                </View>
-                <View style={[styles.streetBadge]}>
-                  <Text style={styles.streetBadgeText}>
-                    Street {currentStreet + 1} / 3
-                  </Text>
-                </View>
+            <View style={styles.streetCompact}>
+              {/* Top bar — single line */}
+              <View style={styles.streetTopBar}>
+                <Text style={styles.streetTopBarText}>
+                  Round {gs.currentRound}/{gs.totalRounds} · Street {currentStreet + 1}/3 · M{multiplier}x payout
+                </Text>
               </View>
 
-              {/* Chip Rail */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRailScroll}>
-                <View style={styles.chipRail}>
+              {/* Chip rail — compact horizontal */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.streetChipRailScroll}>
+                <View style={styles.streetChipRailRow}>
                   {allPlayers.map(p => {
                     const chips = gs.banks[p.id] ?? 0;
                     const isMe = p.id === myId;
-                    const isConfessorPlayer = p.id === gs.confessorId && myId === gs.confessorId;
                     return (
-                      <View key={p.id} style={[styles.chipItem, isMe && styles.chipItemMe]}>
-                        <Text style={[styles.chipName, isMe && { color: ACCENT }]} numberOfLines={1}>
+                      <View key={p.id} style={[styles.streetChipPill, isMe && styles.streetChipPillMe]}>
+                        <Text style={[styles.streetChipPillName, isMe && { color: ACCENT }]} numberOfLines={1}>
                           {p.name}
-                          {isConfessorPlayer ? ' (you)' : ''}
                         </Text>
-                        <Text style={[styles.chipAmount, isMe && { color: ACCENT }]}>${chips}</Text>
+                        <Text style={[styles.streetChipPillAmt, isMe && { color: ACCENT }]}>${chips}</Text>
                       </View>
                     );
                   })}
                 </View>
               </ScrollView>
 
-              {/* Multiplier Badge */}
-              <View style={styles.multiplierRow}>
-                <View style={styles.multiplierBadge}>
-                  <Text style={styles.multiplierText}>{multiplier}x payout</Text>
-                </View>
-                <Text style={styles.minBetText}>min bet: ${minBet}</Text>
-              </View>
-
-              {/* Revealed Cards */}
-              <Text style={styles.sectionLabel}>Confessor's Cards</Text>
-              <View style={styles.cardsContainer}>
-                {revealedCards.map((card, i) => (
-                  <View key={i} style={styles.confessionCard}>
-                    <View style={styles.cardStreetBadge}>
-                      <Text style={styles.cardStreetText}>#{i + 1}</Text>
-                    </View>
-                    <Text style={styles.confessionCardText}>{card}</Text>
-                  </View>
-                ))}
-                {/* Unrevealed cards */}
-                {Array.from({ length: 3 - revealedCards.length }).map((_, i) => (
-                  <View key={`hidden-${i}`} style={styles.hiddenCard}>
-                    <Text style={styles.hiddenCardText}>?</Text>
-                    <Text style={styles.hiddenCardLabel}>Revealed on Street {currentStreet + 2 + i}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Betting Status */}
-              <Text style={styles.sectionLabel}>Betting Order</Text>
-              <View style={styles.bettingOrderContainer}>
-                {gs.bettingOrder.map((pid, i) => {
-                  const acted = i < gs.currentBettorIdx;
-                  const isCurrent = i === gs.currentBettorIdx;
-                  const action = gs.streetActions.find(a => a.playerId === pid);
-                  const name = playerNameMap[pid] ?? '???';
+              {/* Cards area — fanned playing cards */}
+              <View style={styles.streetFannedCards}>
+                {[0, 1, 2].map(i => {
+                  const isRevealed = i < revealedCards.length;
+                  if (isRevealed) {
+                    return (
+                      <View key={i} style={[
+                        styles.streetPlayingCard,
+                        i > 0 && { marginLeft: -30 },
+                      ]}>
+                        <Text style={styles.streetCardMultiplier}>{MULTIPLIERS[i]}x</Text>
+                        <Text style={styles.streetCardConfession} numberOfLines={3}>{revealedCards[i]}</Text>
+                      </View>
+                    );
+                  }
                   return (
-                    <View key={pid} style={[
-                      styles.bettingOrderItem,
-                      isCurrent && styles.bettingOrderItemCurrent,
-                      acted && styles.bettingOrderItemDone,
+                    <View key={`hidden-${i}`} style={[
+                      styles.streetCardBack,
+                      i > 0 && { marginLeft: -30 },
                     ]}>
-                      <Text style={[
-                        styles.bettingOrderName,
-                        isCurrent && { color: ACCENT },
-                      ]} numberOfLines={1}>
-                        {name}
-                        {pid === myId ? ' (you)' : ''}
-                      </Text>
-                      {acted && action && (
-                        <Text style={[
-                          styles.bettingOrderStatus,
-                          { color: action.folded ? COLORS.danger : COLORS.success },
-                        ]}>
-                          {action.folded ? 'FOLD' : `$${action.bet}`}
-                        </Text>
-                      )}
-                      {isCurrent && (
-                        <Text style={[styles.bettingOrderStatus, { color: ACCENT }]}>
-                          BETTING...
-                        </Text>
-                      )}
-                      {!acted && !isCurrent && (
-                        <Text style={styles.bettingOrderStatus}>waiting</Text>
-                      )}
+                      <Text style={styles.streetCardBackQ}>?</Text>
                     </View>
                   );
                 })}
               </View>
 
-              {/* Betting UI */}
-              {isMyTurn && !iAmFolded ? (
-                <View style={styles.bettingSection}>
-                  <Text style={styles.bettingTitle}>
-                    {amIConfessor ? 'Your turn (camouflage bet)' : 'Your turn to bet'}
-                  </Text>
-                  {amIConfessor && (
-                    <Text style={styles.bettingHint}>
-                      Pick any player and bet to blend in. Your bet will be fully refunded.
-                    </Text>
-                  )}
+              {/* Action area — takes remaining space */}
+              <View style={styles.streetActionArea}>
+                {isMyTurn && !iAmFolded ? (
+                  <>
+                    {amIConfessor && (
+                      <Text style={styles.streetCamoHint}>Camouflage bet — pick anyone, bet refunded</Text>
+                    )}
+                    <Text style={styles.streetActionLabel}>Who's the confessor?</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={styles.streetTargetRow}>
+                        {bettingTargets.map(p => (
+                          <TouchableOpacity
+                            key={p.id}
+                            style={[
+                              styles.streetTargetBtn,
+                              selectedTarget === p.id && styles.streetTargetBtnSel,
+                            ]}
+                            onPress={() => setSelectedTarget(p.id)}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[
+                              styles.streetTargetBtnText,
+                              selectedTarget === p.id && styles.streetTargetBtnTextSel,
+                            ]} numberOfLines={1}>
+                              {p.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
 
-                  <Text style={styles.inputLabel}>Who is the confessor?</Text>
-                  <View style={styles.targetGrid}>
-                    {bettingTargets.map(p => (
-                      <TouchableOpacity
-                        key={p.id}
+                    {/* Inline wager */}
+                    <View style={styles.streetWagerRow}>
+                      <Text style={styles.streetWagerLabel}>Wager: $</Text>
+                      <TextInput
                         style={[
-                          styles.targetBtn,
-                          selectedTarget === p.id && styles.targetBtnSelected,
+                          styles.streetWagerInput,
+                          wagerInvalid && { borderColor: '#F43F5E' },
                         ]}
-                        onPress={() => setSelectedTarget(p.id)}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={[
-                          styles.targetBtnText,
-                          selectedTarget === p.id && styles.targetBtnTextSelected,
-                        ]} numberOfLines={1}>
-                          {p.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                        value={wagerText}
+                        onChangeText={(t) => setWagerText(t.replace(/[^0-9]/g, ''))}
+                        placeholder={`${minBet}`}
+                        placeholderTextColor={'#555570'}
+                        keyboardType="number-pad"
+                        maxLength={5}
+                        keyboardAppearance="dark"
+                        inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
+                      />
+                      <Text style={styles.streetWagerMinLabel}>(min ${minBet})</Text>
+                    </View>
+                    {wagerInvalid && (
+                      <Text style={styles.streetWagerError}>Min bet is ${minBet}</Text>
+                    )}
 
-                  <Text style={styles.inputLabel}>Wager (min ${minBet}, you have ${myBank})</Text>
-                  <TextInput
-                    style={styles.wagerInput}
-                    value={wagerText}
-                    onChangeText={(t) => setWagerText(t.replace(/[^0-9]/g, ''))}
-                    placeholder={`$${minBet}`}
-                    placeholderTextColor={COLORS.text3}
-                    keyboardType="number-pad"
-                    maxLength={5}
-                    keyboardAppearance="dark"
-                    inputAccessoryViewID={Platform.OS === 'ios' ? KB_DONE_ID : undefined}
-                  />
-
-                  <View style={styles.betActions}>
-                    <PrimaryButton
-                      title={`Bet $${wagerText || '0'}`}
-                      onPress={handleBet}
-                      disabled={!selectedTarget || !wagerValid}
-                      style={{ flex: 1 }}
-                    />
-                    {!amIConfessor && (
+                    {/* Bet + Fold side by side */}
+                    <View style={styles.streetBetFoldRow}>
+                      <PrimaryButton
+                        title={`Bet $${wagerText || '0'}`}
+                        onPress={handleBet}
+                        disabled={!selectedTarget || !wagerValid}
+                        style={{ flex: 1 }}
+                      />
                       <TouchableOpacity style={styles.foldBtn} onPress={handleFold} activeOpacity={0.75}>
                         <Text style={styles.foldBtnText}>Fold</Text>
                       </TouchableOpacity>
-                    )}
+                    </View>
+                  </>
+                ) : iAmFolded ? (
+                  <View style={styles.streetWaitCenter}>
+                    <Text style={styles.streetWaitText}>You folded</Text>
                   </View>
-                </View>
-              ) : iAmFolded ? (
-                <View style={styles.waitingBox}>
-                  <Text style={styles.waitEmoji}>🃏</Text>
-                  <Text style={styles.waitTitle}>You folded this hand</Text>
-                  <Text style={styles.waitSub}>Watching the remaining bets...</Text>
-                </View>
-              ) : (
-                <View style={styles.waitingBox}>
-                  <Text style={styles.waitTitle}>Waiting for {currentBettorName}...</Text>
-                  <Text style={styles.waitSub}>They are placing their bet.</Text>
+                ) : (
+                  <View style={styles.streetWaitCenter}>
+                    <Text style={styles.streetWaitText}>Waiting for {currentBettorName}...</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Betting log — pills at bottom */}
+              {gs.streetActions.length > 0 && (
+                <View style={styles.streetLogRow}>
+                  {gs.streetActions.map(a => {
+                    const name = playerNameMap[a.playerId] ?? '???';
+                    return (
+                      <View key={a.playerId} style={[
+                        styles.streetLogPill,
+                        { borderColor: a.folded ? '#F43F5E' : '#22C55E' },
+                      ]}>
+                        <Text style={styles.streetLogPillText}>
+                          {name} {a.folded ? 'FOLD' : `$${a.bet}`}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
-            </ScrollView>
+            </View>
           </KeyboardAvoidingView>
           <KeyboardDoneBar />
         </PhaseTransition>
@@ -884,66 +856,72 @@ export default function ConfessBetScreen({ navigation }: Props) {
           .reduce((sum, r) => sum + Math.abs(r.net), 0)
       : 0;
 
+    // Step 0: Confessor Reveal
+    if (revealStep === 0) {
+      return (
+        <SafeAreaView style={styles.safe}>
+          <PhaseTransition phaseKey={gs.phase}>
+            <View style={styles.revealStepContainer}>
+              <View style={styles.revealStepCenter}>
+                <Text style={styles.revealDramaticLabel}>THE CONFESSOR WAS...</Text>
+                <Text style={styles.revealDramaticName}>{confessorName}</Text>
+
+                {/* Personal result banner */}
+                {myResult && (
+                  <View style={[
+                    styles.revealPersonalBanner,
+                    {
+                      borderColor: amIConfessor
+                        ? ACCENT
+                        : myResult.correct
+                        ? '#22C55E'
+                        : myResult.net === 0
+                        ? '#555570'
+                        : '#F43F5E',
+                      backgroundColor: amIConfessor
+                        ? ACCENT_BG
+                        : myResult.correct
+                        ? '#071d0f'
+                        : myResult.net === 0
+                        ? '#16161C'
+                        : '#1d0710',
+                    },
+                  ]}>
+                    <Text style={styles.revealPersonalText}>
+                      {amIConfessor
+                        ? `You were the confessor! Earned $${confessorEarnings} from wrong guesses.`
+                        : myResult.correct
+                        ? `You guessed correctly! Won $${myResult.net}.`
+                        : myResult.net === 0
+                        ? 'You folded. No gains, no losses.'
+                        : `Wrong guess. Lost $${Math.abs(myResult.net)}.`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={styles.revealAdvanceBtn}
+                onPress={() => setRevealStep(1)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.revealAdvanceBtnText}>See Details →</Text>
+              </TouchableOpacity>
+            </View>
+          </PhaseTransition>
+        </SafeAreaView>
+      );
+    }
+
+    // Step 1: Settlement Details
     return (
       <SafeAreaView style={styles.safe}>
-        <PhaseTransition phaseKey={gs.phase}>
+        <PhaseTransition phaseKey={`${gs.phase}-details`}>
           <ScrollView contentContainerStyle={styles.scroll}>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
                 Round {gs.currentRound} / {gs.totalRounds}
               </Text>
-            </View>
-
-            {/* Confessor Reveal */}
-            <View style={styles.revealBanner}>
-              <Text style={styles.revealBannerLabel}>THE CONFESSOR WAS...</Text>
-              <Text style={styles.revealBannerName}>{confessorName}</Text>
-            </View>
-
-            {/* Personal result */}
-            {myResult && (
-              <View style={[
-                styles.personalResult,
-                {
-                  borderColor: amIConfessor
-                    ? ACCENT
-                    : myResult.correct
-                    ? COLORS.success
-                    : myResult.net === 0
-                    ? COLORS.text3
-                    : COLORS.danger,
-                  backgroundColor: amIConfessor
-                    ? ACCENT_BG
-                    : myResult.correct
-                    ? '#071d0f'
-                    : myResult.net === 0
-                    ? COLORS.surface
-                    : '#1d0710',
-                },
-              ]}>
-                <Text style={styles.personalResultText}>
-                  {amIConfessor
-                    ? `You were the confessor! Earned $${confessorEarnings} from wrong guesses.`
-                    : myResult.correct
-                    ? `You guessed correctly! Won $${myResult.net}.`
-                    : myResult.net === 0
-                    ? 'You folded. No gains, no losses.'
-                    : `Wrong guess. Lost $${Math.abs(myResult.net)}.`}
-                </Text>
-              </View>
-            )}
-
-            {/* All confessions */}
-            <Text style={styles.sectionLabel}>The Confessions</Text>
-            <View style={styles.cardsContainer}>
-              {gs.confessorCards.map((card, i) => (
-                <View key={i} style={styles.confessionCard}>
-                  <View style={styles.cardStreetBadge}>
-                    <Text style={styles.cardStreetText}>#{i + 1}</Text>
-                  </View>
-                  <Text style={styles.confessionCardText}>{card}</Text>
-                </View>
-              ))}
             </View>
 
             {/* Results breakdown */}
@@ -955,17 +933,17 @@ export default function ConfessBetScreen({ navigation }: Props) {
               const netColor = isConfessor
                 ? ACCENT
                 : r.correct
-                ? COLORS.success
+                ? '#22C55E'
                 : r.net === 0
-                ? COLORS.text2
-                : COLORS.danger;
+                ? '#8585A0'
+                : '#F43F5E';
               const targetName = r.targetId ? playerNameMap[r.targetId] ?? '???' : '';
 
               return (
                 <View key={r.playerId} style={[styles.resultRow, isMe && styles.resultRowMe]}>
                   <View style={styles.resultLeft}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.resultName, isMe && { color: COLORS.warning }]} numberOfLines={1}>
+                      <Text style={[styles.resultName, isMe && { color: '#FBBF24' }]} numberOfLines={1}>
                         {name}
                       </Text>
                       {isMe && <Text style={styles.standingYouBadge}>YOU</Text>}
@@ -991,7 +969,7 @@ export default function ConfessBetScreen({ navigation }: Props) {
               );
             })}
 
-            {/* Updated chip stacks */}
+            {/* Chip stacks bar chart */}
             <Text style={styles.sectionLabel}>Chip Stacks</Text>
             <View style={styles.chipStacksContainer}>
               {[...allPlayers]
@@ -1009,7 +987,7 @@ export default function ConfessBetScreen({ navigation }: Props) {
                       <View style={styles.chipStackBarTrack}>
                         <View style={[styles.chipStackBarFill, {
                           width: barWidth,
-                          backgroundColor: i === 0 ? ACCENT : COLORS.borderHi,
+                          backgroundColor: i === 0 ? ACCENT : '#32324A',
                         }]} />
                       </View>
                       <Text style={[styles.chipStackAmount, isMe && { color: ACCENT }]}>
@@ -1032,7 +1010,7 @@ export default function ConfessBetScreen({ navigation }: Props) {
                   } : handleNextRound}
                 />
               ) : (
-                <Text style={styles.waitSub}>Waiting for host to continue...</Text>
+                <Text style={styles.waitSub}>Waiting for host...</Text>
               )}
             </View>
           </ScrollView>
@@ -1616,5 +1594,290 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 2,
     letterSpacing: 0.5,
+  },
+
+  // ── Street phase compact layout ──────────────────────────────────────────────
+  streetCompact: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  streetTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  streetTopBarText: {
+    fontSize: 12,
+    fontFamily: FONTS.semibold,
+    color: '#8585A0',
+    letterSpacing: 0.3,
+  },
+  streetChipRailScroll: {
+    marginHorizontal: -16,
+    flexGrow: 0,
+  },
+  streetChipRailRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 6,
+  },
+  streetChipPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#16161C',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#222230',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  streetChipPillMe: {
+    borderColor: ACCENT + '66',
+    backgroundColor: ACCENT_BG,
+  },
+  streetChipPillName: {
+    fontSize: 10,
+    fontFamily: FONTS.semibold,
+    color: '#8585A0',
+  },
+  streetChipPillAmt: {
+    fontSize: 11,
+    fontFamily: FONTS.bold,
+    color: '#F2F2F7',
+  },
+
+  // Fanned playing cards
+  streetFannedCards: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  streetPlayingCard: {
+    width: 110,
+    height: 120,
+    backgroundColor: '#FFF8F0',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  streetCardMultiplier: {
+    position: 'absolute',
+    top: 6,
+    left: 8,
+    fontSize: 13,
+    fontFamily: FONTS.extrabold,
+    color: '#D32F2F',
+  },
+  streetCardConfession: {
+    fontSize: 10,
+    fontFamily: FONTS.medium,
+    fontStyle: 'italic',
+    color: '#1a1a2e',
+    textAlign: 'center',
+    lineHeight: 14,
+    paddingHorizontal: 4,
+    marginTop: 6,
+  },
+  streetCardBack: {
+    width: 110,
+    height: 120,
+    backgroundColor: '#1E1E27',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#32324A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  streetCardBackQ: {
+    fontSize: 32,
+    fontFamily: FONTS.extrabold,
+    color: '#555570',
+  },
+
+  // Action area
+  streetActionArea: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 8,
+  },
+  streetCamoHint: {
+    fontSize: 11,
+    fontFamily: FONTS.medium,
+    color: ACCENT,
+    textAlign: 'center',
+  },
+  streetActionLabel: {
+    fontSize: 12,
+    fontFamily: FONTS.bold,
+    color: '#8585A0',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  streetTargetRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  streetTargetBtn: {
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#222230',
+    backgroundColor: '#1E1E27',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  streetTargetBtnSel: {
+    borderColor: ACCENT,
+    backgroundColor: ACCENT_BG,
+  },
+  streetTargetBtnText: {
+    fontSize: 13,
+    fontFamily: FONTS.bold,
+    color: '#8585A0',
+  },
+  streetTargetBtnTextSel: {
+    color: ACCENT,
+  },
+  streetWagerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  streetWagerLabel: {
+    fontSize: 14,
+    fontFamily: FONTS.bold,
+    color: '#F2F2F7',
+  },
+  streetWagerInput: {
+    backgroundColor: '#1E1E27',
+    borderWidth: 2,
+    borderColor: '#32324A',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 18,
+    fontFamily: FONTS.extrabold,
+    color: '#F2F2F7',
+    width: 80,
+    textAlign: 'center',
+  },
+  streetWagerMinLabel: {
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+    color: '#555570',
+  },
+  streetWagerError: {
+    fontSize: 11,
+    fontFamily: FONTS.medium,
+    color: '#F43F5E',
+    marginTop: -4,
+  },
+  streetBetFoldRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  streetWaitCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  streetWaitText: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
+    color: '#8585A0',
+  },
+  streetLogRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    justifyContent: 'center',
+  },
+  streetLogPill: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: '#16161C',
+  },
+  streetLogPillText: {
+    fontSize: 10,
+    fontFamily: FONTS.semibold,
+    color: '#8585A0',
+  },
+
+  // ── Reveal phase multi-step ──────────────────────────────────────────────────
+  revealStepContainer: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    justifyContent: 'space-between',
+  },
+  revealStepCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+  },
+  revealDramaticLabel: {
+    fontSize: 14,
+    fontFamily: FONTS.bold,
+    color: '#8585A0',
+    textTransform: 'uppercase',
+    letterSpacing: 3,
+  },
+  revealDramaticName: {
+    fontSize: 40,
+    fontFamily: FONTS.extrabold,
+    color: ACCENT,
+    letterSpacing: -1,
+    textAlign: 'center',
+  },
+  revealPersonalBanner: {
+    borderRadius: 12,
+    borderWidth: 2,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 8,
+  },
+  revealPersonalText: {
+    fontSize: 15,
+    fontFamily: FONTS.bold,
+    color: '#F2F2F7',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  revealAdvanceBtn: {
+    backgroundColor: ACCENT_BG,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: ACCENT,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  revealAdvanceBtnText: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
+    color: ACCENT,
   },
 });
