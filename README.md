@@ -3,8 +3,7 @@
 **Social minigames with friends.** 10 real-time multiplayer party games for friend groups of any size. Create a room, share the code, and play, whether you're hanging out, on a call, or at a party.
  
 No sign-ups. No ads. No friction. Pick a username and start playing in seconds.
- 
-[Download on the App Store](#) <!-- add link -->
+
  
 ## The Games
  
