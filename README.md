@@ -46,7 +46,6 @@ No sign-ups. No ads. No friction. Pick a username and start playing in seconds.
 - **Any group size:** every game scales from 3 players to a full party
 ## Status
  
-Version 1.0 live on the App Store. Roadmap: more games, Android support.
  
 ## Contact
  
